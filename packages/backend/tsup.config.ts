@@ -6,7 +6,7 @@ export default defineConfig({
     worker: 'src/worker/index.ts',
   },
   format: ['esm'],
-  target: 'node20',
+  target: 'node24',
   sourcemap: true,
   clean: true,
   splitting: false,
