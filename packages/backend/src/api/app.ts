@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { createMiddleware } from 'hono/factory'
 
 import type { Env } from '../infra/env.js'
+import type { Database } from '../db/client.js'
 import type { AppLogger } from '../infra/logger.js'
 import type { QueueRegistry } from '../infra/queue.js'
 import type { RedisClient } from '../infra/redis.js'
@@ -32,6 +33,7 @@ export type AppDependencies = {
   env: Env
   logger: AppLogger
   redis: RedisClient
+  db: Database
   auth: ApiKeyAuthenticator
   sessions: SessionsService
   messages: MessagesService
@@ -64,7 +66,7 @@ export function createApp(deps: AppDependencies) {
   app.use('*', cors({ origin: deps.env.CORS_ORIGIN }))
   app.use('*', requestLogger(deps.logger))
 
-  app.route('/', createHealthRoute())
+  app.route('/', createHealthRoute({ db: deps.db, redis: deps.redis }))
 
   app.use('/stats', requireApiKey, rateLimit)
   app.route('/', createStatsRoute(deps.stats))
