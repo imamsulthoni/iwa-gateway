@@ -4,8 +4,8 @@ Monorepo layanan WhatsApp berbasis Baileys: API Hono, worker BullMQ, MySQL 8, Re
 
 ## Prasyarat
 
-- Node.js 20+ (`.nvmrc` berisi `20`)
-- pnpm 9+ (`corepack enable`)
+- Node.js 24 (`.nvmrc` berisi `24.22.1`)
+- pnpm 12 (ter-pin di `packageManager`, aktifkan via `corepack enable`)
 - Docker + Docker Compose
 
 ## Mulai dari clone bersih
