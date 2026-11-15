@@ -1,0 +1,115 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import type { WaSessionRow } from '../db/schema.js'
+
+const state = vi.hoisted(() => {
+  const handlers: Record<string, (arg: unknown) => void> = {}
+  const socket = {
+    ev: {
+      on: (event: string, handler: (arg: unknown) => void) => {
+        handlers[event] = handler
+      },
+    },
+    end: vi.fn(),
+    sendMessage: vi.fn(),
+  }
+  const auth = {
+    state: { creds: { registered: true }, keys: {} },
+    saveCreds: vi.fn(async () => undefined),
+    clear: vi.fn(async () => undefined),
+  }
+  const lock = {
+    release: vi.fn(async () => true),
+    startRenewal: vi.fn(() => () => undefined),
+  }
+  return {
+    handlers,
+    socket,
+    auth,
+    lock,
+    acquire: vi.fn(async () => lock as unknown),
+    createSocket: vi.fn(() => socket),
+  }
+})
+
+vi.mock('../infra/lock.js', () => ({ SessionLock: { acquire: state.acquire } }))
+vi.mock('../baileys/auth-store.js', () => ({
+  useDbAuthState: vi.fn(async () => state.auth),
+}))
+vi.mock('../baileys/socket.js', () => ({ createSocket: state.createSocket }))
+
+const { SessionManager } = await import('./session-manager.js')
+
+const SESSION: WaSessionRow = {
+  id: 's1',
+  publicId: 's1',
+  label: 'Sesi',
+  phoneNumber: null,
+  status: 'disconnected',
+  lastQr: null,
+  lastConnectedAt: null,
+  tokenHash: null,
+  tokenRotatedAt: null,
+  salesId: null,
+  agentId: null,
+  dailySendLimit: 200,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+}
+
+function createManager() {
+  const sessions = {
+    update: vi.fn(async () => undefined),
+    findById: vi.fn(async () => SESSION),
+  }
+  const messages = { applyStatusUpdate: vi.fn(async () => true) }
+  const manager = new SessionManager({
+    db: {} as never,
+    redis: { get: vi.fn(async () => null) } as never,
+    cipher: {} as never,
+    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+    browserName: 'test',
+    lockTtlMs: 30_000,
+    sessions: sessions as never,
+    messages: messages as never,
+  })
+  return { manager, sessions, messages }
+}
+
+describe('SessionManager', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    state.acquire.mockResolvedValue(state.lock as never)
+  })
+
+  it('manager kedua ditolak lock dan tidak membuat socket', async () => {
+    state.acquire.mockResolvedValueOnce(state.lock as never).mockResolvedValueOnce(null)
+    const first = createManager()
+    const second = createManager()
+
+    await first.manager.start(SESSION)
+    await second.manager.start(SESSION)
+
+    expect(state.acquire).toHaveBeenCalledTimes(2)
+    expect(state.createSocket).toHaveBeenCalledTimes(1)
+    expect(first.manager.has('s1')).toBe(true)
+    expect(second.manager.has('s1')).toBe(false)
+  })
+
+  it('401 menghapus auth state dan menandai logged_out', async () => {
+    const { manager, sessions } = createManager()
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: 401 } } },
+    })
+
+    await vi.waitFor(() => expect(state.auth.clear).toHaveBeenCalledOnce())
+    expect(state.socket.end).toHaveBeenCalled()
+    await vi.waitFor(() =>
+      expect(sessions.update).toHaveBeenCalledWith('s1', { status: 'logged_out' }),
+    )
+    expect(manager.has('s1')).toBe(false)
+  })
+})

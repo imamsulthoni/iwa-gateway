@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: mysql://wa:wa@127.0.0.1:3306/wa_bot
+      DATABASE_URL_TEST: mysql://wa:wa@127.0.0.1:3306/wa_bot_test
+      REDIS_URL: redis://127.0.0.1:6379
+      AUTH_ENC_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      VITE_API_BASE_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.21.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Guard env di packages
+        run: pnpm check:env
+
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+      - name: Guard bundel worker
+        run: pnpm check:bundle
+
+      - name: Migrasi tanpa diff
+        run: |
+          pnpm db:generate
+          git diff --exit-code -- packages/backend/drizzle

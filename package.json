@@ -1,0 +1,39 @@
+{
+  "name": "wa-bot-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.21.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter @wa/backend --filter @wa/web dev",
+    "build": "pnpm -r build",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:integration": "RUN_INTEGRATION=1 vitest run",
+    "db:generate": "pnpm --filter @wa/backend db:generate",
+    "db:migrate": "pnpm --filter @wa/backen¡d db:migrate",
+    "db:studio": "pnpm --filter @wa/backend db:studio",
+    "db:seed:key": "pnpm --filter @wa/backend db:seed:key",
+    "check:env": "node scripts/check-no-env-in-packages.mjs",
+    "check:bundle": "node scripts/check-worker-bundle.mjs",
+    "check:boundaries": "pnpm check:env && pnpm check:bundle"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "eslint": "9.39.5",
+    "eslint-import-resolver-typescript": "4.4.5",
+    "eslint-plugin-import": "2.32.0",
+    "prettier": "3.10.1",
+    "tsup": "9.0.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.2",
+    "vitest": "5.1.0"
+  }
+}
