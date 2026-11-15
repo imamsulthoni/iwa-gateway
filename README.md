@@ -19,8 +19,8 @@ pnpm db:seed:key   # simpan API key yang tampil sekali
 pnpm dev
 ```
 
-- API: http://localhost:3000
-- Web: http://localhost:5173/app
+- API: http://localhost:8467
+- Web: http://localhost:8468/app
 - Login dashboard memakai API key dari `pnpm db:seed:key`.
 
 `pnpm dev` menjalankan dua proses backend (`api` dan `worker`) plus Vite. Hentikan dengan `Ctrl+C`; kedua proses backend menutup koneksi dan socket lewat graceful shutdown.
@@ -48,18 +48,18 @@ Hanya ada satu file env: `.env` di root. Jangan membuat env di dalam `packages/`
 | Variabel              | Contoh                                     | Dipakai                      |
 | --------------------- | ------------------------------------------ | ---------------------------- |
 | `NODE_ENV`            | `development`                              | semua                        |
-| `PORT`                | `3000`                                     | api                          |
+| `PORT`                | `8467`                                     | api                          |
 | `DATABASE_URL`        | `mysql://wa:wa@localhost:3306/wa_bot`      | api, worker, drizzle, seed   |
 | `DATABASE_URL_TEST`   | `mysql://wa:wa@localhost:3306/wa_bot_test` | test integrasi               |
 | `REDIS_URL`           | `redis://localhost:6379`                   | api, worker                  |
 | `AUTH_ENC_KEY`        | base64 32 byte                             | worker (enkripsi auth state) |
 | `LOG_LEVEL`           | `info`                                     | api, worker                  |
 | `APP_TIMEZONE`        | `Asia/Jakarta`                             | api, worker                  |
-| `CORS_ORIGIN`         | `http://localhost:5173`                    | api                          |
+| `CORS_ORIGIN`         | `http://localhost:8468`                    | api                          |
 | `BROWSER_NAME`        | `WA Bot Service`                           | worker                       |
 | `SESSION_LOCK_TTL_MS` | `30000`                                    | worker                       |
-| `RATE_LIMIT_PER_MIN`  | `60`                                       | api                          |
-| `VITE_API_BASE_URL`   | `http://localhost:3000`                    | web                          |
+| `RATE_LIMIT_PER_MIN`  | `240`                                       | api                          |
+| `VITE_API_BASE_URL`   | `http://localhost:8467`                    | web                          |
 
 Buat `AUTH_ENC_KEY` dengan `openssl rand -base64 32`. Hanya variabel `VITE_*` yang diekspos ke web.
 
