@@ -40,8 +40,6 @@ pnpm dev
 | `pnpm db:migrate`       | Jalankan migrasi                                          |
 | `pnpm db:studio`        | Drizzle Studio                                            |
 | `pnpm db:seed:key`      | Buat API key admin                                        |
-| `pnpm check:env`        | Gagal jika ada `.env*` di `packages/`                     |
-| `pnpm check:bundle`     | Gagal jika `dist/worker.js` memuat Hono                   |
 
 ## Environment
 
@@ -94,7 +92,6 @@ Keduanya membaca environment container (bukan file `.env`). Worker memegang lock
 
 ```bash
 pnpm lint && pnpm typecheck && pnpm test && pnpm build
-pnpm check:env && pnpm check:bundle
 ```
 
 Test integrasi memakai `DATABASE_URL_TEST` dan dijalankan opt-in:

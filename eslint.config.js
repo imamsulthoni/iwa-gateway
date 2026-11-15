@@ -128,7 +128,6 @@ export default tseslint.config(
       'packages/web/src/lib/env.ts',
       'packages/web/vite.config.ts',
       'vitest.config.ts',
-      'scripts/**',
     ],
     rules: {
       'no-restricted-properties': 'off',
@@ -136,7 +135,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.test.{ts,tsx}', 'packages/backend/test/**', 'scripts/**'],
+    files: ['**/*.test.{ts,tsx}', 'packages/backend/test/**'],
     rules: { 'no-console': 'off' },
   },
 )

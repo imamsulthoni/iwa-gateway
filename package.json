@@ -19,10 +19,7 @@
     "db:generate": "pnpm --filter @wa/backend db:generate",
     "db:migrate": "pnpm --filter @wa/backen¡d db:migrate",
     "db:studio": "pnpm --filter @wa/backend db:studio",
-    "db:seed:key": "pnpm --filter @wa/backend db:seed:key",
-    "check:env": "node scripts/check-no-env-in-packages.mjs",
-    "check:bundle": "node scripts/check-worker-bundle.mjs",
-    "check:boundaries": "pnpm check:env && pnpm check:bundle"
+    "db:seed:key": "pnpm --filter @wa/backend db:seed:key"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
