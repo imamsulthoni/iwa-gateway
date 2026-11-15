@@ -1,0 +1,286 @@
+import { SESSION_STATUS_LABELS } from '@wa/shared'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { ChevronDown, Info, Plus, RefreshCw, Search } from 'lucide-react'
+import { useMemo, useState } from 'react'
+
+import { AddSessionDialog } from '../../components/add-session-dialog'
+import { SessionStatusBadge } from '../../components/session-status'
+import { TokenDialog } from '../../components/token-dialog'
+import { Button, cn } from '../../design-system'
+import { demoListSessions } from '../../lib/demo'
+import { formatDateTime, formatPhone } from '../../lib/format'
+import type { SessionTokenDto } from '../../lib/types'
+
+export const Route = createFileRoute('/_auth/numbers')({
+  component: NumbersPage,
+})
+
+const GRID = 'grid grid-cols-[minmax(0,1fr)_150px_160px_170px_74px] items-center'
+const STATUS_OPTIONS = [{ value: 'all', label: 'Semua status' }].concat(
+  Object.entries(SESSION_STATUS_LABELS).map(([value, label]) => ({ value, label })),
+)
+
+function formatTime(value: Date | null): string {
+  if (!value) return '—'
+  return new Intl.DateTimeFormat('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(value)
+}
+
+function NumbersPage() {
+  const navigate = useNavigate()
+  const [items, setItems] = useState(() => demoListSessions().items)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [tokenResult, setTokenResult] = useState<SessionTokenDto | null>(null)
+  const [query, setQuery] = useState('')
+  const [status, setStatus] = useState('all')
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(new Date())
+
+  const connected = items.filter((item) => item.status === 'connected').length
+
+  function refresh() {
+    setItems(demoListSessions().items)
+    setUpdatedAt(new Date())
+  }
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return items.filter((item) => {
+      const matchStatus = status === 'all' || item.status === status
+      const matchQuery =
+        !needle ||
+        item.publicId.toLowerCase().includes(needle) ||
+        item.label.toLowerCase().includes(needle) ||
+        (item.phoneNumber ?? '').includes(needle)
+      return matchStatus && matchQuery
+    })
+  }, [items, query, status])
+
+  const error = null
+
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-end justify-between gap-6">
+        <div className="flex flex-col gap-2">
+          <p className="font-data text-[9.5px] tracking-[1.6px] text-ink-faint uppercase">
+            Nomor / Sessions
+          </p>
+          <h1 className="text-heading text-ink">Nomor WhatsApp</h1>
+          <p className="text-body text-ink-soft">Kelola sesi, QR, dan kode pairing.</p>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <p className="font-data text-[9.5px] text-ink-faint">
+            {items.length} sesi · {connected} terhubung
+          </p>
+          <Button
+            variant="secondary"
+            className="h-[34px] px-3.5 text-[12.5px]"
+            onClick={() => refresh()}
+          >
+            <RefreshCw className="size-3.5 text-ink-soft" aria-hidden />
+            Segarkan
+          </Button>
+          <Button
+            className="h-[34px] px-4 text-[12.5px]"
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus className="size-3.5" aria-hidden />
+            Tambah nomor
+          </Button>
+        </div>
+      </div>
+
+      <div className="h-[26px]" />
+
+      <section className="flex flex-col rounded-card border border-line bg-surface pt-5">
+        <div className="flex items-center justify-between px-[22px]">
+          <div className="flex flex-col gap-[5px]">
+            <h2 className="text-[17px] font-semibold tracking-[-0.3px] text-ink">Semua sesi</h2>
+            <p className="text-small text-ink-faint">Satu sesi mewakili satu nomor WhatsApp.</p>
+          </div>
+        </div>
+
+        <div className="h-4" />
+
+        <div className="flex items-center justify-between gap-4 px-[22px]">
+          <div className="flex items-center gap-2">
+            <div className="flex h-[38px] w-[300px] items-center gap-2 rounded-[10px] bg-bg px-3 text-ink-faint">
+              <Search className="size-3.5 shrink-0" aria-hidden />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="CARI SESSION ID ATAU SALES"
+                aria-label="Cari sesi"
+                className="w-full bg-transparent font-data text-[9.5px] tracking-[0.8px] text-ink uppercase outline-none placeholder:text-ink-faint"
+              />
+            </div>
+            <div className="relative">
+              <select
+                value={status}
+                onChange={(event) => setStatus(event.target.value)}
+                aria-label="Filter status"
+                className="h-[38px] appearance-none rounded-[10px] border border-line bg-transparent pr-8 pl-3 text-[12px] font-medium text-ink outline-none"
+              >
+                {STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                className="pointer-events-none absolute top-1/2 right-3 size-3 -translate-y-1/2 text-ink-soft"
+                aria-hidden
+              />
+            </div>
+          </div>
+          <p className="font-data text-[9.5px] text-ink-faint">
+            diperbarui {formatTime(updatedAt)}
+          </p>
+        </div>
+
+        <div className="h-4" />
+
+        <div className={cn(GRID, 'h-8 px-[22px]')}>
+          <p className={COL_HEAD}>Session</p>
+          <p className={COL_HEAD}>Sales</p>
+          <p className={COL_HEAD}>Status</p>
+          <p className={COL_HEAD}>Terakhir terhubung</p>
+          <p className={cn(COL_HEAD, 'text-right')}>Aksi</p>
+        </div>
+        <div className="h-px w-full bg-line" />
+
+        {error ? (
+          <p className="px-[22px] py-6 text-small text-red">{error}</p>
+        ) : null}
+
+        {!error && filtered.length === 0 ? (
+          <p className="px-[22px] py-10 text-center text-small text-ink-faint">
+            {items.length === 0
+              ? 'Belum ada sesi. Tambahkan nomor untuk memulai.'
+              : 'Tidak ada sesi yang cocok dengan filter.'}
+          </p>
+        ) : null}
+
+        {filtered.map((session, index) => (
+          <div key={session.id}>
+            {index > 0 ? <div className="h-px w-full bg-line" /> : null}
+            <div className={cn(GRID, 'h-16 px-[22px]')}>
+              <div className="flex min-w-0 flex-col gap-[3px]">
+                <p className="truncate font-data text-small font-medium text-ink">
+                  {session.publicId}
+                </p>
+                <p className="font-data text-[9.5px] text-ink-faint">
+                  {formatPhone(session.phoneNumber)}
+                </p>
+              </div>
+              <p className="truncate text-body text-ink">{session.label}</p>
+              <div>
+                <SessionStatusBadge status={session.status} />
+              </div>
+              <p className="font-data text-[10.5px] text-ink-soft">
+                {formatDateTime(session.lastConnectedAt)}
+              </p>
+              <div className="flex justify-end">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-[26px] px-[11px] text-[11px]"
+                  onClick={() =>
+                    void navigate({
+                      to: '/numbers/$sessionId',
+                      params: { sessionId: session.id },
+                    })
+                  }
+                >
+                  Buka
+                </Button>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <div className="flex items-center justify-between border-t border-line px-[22px] py-3.5">
+          <p className="text-[11px] text-ink-soft">
+            Menampilkan {filtered.length} dari {items.length} sesi
+          </p>
+          <p className="font-data text-[9.5px] text-ink-faint">polling tiap 10 detik</p>
+        </div>
+      </section>
+
+      <div className="h-[26px]" />
+
+      <div className="flex flex-wrap gap-4">
+        <div className="flex w-[680px] max-w-full flex-col rounded-card border border-line bg-surface p-card">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[14.5px] font-semibold tracking-[-0.2px] text-ink">Alur koneksi</h2>
+            <p className="font-data text-[9px] tracking-[1.1px] text-ink-faint">3 LANGKAH</p>
+          </div>
+          <div className="h-4" />
+          <div className="flex gap-5">
+            {[
+              ['01', 'Buat sesi', 'Tentukan Session ID dan Agent ID opsional.'],
+              ['02', 'Hubungkan', 'Scan QR atau masukkan kode pairing.'],
+              ['03', 'Siap kirim', 'Kirim pesan tunggal atau broadcast.'],
+            ].map(([num, title, desc], index) => (
+              <div key={num} className="flex flex-1 gap-5">
+                {index > 0 ? <span className="h-[84px] w-px shrink-0 bg-line" /> : null}
+                <div className="flex flex-col gap-1.5">
+                  <p className="font-data text-[9.5px] tracking-[0.8px] text-ink-faint">{num}</p>
+                  <p className="text-[13px] font-semibold text-ink">{title}</p>
+                  <p className="text-[11px] leading-normal text-ink-soft">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex w-[416px] max-w-full flex-col rounded-card border border-line bg-surface p-card">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[14.5px] font-semibold tracking-[-0.2px] text-ink">Catatan sesi</h2>
+            <Info className="size-3.5 text-ink-faint" aria-hidden />
+          </div>
+          <div className="h-3" />
+          {[
+            'Session ID unik, 1–32 karakter.',
+            'Token sesi hanya tampil satu kali.',
+            'Pesan masuk tidak dicatat oleh service.',
+          ].map((note) => (
+            <div key={note} className="flex gap-2 py-[5px]">
+              <span className="font-data text-[10px] text-ink-faint">—</span>
+              <p className="text-small leading-[1.45] text-ink-soft">{note}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <AddSessionDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(result) => {
+          setCreateOpen(false)
+          setTokenResult(result)
+          refresh()
+        }}
+      />
+
+      <TokenDialog
+        open={Boolean(tokenResult)}
+        token={tokenResult?.token ?? null}
+        publicId={tokenResult?.session.publicId ?? ''}
+        createdAt={tokenResult?.session.createdAt ?? null}
+        onClose={() => {
+          const session = tokenResult?.session
+          setTokenResult(null)
+          if (session) {
+            void navigate({ to: '/numbers/$sessionId', params: { sessionId: session.id } })
+          }
+        }}
+      />
+    </div>
+  )
+}
+
+const COL_HEAD = 'font-data text-[9px] tracking-[1.1px] text-ink-soft uppercase'

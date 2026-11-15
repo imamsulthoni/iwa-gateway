@@ -1,0 +1,254 @@
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { ArrowLeft, KeyRound, LogOut, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
+
+import { ConfirmDialog } from '../../components/dialogs'
+import { BroadcastTab } from '../../components/session/BroadcastTab'
+import { KoneksiTab } from '../../components/session/KoneksiTab'
+import { KirimTab } from '../../components/session/KirimTab'
+import { RiwayatTab } from '../../components/session/RiwayatTab'
+import { SessionStatusBadge } from '../../components/session-status'
+import { TokenDialog } from '../../components/token-dialog'
+import { Button, cn } from '../../design-system'
+import {
+  DEMO_TOKEN,
+  demoCurrentBroadcast,
+  demoGetSession,
+  demoLogout,
+  demoRemoveSession,
+  demoRotateToken,
+  demoStatus,
+} from '../../lib/demo'
+import { formatPhone } from '../../lib/format'
+import type { BroadcastCurrentDto, SessionDto, SessionStatusDto, SessionTokenDto } from '../../lib/types'
+
+export const Route = createFileRoute('/_auth/numbers_/$sessionId')({
+  component: SessionDetailPage,
+})
+
+const TABS = [
+  { id: 'koneksi', label: 'Koneksi' },
+  { id: 'kirim', label: 'Kirim' },
+  { id: 'broadcast', label: 'Broadcast' },
+  { id: 'riwayat', label: 'Riwayat' },
+] as const
+
+type TabId = (typeof TABS)[number]['id']
+
+function readSession(sessionId: string): SessionDto | null {
+  try {
+    return demoGetSession(sessionId)
+  } catch {
+    return null
+  }
+}
+
+function SessionDetailPage() {
+  const { sessionId } = Route.useParams()
+  const navigate = useNavigate()
+  const [tab, setTab] = useState<TabId>('koneksi')
+  const [data, setData] = useState<SessionDto | null>(() => readSession(sessionId))
+  const [status, setStatus] = useState<SessionStatusDto | null>(() => readStatus(sessionId))
+  const [broadcast, setBroadcast] = useState<BroadcastCurrentDto | null>(() =>
+    readBroadcast(sessionId),
+  )
+  const [token, setToken] = useState(DEMO_TOKEN)
+  const [tokenResult, setTokenResult] = useState<SessionTokenDto | null>(null)
+  const [confirm, setConfirm] = useState<'logout' | 'delete' | null>(null)
+
+  function refreshAll() {
+    setData(readSession(sessionId))
+    setStatus(readStatus(sessionId))
+    setBroadcast(readBroadcast(sessionId))
+  }
+
+  function rotateToken() {
+    const result = demoRotateToken(sessionId)
+    setToken(result.token)
+    setTokenResult(result)
+  }
+
+  function logoutSession() {
+    demoLogout(sessionId)
+    setConfirm(null)
+    refreshAll()
+  }
+
+  async function deleteSession() {
+    demoRemoveSession(sessionId)
+    setConfirm(null)
+    await navigate({ to: '/numbers' })
+  }
+
+  if (!data) {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="rounded-[9px] bg-red-soft px-3 py-2 text-note text-red">
+          Sesi demo tidak ditemukan.
+        </p>
+        <Link
+          to="/numbers"
+          className="flex items-center gap-1.5 font-data text-[9.5px] text-ink-faint hover:text-ink"
+        >
+          <ArrowLeft className="size-3" aria-hidden />
+          Kembali ke daftar nomor
+        </Link>
+      </div>
+    )
+  }
+
+  const broadcastCount = broadcast?.jobId ? 1 : 0
+  const meta = [data.label, status?.agentId, formatPhone(data.phoneNumber)]
+    .filter((value) => Boolean(value))
+    .join('  ·  ')
+
+  return (
+    <div className="flex flex-col">
+      <Link
+        to="/numbers"
+        className="flex items-center gap-[7px] font-data text-[9.5px] tracking-[0.6px] text-ink-faint hover:text-ink"
+      >
+        <ArrowLeft className="size-3" aria-hidden />
+        Nomor
+        <span className="text-ink-faint">/</span>
+        <span className="text-ink">{data.publicId}</span>
+      </Link>
+
+      <div className="h-3.5" />
+
+      <div className="flex items-end justify-between gap-6">
+        <div className="flex flex-col gap-[7px]">
+          <div className="flex items-center gap-2.5">
+            <h1 className="font-data text-title font-semibold tracking-[-1px] text-ink">
+              {data.publicId}
+            </h1>
+            <SessionStatusBadge status={data.status} />
+          </div>
+          <p className="text-[12px] text-ink-soft">{meta}</p>
+        </div>
+
+        <div className="flex items-center gap-[7px]">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-[30px] px-[13px] text-[12px]"
+            onClick={() => refreshAll()}
+          >
+            <RefreshCw className="size-[13px] text-ink-soft" aria-hidden />
+            Segarkan
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-[30px] px-[13px] text-[12px]"
+            onClick={() => rotateToken()}
+          >
+            <KeyRound className="size-[13px] text-ink-soft" aria-hidden />
+            Rotasi token
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-[30px] px-[13px] text-[12px]"
+            disabled={data.status === 'logged_out'}
+            onClick={() => setConfirm('logout')}
+          >
+            <LogOut className="size-[13px] text-ink-soft" aria-hidden />
+            Logout
+          </Button>
+        </div>
+      </div>
+
+      <div className="h-5" />
+
+      <div className="flex w-full items-end gap-[26px] border-b border-line">
+        {TABS.map((item) => {
+          const active = tab === item.id
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setTab(item.id)}
+              className={cn(
+                '-mb-px flex items-center gap-1.5 border-b-2 px-0.5 pt-0 pr-0 pb-[11px] pl-0 text-[12.5px] transition',
+                active
+                  ? 'border-ink font-semibold text-ink'
+                  : 'border-transparent font-medium text-ink-faint hover:text-ink-soft',
+              )}
+            >
+              {item.label}
+              {item.id === 'broadcast' && broadcastCount > 0 ? (
+                <span className="rounded-pill bg-surface-soft px-1.5 py-px font-data text-[9px] text-ink-soft">
+                  {broadcastCount}
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+        <span className="flex-1" />
+        <p className="pb-3 font-data text-[9px] text-ink-faint">
+          polling 3s saat belum terhubung
+        </p>
+      </div>
+
+      <div className="h-5" />
+
+      {tab === 'koneksi' ? (
+        <KoneksiTab
+          session={data}
+          agentId={status?.agentId ?? null}
+          token={token}
+          broadcast={broadcast}
+          onChanged={refreshAll}
+          onDelete={() => setConfirm('delete')}
+        />
+      ) : null}
+      {tab === 'kirim' ? <KirimTab session={data} /> : null}
+      {tab === 'broadcast' ? (
+        <BroadcastTab session={data} broadcast={broadcast} onRefresh={refreshAll} />
+      ) : null}
+      {tab === 'riwayat' ? <RiwayatTab session={data} /> : null}
+
+      <TokenDialog
+        open={Boolean(tokenResult)}
+        token={tokenResult?.token ?? null}
+        publicId={tokenResult?.session.publicId ?? data.publicId}
+        createdAt={tokenResult?.session.createdAt ?? null}
+        onClose={() => setTokenResult(null)}
+      />
+
+      <ConfirmDialog
+        open={confirm === 'logout'}
+        title="Logout sesi"
+        message="Perangkat akan dilepas dan auth state dihapus. Lanjutkan?"
+        confirmLabel="Logout"
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => logoutSession()}
+      />
+
+      <ConfirmDialog
+        open={confirm === 'delete'}
+        title="Hapus sesi"
+        message="Sesi, auth state, dan riwayat pesan akan dihapus permanen. Lanjutkan?"
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void deleteSession()}
+      />
+    </div>
+  )
+}
+
+function readStatus(sessionId: string): SessionStatusDto | null {
+  try {
+    return demoStatus(sessionId)
+  } catch {
+    return null
+  }
+}
+
+function readBroadcast(sessionId: string): BroadcastCurrentDto | null {
+  try {
+    return demoCurrentBroadcast(sessionId)
+  } catch {
+    return null
+  }
+}
