@@ -73,12 +73,13 @@ export class SessionManager {
       socket,
       lock,
       auth,
-      stopRenewal: lock.startRenewal(),
+      stopRenewal: lock.startRenewal(() => {
+        void this.onLockLost(session.id)
+      }),
     }
     this.handles.set(session.id, handle)
     this.wire(session.id, handle)
 
-    await this.maybeRequestPairingCode(session, handle)
     this.deps.logger.info({ sessionId: session.id }, 'Socket sesi dimulai')
   }
 
@@ -103,6 +104,7 @@ export class SessionManager {
     if (event.kind === 'qr') {
       const dataUrl = await QRCode.toDataURL(event.qr)
       await this.deps.sessions.update(sessionId, { status: 'qr_pending', lastQr: dataUrl })
+      await this.maybeRequestPairingCode(sessionId)
       return
     }
 
@@ -145,27 +147,30 @@ export class SessionManager {
     await this.start(session)
   }
 
-  private async maybeRequestPairingCode(
-    session: WaSessionRow,
-    handle: SessionHandle,
-  ): Promise<void> {
-    if (handle.auth.state.creds.registered) return
-    const requestKey = `wa:pairing:request:${session.id}`
+  private async maybeRequestPairingCode(sessionId: string): Promise<void> {
+    const handle = this.handles.get(sessionId)
+    if (!handle || handle.auth.state.creds.registered) return
+    const session = await this.deps.sessions.findById(sessionId)
+    if (!session) return
+    const requestKey = `wa:pairing:request:${sessionId}`
     const phoneNumber = await this.deps.redis.get(requestKey)
-    const targetPhone =
-      phoneNumber ?? (session.status === 'connecting' ? session.phoneNumber : null)
-    if (!targetPhone) return
+    if (!phoneNumber) return
     try {
-      const code = await handle.socket.requestPairingCode(targetPhone)
-      await this.deps.redis.set(`wa:pairing:code:${session.id}`, code, 'EX', 600)
+      const code = await handle.socket.requestPairingCode(phoneNumber)
+      await this.deps.redis.set(`wa:pairing:code:${sessionId}`, code, 'EX', 600)
       await this.deps.redis.del(requestKey)
-      await this.deps.sessions.update(session.id, {
-        phoneNumber: targetPhone,
+      await this.deps.sessions.update(sessionId, {
+        phoneNumber,
         status: 'connecting',
       })
     } catch (error) {
-      this.deps.logger.error({ sessionId: session.id, err: error }, 'Gagal meminta pairing code')
+      this.deps.logger.error({ sessionId, err: error }, 'Gagal meminta pairing code')
     }
+  }
+
+  private async onLockLost(sessionId: string): Promise<void> {
+    this.deps.logger.warn({ sessionId }, 'Lock sesi hilang, socket dihentikan')
+    await this.stop(sessionId)
   }
 
   private async onMessagesUpdate(sessionId: string, updates: unknown): Promise<void> {

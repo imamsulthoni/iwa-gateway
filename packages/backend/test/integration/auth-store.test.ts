@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { BufferJSON } from '@whiskeysockets/baileys'
 
 import { useDbAuthState } from '../../src/baileys/auth-store.js'
 import { newId } from '../../src/db/id.js'
@@ -85,4 +86,54 @@ describeIntegration('auth store terenkripsi', () => {
     expect(await connection.db.select().from(waAuthCreds)).toHaveLength(0)
     expect(await connection.db.select().from(waAuthKeys)).toHaveLength(0)
   })
+
+  it('key cache dibuang saat clear sehingga baris baru terbaca', async () => {
+    const sessionId = await insertSession()
+    const auth = await useDbAuthState(sessionId, { db: connection.db, cipher, logger })
+
+    await auth.state.keys.set({
+      session: { s1: 'nilai-lama' },
+    } as never)
+    expect((await auth.state.keys.get('session', ['s1']))['s1']).toBe('nilai-lama')
+
+    await auth.clear()
+
+    await connection.db.insert(waAuthKeys).values({
+      sessionId,
+      type: 'session',
+      keyId: 's1',
+      value: cipher.encrypt(JSON.stringify('nilai-baru', BufferJSON.replacer)),
+    })
+
+    const value = (await auth.state.keys.get('session', ['s1']))['s1']
+    expect(value).toBe('nilai-baru')
+  })
+
+  it('tiga tipe key lid-mapping, device-list, tctoken tersimpan dan terbaca ulang', async () => {
+    const sessionId = await insertSession()
+    const auth = await useDbAuthState(sessionId, { db: connection.db, cipher, logger })
+
+    await auth.state.keys.set({
+      'lid-mapping': { lid1: 'pn1' },
+      'device-list': { dev1: Buffer.from('device') },
+      tctoken: { tok1: Buffer.from('token') },
+    } as never)
+
+    const reloaded = await useDbAuthState(sessionId, { db: connection.db, cipher, logger })
+    const lid = await reloaded.state.keys.get('lid-mapping', ['lid1'])
+    const device = await reloaded.state.keys.get('device-list', ['dev1'])
+    const token = await reloaded.state.keys.get('tctoken', ['tok1'])
+
+    expect(lid['lid1']).toBe('pn1')
+    expect(device['dev1']).toBeDefined()
+    expect(token['tok1']).toBeDefined()
+
+    const types = await connection.db
+      .select({ type: waAuthKeys.type })
+      .from(waAuthKeys)
+    expect(new Set(types.map((row) => row.type))).toEqual(
+      new Set(['lid-mapping', 'device-list', 'tctoken']),
+    )
+  }
+)
 })

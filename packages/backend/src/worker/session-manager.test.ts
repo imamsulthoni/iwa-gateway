@@ -20,7 +20,7 @@ const state = vi.hoisted(() => {
   }
   const lock = {
     release: vi.fn(async () => true),
-    startRenewal: vi.fn(() => () => undefined),
+    startRenewal: vi.fn((_onLost?: () => void) => () => undefined),
   }
   return {
     handlers,
@@ -111,5 +111,72 @@ describe('SessionManager', () => {
       expect(sessions.update).toHaveBeenCalledWith('s1', { status: 'logged_out' }),
     )
     expect(manager.has('s1')).toBe(false)
+  })
+
+  it('lock hilang menghentikan socket', async () => {
+    const { manager } = createManager()
+    await manager.start(SESSION)
+
+    const onLost = state.lock.startRenewal.mock.calls[0]?.[0] as (() => void) | undefined
+    expect(onLost).toBeTypeOf('function')
+    onLost?.()
+
+    await vi.waitFor(() => expect(state.socket.end).toHaveBeenCalled())
+    expect(manager.has('s1')).toBe(false)
+  })
+
+  it('pairing code diminta dari event qr', async () => {
+    state.auth.state.creds.registered = false
+    const { manager, sessions } = createManager()
+    const redis = {
+      get: vi.fn(async () => '628123456789'),
+      set: vi.fn(async () => 'OK'),
+      del: vi.fn(async () => 1),
+    }
+    ;(manager as unknown as { deps: { redis: unknown } }).deps.redis = redis
+    const requestPairingCode = vi.fn(async () => 'ABCD-1234')
+    state.createSocket.mockReturnValueOnce({
+      ...state.socket,
+      requestPairingCode,
+    } as never)
+
+    await manager.start(SESSION)
+    state.handlers['connection.update']?.({ qr: 'qr-string' })
+
+    await vi.waitFor(() => expect(requestPairingCode).toHaveBeenCalledWith('628123456789'))
+    expect(redis.set).toHaveBeenCalledWith(
+      'wa:pairing:code:s1',
+      'ABCD-1234',
+      'EX',
+      600,
+    )
+    expect(redis.del).toHaveBeenCalledWith('wa:pairing:request:s1')
+    expect(sessions.update).toHaveBeenCalledWith('s1', {
+      phoneNumber: '628123456789',
+      status: 'connecting',
+    })
+    state.auth.state.creds.registered = true
+  })
+
+  it('pairing tidak diminta saat creds sudah registered', async () => {
+    state.auth.state.creds.registered = true
+    const { manager } = createManager()
+    const redis = {
+      get: vi.fn(async () => '628123456789'),
+      set: vi.fn(async () => 'OK'),
+      del: vi.fn(async () => 1),
+    }
+    ;(manager as unknown as { deps: { redis: unknown } }).deps.redis = redis
+    const requestPairingCode = vi.fn(async () => 'ABCD-1234')
+    state.createSocket.mockReturnValueOnce({
+      ...state.socket,
+      requestPairingCode,
+    } as never)
+
+    await manager.start(SESSION)
+    state.handlers['connection.update']?.({ qr: 'qr-string' })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(requestPairingCode).not.toHaveBeenCalled()
   })
 })

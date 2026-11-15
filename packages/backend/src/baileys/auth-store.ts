@@ -13,11 +13,17 @@ import type { Database } from '../db/client.js'
 import { waAuthCreds, waAuthKeys } from '../db/schema.js'
 import type { Cipher } from '../infra/crypto.js'
 import type { AppLogger } from '../infra/logger.js'
+import { createKeyCache } from './key-cache.js'
 
 export type DbAuthState = {
   state: AuthenticationState
   saveCreds: () => Promise<void>
   clear: () => Promise<void>
+}
+
+export type AuthPresence = {
+  creds: boolean
+  keys: boolean
 }
 
 export type AuthStoreDeps = {
@@ -33,6 +39,27 @@ export async function hasAuthState(db: Database, sessionId: string): Promise<boo
     .where(eq(waAuthCreds.sessionId, sessionId))
     .limit(1)
   return Boolean(row)
+}
+
+export async function getAuthPresence(db: Database, sessionId: string): Promise<AuthPresence> {
+  const [credsRow] = await db
+    .select({ sessionId: waAuthCreds.sessionId })
+    .from(waAuthCreds)
+    .where(eq(waAuthCreds.sessionId, sessionId))
+    .limit(1)
+  const [keyRow] = await db
+    .select({ sessionId: waAuthKeys.sessionId })
+    .from(waAuthKeys)
+    .where(eq(waAuthKeys.sessionId, sessionId))
+    .limit(1)
+  return { creds: Boolean(credsRow), keys: Boolean(keyRow) }
+}
+
+export async function deleteAuthState(db: Database, sessionId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(waAuthKeys).where(eq(waAuthKeys.sessionId, sessionId))
+    await tx.delete(waAuthCreds).where(eq(waAuthCreds.sessionId, sessionId))
+  })
 }
 
 export async function useDbAuthState(
@@ -116,19 +143,19 @@ export async function useDbAuthState(
     },
   }
 
+  const keyCache = createKeyCache()
   const cachedKeys = makeCacheableSignalKeyStore(
     keys,
     logger as unknown as Parameters<typeof makeCacheableSignalKeyStore>[1],
+    keyCache,
   )
 
   return {
     state: { creds, keys: cachedKeys },
     saveCreds,
     async clear(): Promise<void> {
-      await db.transaction(async (tx) => {
-        await tx.delete(waAuthKeys).where(eq(waAuthKeys.sessionId, sessionId))
-        await tx.delete(waAuthCreds).where(eq(waAuthCreds.sessionId, sessionId))
-      })
+      await deleteAuthState(db, sessionId)
+      keyCache.flushAll()
     },
   }
 }

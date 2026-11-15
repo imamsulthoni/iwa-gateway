@@ -40,11 +40,24 @@ export class SessionLock {
     return Number(result) === 1
   }
 
-  startRenewal(intervalMs = Math.max(1000, Math.floor(this.ttlMs / 3))): () => void {
+  startRenewal(
+    onLost?: () => void,
+    intervalMs = Math.max(1000, Math.floor(this.ttlMs / 3)),
+  ): () => void {
+    let stopped = false
     const timer = setInterval(() => {
-      void this.renew()
+      void this.renew().then((ok) => {
+        if (!ok && !stopped) {
+          stopped = true
+          clearInterval(timer)
+          onLost?.()
+        }
+      })
     }, intervalMs)
     timer.unref()
-    return () => clearInterval(timer)
+    return () => {
+      stopped = true
+      clearInterval(timer)
+    }
   }
 }
