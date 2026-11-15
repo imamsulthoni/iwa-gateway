@@ -43,6 +43,10 @@ export class SessionManager {
     return this.handles.has(sessionId)
   }
 
+  activeSessionIds(): string[] {
+    return [...this.handles.keys()]
+  }
+
   async start(session: WaSessionRow): Promise<void> {
     if (this.handles.has(session.id)) return
 
