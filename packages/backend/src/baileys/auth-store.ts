@@ -41,6 +41,32 @@ export async function hasAuthState(db: Database, sessionId: string): Promise<boo
   return Boolean(row)
 }
 
+/**
+ * Cek apakah sesi sudah pernah pairing (perangkat tertaut). Dipakai worker
+ * untuk memutuskan apakah sesi boleh di-start ulang otomatis.
+ */
+export async function isAuthRegistered(
+  db: Database,
+  cipher: Cipher,
+  sessionId: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ creds: waAuthCreds.creds })
+    .from(waAuthCreds)
+    .where(eq(waAuthCreds.sessionId, sessionId))
+    .limit(1)
+  if (!row) return false
+  try {
+    const creds = JSON.parse(cipher.decrypt(row.creds), BufferJSON.reviver) as {
+      registered?: boolean
+    }
+    return Boolean(creds.registered)
+  } catch {
+    // Auth rusak: gagal-tutup agar socket tidak di-start berulang-ulang.
+    return false
+  }
+}
+
 export async function getAuthPresence(db: Database, sessionId: string): Promise<AuthPresence> {
   const [credsRow] = await db
     .select({ sessionId: waAuthCreds.sessionId })

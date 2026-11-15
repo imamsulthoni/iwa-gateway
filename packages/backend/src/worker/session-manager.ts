@@ -140,9 +140,18 @@ export class SessionManager {
       return
     }
 
+    const registered = Boolean(handle.auth.state.creds.registered)
     await this.stop(sessionId, false)
-    await this.deps.sessions.update(sessionId, { status: 'disconnected' })
-    this.scheduleReconnect(sessionId)
+    await this.deps.sessions.update(
+      sessionId,
+      // QR lama sudah tidak valid setelah koneksi tutup; jangan tampilkan lagi.
+      registered ? { status: 'disconnected' } : { status: 'disconnected', lastQr: null },
+    )
+    // Sesi yang belum pairing tidak di-reconnect otomatis agar tidak
+    // kena rate limit WhatsApp (429) — tunggu user menekan Scan QR.
+    if (registered) {
+      this.scheduleReconnect(sessionId)
+    }
     void handle
   }
 

@@ -80,6 +80,7 @@ describe('SessionManager', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     state.acquire.mockResolvedValue(state.lock as never)
+    state.auth.state.creds.registered = true
   })
 
   it('manager kedua ditolak lock dan tidak membuat socket', async () => {
@@ -178,5 +179,27 @@ describe('SessionManager', () => {
     await new Promise((resolve) => setTimeout(resolve, 20))
 
     expect(requestPairingCode).not.toHaveBeenCalled()
+  })
+
+  it('koneksi tutup pada sesi belum pairing: tidak reconnect dan QR dibuang', async () => {
+    state.auth.state.creds.registered = false
+    const { manager, sessions } = createManager()
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: 428 } } },
+    })
+
+    await vi.waitFor(() =>
+      expect(sessions.update).toHaveBeenCalledWith('s1', {
+        status: 'disconnected',
+        lastQr: null,
+      }),
+    )
+    expect(manager.has('s1')).toBe(false)
+    expect(
+      (manager as unknown as { reconnectAttempts: Map<string, number> }).reconnectAttempts.size,
+    ).toBe(0)
   })
 })

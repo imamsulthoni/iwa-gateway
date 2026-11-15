@@ -1,11 +1,13 @@
-import { deleteAuthState, getAuthPresence } from '../baileys/auth-store.js'
+import { deleteAuthState, getAuthPresence, isAuthRegistered } from '../baileys/auth-store.js'
 import type { Database } from '../db/client.js'
+import type { Cipher } from '../infra/crypto.js'
 import type { AppLogger } from '../infra/logger.js'
 import type { SessionsService } from '../modules/sessions/service.js'
 import type { SessionManager } from './session-manager.js'
 
 export type BootstrapDeps = {
   db: Database
+  cipher: Cipher
   sessions: SessionsService
   manager: SessionManager
   logger: AppLogger
@@ -13,6 +15,7 @@ export type BootstrapDeps = {
 
 export async function bootstrapSessions({
   db,
+  cipher,
   sessions,
   manager,
   logger,
@@ -32,6 +35,15 @@ export async function bootstrapSessions({
     }
     if (!presence.creds) {
       logger.info({ sessionId: row.id, status: row.status }, 'Sesi tanpa auth dilewati')
+      continue
+    }
+    // Sesi yang belum pernah pairing tidak di-start otomatis agar tidak
+    // menimbulkan reconnect berulang saat worker sering restart (dev mode).
+    if (!(await isAuthRegistered(db, cipher, row.id))) {
+      logger.info(
+        { sessionId: row.id, status: row.status },
+        'Sesi belum pairing, menunggu login manual',
+      )
       continue
     }
     await manager.start(row)

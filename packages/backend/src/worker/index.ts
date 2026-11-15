@@ -46,7 +46,7 @@ const manager = new SessionManager({
   messages,
 })
 
-await bootstrapSessions({ db: database.db, sessions, manager, logger })
+await bootstrapSessions({ db: database.db, cipher, sessions, manager, logger })
 
 const processors = startProcessors(
   workerRedis,

@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({
   getAuthPresence: vi.fn(),
   deleteAuthState: vi.fn(async () => undefined),
+  isAuthRegistered: vi.fn(async () => true),
   dbRef: {} as never,
 }))
 
 vi.mock('../baileys/auth-store.js', () => ({
   getAuthPresence: state.getAuthPresence,
   deleteAuthState: state.deleteAuthState,
+  isAuthRegistered: state.isAuthRegistered,
 }))
 
 const { bootstrapSessions } = await import('./bootstrap.js')
@@ -37,13 +39,14 @@ function createDeps() {
   }
   const manager = { start: vi.fn(async () => undefined) }
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
-  const deps = { db: state.dbRef, sessions, manager, logger } as never
+  const deps = { db: state.dbRef, cipher: {}, sessions, manager, logger } as never
   return { deps, sessions, manager, logger }
 }
 
 describe('bootstrapSessions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    state.isAuthRegistered.mockResolvedValue(true)
   })
 
   it('memulai sesi dengan auth lengkap dan konsisten', async () => {
@@ -91,5 +94,17 @@ describe('bootstrapSessions', () => {
     expect(manager.start).not.toHaveBeenCalled()
     expect(state.deleteAuthState).not.toHaveBeenCalled()
     expect(sessions.updateStatus).not.toHaveBeenCalled()
+  })
+
+  it('melewati sesi dengan auth yang belum pairing', async () => {
+    state.getAuthPresence.mockResolvedValue({ creds: true, keys: true })
+    state.isAuthRegistered.mockResolvedValue(false)
+    const { deps, manager } = createDeps()
+
+    const started = await bootstrapSessions(deps)
+
+    expect(started).toBe(0)
+    expect(manager.start).not.toHaveBeenCalled()
+    expect(state.isAuthRegistered).toHaveBeenCalledWith(state.dbRef, {}, 's1')
   })
 })

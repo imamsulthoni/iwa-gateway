@@ -63,7 +63,7 @@ export function createSessionsRepository(db: Database) {
         .from(waSessions)
         .where(
           and(
-            sql`${waSessions.status} in ('connecting', 'connected', 'disconnected', 'qr_pending')`,
+            sql`${waSessions.status} in ('created', 'connecting', 'connected', 'disconnected', 'qr_pending')`,
           ),
         )
     },
