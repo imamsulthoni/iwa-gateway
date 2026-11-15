@@ -12,8 +12,7 @@ import type { ReactNode } from 'react'
 
 import { cn } from '../design-system'
 import { api } from '../lib/api'
-import { clearApiKey, clearPreviewMode, isPreviewMode } from '../lib/auth'
-import { demoListSessions } from '../lib/demo'
+import { clearApiKey } from '../lib/auth'
 import { usePolling } from '../lib/format'
 import type { HealthDto, SessionListDto } from '../lib/types'
 
@@ -41,19 +40,19 @@ function sidebarItem(active: boolean): string {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
-  const preview = isPreviewMode()
-  const health = usePolling(() => api.get<HealthDto>('/'), 20_000, !preview)
-  const sessions = usePolling(() => api.get<SessionListDto>('/sessions'), 20_000, !preview)
+  const health = usePolling<HealthDto>(() => api.get<HealthDto>('/'), 20_000, true)
+  const sessions = usePolling<SessionListDto>(
+    () => api.get<SessionListDto>('/sessions'),
+    20_000,
+    true,
+  )
 
-  const total = preview ? demoListSessions().items.length : (sessions.data?.items.length ?? 0)
-  const connected = preview
-    ? demoListSessions().items.filter((item) => item.status === 'connected').length
-    : (sessions.data?.items.filter((item) => item.status === 'connected').length ?? 0)
+  const total = sessions.data?.items.length ?? 0
+  const connected = sessions.data?.items.filter((item) => item.status === 'connected').length ?? 0
   const healthy = health.data?.status === 'ok'
 
   function logout() {
     clearApiKey()
-    clearPreviewMode()
     void navigate({ to: '/login' })
   }
 
@@ -105,7 +104,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span
               className={cn(
                 'size-1.5 shrink-0 rounded-pill',
-                preview ? 'bg-ink-faint' : healthy ? 'bg-green' : 'bg-amber',
+                health.error ? 'bg-red' : healthy ? 'bg-green' : 'bg-amber',
               )}
             />
             <span className="flex-1 font-data text-[9.5px] tracking-[0.8px] text-ink-faint uppercase">
@@ -114,10 +113,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span
               className={cn(
                 'font-data text-[9.5px] font-semibold tracking-[0.8px] uppercase',
-                preview ? 'text-ink-faint' : healthy ? 'text-green' : 'text-amber',
+                health.error ? 'text-red' : healthy ? 'text-green' : 'text-amber',
               )}
             >
-              {preview ? 'Pratinjau' : health.error ? 'Gangguan' : healthy ? 'Aktif' : 'Menunggu'}
+              {health.error ? 'Gangguan' : health.data?.status === 'degraded' ? 'Degraded' : healthy ? 'Aktif' : 'Menunggu'}
             </span>
           </div>
           <p className="mt-2 font-data text-note leading-[1.5] text-ink-soft">
@@ -138,9 +137,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </span>
           <span className="flex flex-1 flex-col gap-px">
             <span className="text-body font-medium text-ink">Admin</span>
-            <span className="font-data text-[9.5px] text-ink-faint">
-              {preview ? 'mode pratinjau' : 'api key'}
-            </span>
+            <span className="font-data text-[9.5px] text-ink-faint">api key</span>
           </span>
           <button
             type="button"

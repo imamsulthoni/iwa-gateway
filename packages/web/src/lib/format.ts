@@ -39,6 +39,7 @@ export type PollingState<T> = {
   error: string | null
   loading: boolean
   refresh: () => void
+  enabled: boolean
 }
 
 export function usePolling<T>(
@@ -66,11 +67,14 @@ export function usePolling<T>(
   }, [])
 
   useEffect(() => {
-    if (!enabled) return
     refresh()
+  }, [refresh])
+
+  useEffect(() => {
+    if (!enabled) return
     const timer = setInterval(refresh, intervalMs)
     return () => clearInterval(timer)
   }, [enabled, intervalMs, refresh])
 
-  return { data, error, loading, refresh }
+  return { data, error, loading, refresh, enabled }
 }

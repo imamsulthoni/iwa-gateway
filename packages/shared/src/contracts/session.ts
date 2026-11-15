@@ -20,6 +20,8 @@ export const createSessionSchema = z.object({
   publicId: publicIdSchema.optional(),
   mode: sessionModeSchema.default('qr'),
   phoneNumber: phoneNumberSchema.optional(),
+  salesId: z.string().max(64).optional(),
+  agentId: z.string().max(64).optional(),
 })
 
 export type CreateSessionInput = z.infer<typeof createSessionSchema>

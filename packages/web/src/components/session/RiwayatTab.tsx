@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 
 import { Badge, Button, cn } from '../../design-system'
-import { demoListMessages } from '../../lib/demo'
+import { api } from '../../lib/api'
 import { formatDateTime, formatPhone, truncate } from '../../lib/format'
 import type { MessageListDto, SessionDto } from '../../lib/types'
 import { CardLabel, NoteRow, Panel } from './parts'
@@ -26,7 +26,11 @@ export function RiwayatTab({ session }: RiwayatTabProps) {
     setLoading(true)
     setError(null)
     try {
-      const page = demoListMessages(session.id, 20, nextCursor)
+      const query = new URLSearchParams({ limit: '20' })
+      if (nextCursor) query.set('cursor', nextCursor)
+      const page = await api.get<MessageListDto>(
+        `/sessions/${session.id}/messages?${query.toString()}`,
+      )
       setItems((previous) => (nextCursor ? [...previous, ...page.items] : page.items))
       setCursor(page.nextCursor)
       setLoaded(true)

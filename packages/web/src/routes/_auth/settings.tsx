@@ -20,7 +20,6 @@ import { Fragment, useState } from 'react'
 
 import { Badge, Button, cn } from '../../design-system'
 import { api } from '../../lib/api'
-import { isPreviewMode } from '../../lib/auth'
 import { getDefaultDelay, saveDefaultDelay } from '../../lib/delay'
 import { getEnv } from '../../lib/env'
 import { formatDateTime, usePolling } from '../../lib/format'
@@ -54,23 +53,18 @@ const PRIVACY = [
 ]
 
 function SettingsPage() {
-  const preview = isPreviewMode()
-  const health = usePolling(() => api.get<HealthDto>('/'), 30_000, !preview)
+  const health = usePolling<HealthDto>(() => api.get<HealthDto>('/'), 30_000, true)
   const [delay, setDelay] = useState(() => getDefaultDelay())
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
   const [updatedAt, setUpdatedAt] = useState(() => new Date())
 
-  const info = preview
-    ? { name: 'wa-gateway', version: 'v1.4.2', status: 'ok' as const }
-    : health.data
+  const info = health.data
   const healthy = info?.status === 'ok'
   let endpoint = '/api · local'
-  if (!preview) {
-    try {
-      endpoint = getEnv().apiBaseUrl
-    } catch {
-      endpoint = '—'
-    }
+  try {
+    endpoint = getEnv().apiBaseUrl
+  } catch {
+    endpoint = '—'
   }
 
   function save() {
@@ -231,7 +225,7 @@ function SettingsPage() {
             {[
               ['NAMA', info?.name ?? '—'],
               ['VERSI', info?.version ?? '—'],
-              ['STATUS', preview ? 'Sehat · uptime 99,98%' : healthy ? 'Sehat' : '—'],
+              ['STATUS', healthy ? 'Sehat' : health.error ? 'Tidak merespons' : '—'],
               ['ENDPOINT', endpoint],
               ['DIPERBARUI', formatDateTime(updatedAt.toISOString())],
             ].map(([label, value]) => (

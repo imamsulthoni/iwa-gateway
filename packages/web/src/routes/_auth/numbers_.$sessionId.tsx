@@ -1,6 +1,6 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, KeyRound, LogOut, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { ConfirmDialog } from '../../components/dialogs'
 import { BroadcastTab } from '../../components/session/BroadcastTab'
@@ -10,17 +10,14 @@ import { RiwayatTab } from '../../components/session/RiwayatTab'
 import { SessionStatusBadge } from '../../components/session-status'
 import { TokenDialog } from '../../components/token-dialog'
 import { Button, cn } from '../../design-system'
-import {
-  DEMO_TOKEN,
-  demoCurrentBroadcast,
-  demoGetSession,
-  demoLogout,
-  demoRemoveSession,
-  demoRotateToken,
-  demoStatus,
-} from '../../lib/demo'
-import { formatPhone } from '../../lib/format'
-import type { BroadcastCurrentDto, SessionDto, SessionStatusDto, SessionTokenDto } from '../../lib/types'
+import { api } from '../../lib/api'
+import { formatPhone, usePolling } from '../../lib/format'
+import type {
+  BroadcastCurrentDto,
+  SessionDto,
+  SessionStatusDto,
+  SessionTokenDto,
+} from '../../lib/types'
 
 export const Route = createFileRoute('/_auth/numbers_/$sessionId')({
   component: SessionDetailPage,
@@ -35,56 +32,95 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]['id']
 
-function readSession(sessionId: string): SessionDto | null {
-  try {
-    return demoGetSession(sessionId)
-  } catch {
-    return null
-  }
+const EMPTY_BROADCAST: BroadcastCurrentDto = {
+  jobId: null,
+  status: null,
+  total: 0,
+  done: 0,
+  sent: 0,
+  failed: 0,
+  recipients: [],
 }
 
 function SessionDetailPage() {
   const { sessionId } = Route.useParams()
   const navigate = useNavigate()
   const [tab, setTab] = useState<TabId>('koneksi')
-  const [data, setData] = useState<SessionDto | null>(() => readSession(sessionId))
-  const [status, setStatus] = useState<SessionStatusDto | null>(() => readStatus(sessionId))
-  const [broadcast, setBroadcast] = useState<BroadcastCurrentDto | null>(() =>
-    readBroadcast(sessionId),
-  )
-  const [token, setToken] = useState(DEMO_TOKEN)
   const [tokenResult, setTokenResult] = useState<SessionTokenDto | null>(null)
   const [confirm, setConfirm] = useState<'logout' | 'delete' | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const [terminal, setTerminal] = useState(false)
+  const detail = usePolling<SessionDto>(
+    () => api.get<SessionDto>(`/sessions/${sessionId}`),
+    15_000,
+    true,
+  )
+  const status = usePolling<SessionStatusDto>(
+    () => api.get<SessionStatusDto>(`/sessions/${sessionId}/status`),
+    3_000,
+    !terminal,
+  )
+  const broadcast = usePolling<BroadcastCurrentDto>(
+    () => api.get<BroadcastCurrentDto>(`/sessions/${sessionId}/broadcast/current`),
+    3_000,
+    true,
+  )
+
+  const data = detail.data
+  const currentStatus = status.data
+
+  useEffect(() => {
+    if (status.data) {
+      setTerminal(
+        status.data.status === 'connected' || status.data.status === 'logged_out',
+      )
+    }
+  }, [status.data])
+
+  async function run(action: () => Promise<unknown>) {
+    setBusy(true)
+    setActionError(null)
+    try {
+      await action()
+      refreshAll()
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : 'Aksi gagal')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   function refreshAll() {
-    setData(readSession(sessionId))
-    setStatus(readStatus(sessionId))
-    setBroadcast(readBroadcast(sessionId))
+    detail.refresh()
+    status.refresh()
+    broadcast.refresh()
   }
 
   function rotateToken() {
-    const result = demoRotateToken(sessionId)
-    setToken(result.token)
-    setTokenResult(result)
+    void run(async () => {
+      const result = await api.post<SessionTokenDto>(`/sessions/${sessionId}/token`)
+      setTokenResult(result)
+    })
   }
 
   function logoutSession() {
-    demoLogout(sessionId)
+    void run(() => api.post(`/sessions/${sessionId}/logout`))
     setConfirm(null)
-    refreshAll()
   }
 
   async function deleteSession() {
-    demoRemoveSession(sessionId)
+    await run(() => api.delete(`/sessions/${sessionId}`))
     setConfirm(null)
     await navigate({ to: '/numbers' })
   }
 
-  if (!data) {
+  if (detail.error) {
     return (
       <div className="flex flex-col gap-3">
         <p className="rounded-[9px] bg-red-soft px-3 py-2 text-note text-red">
-          Sesi demo tidak ditemukan.
+          {detail.error}
         </p>
         <Link
           to="/numbers"
@@ -97,8 +133,15 @@ function SessionDetailPage() {
     )
   }
 
-  const broadcastCount = broadcast?.jobId ? 1 : 0
-  const meta = [data.label, status?.agentId, formatPhone(data.phoneNumber)]
+  if (!data) {
+    return (
+      <p className="px-[22px] py-10 text-center text-small text-ink-faint">Memuat sesi...</p>
+    )
+  }
+
+  const broadcastCurrent = broadcast.data ?? EMPTY_BROADCAST
+  const broadcastCount = broadcastCurrent.jobId ? 1 : 0
+  const meta = [data.label, currentStatus?.agentId, formatPhone(data.phoneNumber)]
     .filter((value) => Boolean(value))
     .join('  ·  ')
 
@@ -122,7 +165,7 @@ function SessionDetailPage() {
             <h1 className="font-data text-title font-semibold tracking-[-1px] text-ink">
               {data.publicId}
             </h1>
-            <SessionStatusBadge status={data.status} />
+            <SessionStatusBadge status={currentStatus?.status ?? data.status} />
           </div>
           <p className="text-[12px] text-ink-soft">{meta}</p>
         </div>
@@ -141,6 +184,7 @@ function SessionDetailPage() {
             variant="secondary"
             size="sm"
             className="h-[30px] px-[13px] text-[12px]"
+            disabled={busy}
             onClick={() => rotateToken()}
           >
             <KeyRound className="size-[13px] text-ink-soft" aria-hidden />
@@ -150,7 +194,7 @@ function SessionDetailPage() {
             variant="secondary"
             size="sm"
             className="h-[30px] px-[13px] text-[12px]"
-            disabled={data.status === 'logged_out'}
+            disabled={busy || currentStatus?.status === 'logged_out'}
             onClick={() => setConfirm('logout')}
           >
             <LogOut className="size-[13px] text-ink-soft" aria-hidden />
@@ -193,19 +237,24 @@ function SessionDetailPage() {
 
       <div className="h-5" />
 
+      {actionError ? (
+        <p className="mb-4 rounded-[9px] bg-red-soft px-3 py-2 text-note text-red">
+          {actionError}
+        </p>
+      ) : null}
+
       {tab === 'koneksi' ? (
         <KoneksiTab
-          session={data}
-          agentId={status?.agentId ?? null}
-          token={token}
-          broadcast={broadcast}
+          session={{ ...data, status: currentStatus?.status ?? data.status }}
+          agentId={currentStatus?.agentId ?? null}
+          broadcast={broadcastCurrent}
           onChanged={refreshAll}
           onDelete={() => setConfirm('delete')}
         />
       ) : null}
-      {tab === 'kirim' ? <KirimTab session={data} /> : null}
+      {tab === 'kirim' ? <KirimTab session={data} onChanged={refreshAll} /> : null}
       {tab === 'broadcast' ? (
-        <BroadcastTab session={data} broadcast={broadcast} onRefresh={refreshAll} />
+        <BroadcastTab session={data} broadcast={broadcastCurrent} onRefresh={refreshAll} />
       ) : null}
       {tab === 'riwayat' ? <RiwayatTab session={data} /> : null}
 
@@ -235,20 +284,4 @@ function SessionDetailPage() {
       />
     </div>
   )
-}
-
-function readStatus(sessionId: string): SessionStatusDto | null {
-  try {
-    return demoStatus(sessionId)
-  } catch {
-    return null
-  }
-}
-
-function readBroadcast(sessionId: string): BroadcastCurrentDto | null {
-  try {
-    return demoCurrentBroadcast(sessionId)
-  } catch {
-    return null
-  }
 }

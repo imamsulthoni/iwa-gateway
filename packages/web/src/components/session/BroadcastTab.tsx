@@ -2,8 +2,9 @@ import { Send } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Badge, Button } from '../../design-system'
-import { demoStartBroadcast } from '../../lib/demo'
+import { api } from '../../lib/api'
 import { getDefaultDelay } from '../../lib/delay'
+import { usePolling } from '../../lib/format'
 import type {
   BroadcastCurrentDto,
   CreateBroadcastResponseDto,
@@ -40,6 +41,7 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
   const [referenceId, setReferenceId] = useState('')
   const [created, setCreated] = useState<CreateBroadcastResponseDto | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [cancelError, setCancelError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const parsed = useMemo(() => parseRecipients(recipients), [recipients])
@@ -47,23 +49,45 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
   const average = (Number(minDelay) + Number(maxDelay)) / 2
   const estimateMinutes = Math.max(1, Math.ceil((parsed.length * average) / 60))
 
+  const live = broadcast?.status === 'running' || broadcast?.status === 'pending'
+  const current = usePolling<BroadcastCurrentDto>(
+    () => api.get<BroadcastCurrentDto>(`/sessions/${session.id}/broadcast/current`),
+    3_000,
+    live,
+  )
+  const activeBroadcast = current.data ?? broadcast
+
   async function start() {
     setBusy(true)
     setError(null)
     try {
-      const response = demoStartBroadcast(session.id, {
-        recipients: parsed,
-        text,
-        minDelay: Number(minDelay),
-        maxDelay: Number(maxDelay),
-        referenceId: referenceId.trim() || `bc-${Date.now()}`,
-      })
+      const response = await api.post<CreateBroadcastResponseDto>(
+        `/sessions/${session.id}/broadcast`,
+        {
+          recipients: parsed,
+          text,
+          minDelay: Number(minDelay),
+          maxDelay: Number(maxDelay),
+          referenceId: referenceId.trim() || `bc-${Date.now()}`,
+        },
+      )
       setCreated(response)
       onRefresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Gagal memulai broadcast')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function cancel() {
+    setCancelError(null)
+    try {
+      await api.post(`/sessions/${session.id}/broadcast/cancel`)
+      current.refresh()
+      onRefresh()
+    } catch (cause) {
+      setCancelError(cause instanceof Error ? cause.message : 'Gagal membatalkan broadcast')
     }
   }
 
@@ -181,8 +205,49 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
       </div>
 
       <div className="flex min-w-[320px] flex-1 flex-col gap-4">
-        {broadcast?.jobId ? (
-          <BroadcastRail broadcast={broadcast} />
+        {cancelError ? (
+          <p className="rounded-[9px] bg-red-soft px-3 py-2 text-note text-red">{cancelError}</p>
+        ) : null}
+
+        {activeBroadcast?.jobId ? (
+          <div key={activeBroadcast.jobId} className="flex flex-col gap-4">
+            <BroadcastRail broadcast={activeBroadcast} />
+            {activeBroadcast.status === 'running' || activeBroadcast.status === 'pending' ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-[32px] self-start border-line px-3.5 text-[11.5px] text-red hover:bg-red-soft"
+                onClick={() => void cancel()}
+              >
+                Batalkan broadcast
+              </Button>
+            ) : null}
+            <Panel className="gap-0 pt-[18px] pr-[18px] pb-2.5 pl-[18px]">
+              <div className="flex items-center justify-between gap-3">
+                <CardLabel>Penerima</CardLabel>
+                <p className="font-data text-[9px] text-ink-faint">{activeBroadcast.total}</p>
+              </div>
+              <div className="h-2" />
+              {activeBroadcast.recipients.length > 0 ? (
+                activeBroadcast.recipients.slice(0, 6).map((recipient, index) => (
+                  <div key={recipient.id}>
+                    {index > 0 ? <div className="h-px w-full bg-line" /> : null}
+                    <div className="flex items-center justify-between gap-3 py-[9px]">
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <p className="truncate text-small text-ink">
+                          {recipient.name ?? recipient.to}
+                        </p>
+                        <p className="font-data text-[8.5px] text-ink-faint">{recipient.to}</p>
+                      </div>
+                      <Badge tone={recipientTone(recipient.status)}>{recipient.status}</Badge>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="py-2 text-small text-ink-faint">Belum ada penerima.</p>
+              )}
+            </Panel>
+          </div>
         ) : (
           <Panel className="gap-0 p-[18px]">
             <div className="flex items-center justify-between gap-3">
@@ -191,7 +256,19 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
                 idle
               </Badge>
             </div>
-            <p className="mt-3 text-small text-ink-faint">Belum ada broadcast berjalan.</p>
+            <div className="h-2" />
+            {parsed.slice(0, 5).map((recipient) => (
+              <div key={recipient.to} className="flex items-center justify-between gap-3 py-[7px]">
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <p className="truncate text-small text-ink">{recipient.name ?? recipient.to}</p>
+                  <p className="font-data text-[8.5px] text-ink-faint">{recipient.to}</p>
+                </div>
+                <Badge tone="neutral">pending</Badge>
+              </div>
+            ))}
+            {parsed.length === 0 ? (
+              <p className="mt-2 text-small text-ink-faint">Belum ada broadcast berjalan.</p>
+            ) : null}
           </Panel>
         )}
 
@@ -199,54 +276,11 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
           <p className="font-data text-[9px] break-all text-ink-faint">Job {created.jobId}</p>
         ) : null}
 
-        <Panel className="gap-0 pt-[18px] pr-[18px] pb-2.5 pl-[18px]">
-          <div className="flex items-center justify-between gap-3">
-            <CardLabel>Penerima</CardLabel>
-            <p className="font-data text-[9px] text-ink-faint">
-              {broadcast?.total ?? parsed.length}
-            </p>
-          </div>
-          <div className="h-2" />
-          {broadcast && broadcast.recipients.length > 0 ? (
-            broadcast.recipients.slice(0, 6).map((recipient, index) => (
-              <div key={recipient.id}>
-                {index > 0 ? <div className="h-px w-full bg-line" /> : null}
-                <div className="flex items-center justify-between gap-3 py-[9px]">
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <p className="truncate text-small text-ink">
-                      {recipient.name ?? recipient.to}
-                    </p>
-                    <p className="font-data text-[8.5px] text-ink-faint">{recipient.to}</p>
-                  </div>
-                  <Badge tone={recipientTone(recipient.status)}>{recipient.status}</Badge>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="flex flex-col gap-2 py-2">
-              {parsed.slice(0, 5).map((recipient) => (
-                <div key={recipient.to} className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <p className="truncate text-small text-ink">
-                      {recipient.name ?? recipient.to}
-                    </p>
-                    <p className="font-data text-[8.5px] text-ink-faint">{recipient.to}</p>
-                  </div>
-                  <Badge tone="neutral">pending</Badge>
-                </div>
-              ))}
-              {parsed.length === 0 ? (
-                <p className="text-small text-ink-faint">Belum ada penerima.</p>
-              ) : null}
-            </div>
-          )}
-        </Panel>
-
         <Panel className="gap-2.5 p-[18px]">
           <CardLabel>Catatan</CardLabel>
           <NoteRow>Delay diacak antara nilai min dan maks per pesan.</NoteRow>
-          <NoteRow>Penerima duplikat tetap dikirim sesuai daftar.</NoteRow>
-          <NoteRow>Batalkan dengan menghapus sesi atau menghentikan worker.</NoteRow>
+          <NoteRow>Batas harian per nomor menghentikan sisa penerima.</NoteRow>
+          <NoteRow>Broadcast berjalan bisa dibatalkan kapan saja.</NoteRow>
         </Panel>
       </div>
     </div>

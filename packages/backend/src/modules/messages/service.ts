@@ -50,6 +50,7 @@ export function toMessageDto(row: MessageRow): MessageDto {
     status: row.status,
     waMessageId: row.waMessageId,
     error: row.error,
+    customerName: row.customerName,
     createdAt: row.createdAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null,
   }

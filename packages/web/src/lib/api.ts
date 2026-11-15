@@ -57,18 +57,6 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
 
-export function sessionApi(token: string) {
-  return {
-    get: <T>(path: string) => request<T>(path, {}, token),
-    post: <T>(path: string, body?: unknown) =>
-      request<T>(
-        path,
-        { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) },
-        token,
-      ),
-  }
-}
-
 export async function verifyApiKey(apiKey: string): Promise<boolean> {
   const response = await fetch(`${getEnv().apiBaseUrl}/stats`, {
     headers: { 'x-api-key': apiKey },

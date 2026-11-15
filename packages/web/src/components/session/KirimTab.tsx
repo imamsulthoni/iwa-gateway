@@ -2,16 +2,17 @@ import { CheckCheck, Send } from 'lucide-react'
 import { useState } from 'react'
 
 import { Badge, Button } from '../../design-system'
-import { demoSendMessage } from '../../lib/demo'
+import { api } from '../../lib/api'
 import { formatDateTime, formatPhone } from '../../lib/format'
 import type { SendMessageResponseDto, SessionDto } from '../../lib/types'
 import { CardLabel, NoteRow, Panel, TextField, TextareaField } from './parts'
 
 type KirimTabProps = {
   session: SessionDto
+  onChanged?: () => void
 }
 
-export function KirimTab({ session }: KirimTabProps) {
+export function KirimTab({ session, onChanged }: KirimTabProps) {
   const [to, setTo] = useState('')
   const [referenceId, setReferenceId] = useState('')
   const [text, setText] = useState('')
@@ -28,15 +29,19 @@ export function KirimTab({ session }: KirimTabProps) {
     setBusy(true)
     setError(null)
     try {
-      const response = demoSendMessage(session.id, {
-        to: to.replace(/\D/g, ''),
-        referenceId: referenceId.trim() || `web-${Date.now()}`,
-        text,
-        customerId: customerId.trim() || undefined,
-        customerName: customerName.trim() || undefined,
-      })
+      const response = await api.post<SendMessageResponseDto>(
+        `/sessions/${session.id}/messages`,
+        {
+          to: to.replace(/\D/g, ''),
+          referenceId: referenceId.trim() || `web-${Date.now()}`,
+          text,
+          customerId: customerId.trim() || undefined,
+          customerName: customerName.trim() || undefined,
+        },
+      )
       setResult(response)
       setText('')
+      onChanged?.()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Gagal mengirim pesan')
     } finally {
