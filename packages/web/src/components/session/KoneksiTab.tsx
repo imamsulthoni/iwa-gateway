@@ -28,6 +28,7 @@ export function KoneksiTab({
   const [qr, setQr] = useState<string | null>(null)
   const [code, setCode] = useState<string | null>(null)
   const [phone, setPhone] = useState(session.phoneNumber ?? '')
+  const [pairingRequested, setPairingRequested] = useState(false)
 
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -43,13 +44,16 @@ export function KoneksiTab({
 
     async function load() {
       try {
+        // Endpoint pairing hanya relevan setelah kode pairing diminta.
         const [qrResult, pairingResult] = await Promise.all([
           api.get<QrResponseDto>(`/sessions/${session.id}/qr`),
-          api.get<PairingResponseDto>(`/sessions/${session.id}/pairing`),
+          pairingRequested
+            ? api.get<PairingResponseDto>(`/sessions/${session.id}/pairing`)
+            : Promise.resolve(null),
         ])
         if (!active) return
         setQr(qrResult.qr)
-        setCode(pairingResult.code)
+        if (pairingResult) setCode(pairingResult.code)
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Gagal memuat QR')
       }
@@ -61,7 +65,7 @@ export function KoneksiTab({
       active = false
       clearInterval(timer)
     }
-  }, [session.id, waiting, reloadKey])
+  }, [session.id, waiting, reloadKey, pairingRequested])
 
   const recent = useRecentMessages(session.id, connected)
 
@@ -82,7 +86,7 @@ export function KoneksiTab({
     await run(() =>
       api.post(`/sessions/${session.id}/pairing`, { phoneNumber: phone.replace(/\D/g, '') }),
     )
-
+    setPairingRequested(true)
   }
 
   async function login() {
@@ -240,7 +244,11 @@ export function KoneksiTab({
                   ) : (
                     <div className="flex size-[204px] flex-col items-center justify-center gap-2 text-center">
                       <QrCode className="size-8 text-ink-faint" aria-hidden />
-                      <p className="text-note text-ink-faint">Menunggu QR dari worker...</p>
+                      <p className="text-note text-ink-faint">
+                        {session.status === 'disconnected'
+                          ? 'Koneksi terputus. Klik Scan QR di bawah untuk QR baru.'
+                          : 'Menunggu QR dari worker...'}
+                      </p>
                     </div>
                   )}
                 </div>

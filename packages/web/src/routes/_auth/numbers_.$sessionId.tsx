@@ -64,7 +64,7 @@ function SessionDetailPage() {
   )
   const broadcast = usePolling<BroadcastCurrentDto>(
     () => api.get<BroadcastCurrentDto>(`/sessions/${sessionId}/broadcast/current`),
-    3_000,
+    status.data?.status === 'connected' ? 3_000 : 10_000,
     true,
   )
 
