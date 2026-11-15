@@ -39,5 +39,10 @@ export function createBroadcastsRoute(broadcasts: BroadcastsService, queues: Que
     return c.json(current)
   })
 
+  router.post('/:id/broadcast/cancel', async (c) => {
+    const broadcast = await broadcasts.cancel(c.req.param('id'))
+    return c.json({ broadcastId: broadcast.id, status: broadcast.status })
+  })
+
   return router
 }
