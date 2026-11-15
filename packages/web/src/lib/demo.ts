@@ -29,6 +29,8 @@ const sessions: SessionDto[] = [
     phoneNumber: '6281233448890',
     status: 'connected',
     lastConnectedAt: ago(2),
+    salesId: null,
+    agentId: null,
     createdAt: new Date(now() - 3 * 24 * 60 * MINUTE).toISOString(),
   },
   {
@@ -38,6 +40,8 @@ const sessions: SessionDto[] = [
     phoneNumber: '6281322117788',
     status: 'connected',
     lastConnectedAt: ago(18),
+    salesId: null,
+    agentId: null,
     createdAt: new Date(now() - 5 * 24 * 60 * MINUTE).toISOString(),
   },
   {
@@ -47,6 +51,8 @@ const sessions: SessionDto[] = [
     phoneNumber: '6281199882233',
     status: 'qr_pending',
     lastConnectedAt: null,
+    salesId: null,
+    agentId: null,
     createdAt: ago(42),
   },
   {
@@ -56,6 +62,8 @@ const sessions: SessionDto[] = [
     phoneNumber: '6281266554433',
     status: 'disconnected',
     lastConnectedAt: ago(240),
+    salesId: null,
+    agentId: null,
     createdAt: new Date(now() - 9 * 24 * 60 * MINUTE).toISOString(),
   },
   {
@@ -65,6 +73,8 @@ const sessions: SessionDto[] = [
     phoneNumber: '6287811223344',
     status: 'logged_out',
     lastConnectedAt: ago(1440),
+    salesId: null,
+    agentId: null,
     createdAt: new Date(now() - 20 * 24 * 60 * MINUTE).toISOString(),
   },
 ]
@@ -198,6 +208,8 @@ export function demoCreateSession(
     phoneNumber: input.phoneNumber ?? null,
     status: 'created',
     lastConnectedAt: null,
+    salesId: null,
+    agentId: input.agentId ?? null,
     createdAt: new Date().toISOString(),
   }
   sessions.push(session)

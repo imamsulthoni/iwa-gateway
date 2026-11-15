@@ -31,6 +31,8 @@ export const sessionSchema = z.object({
   phoneNumber: z.string().nullable(),
   status: z.enum(SESSION_STATUSES),
   lastConnectedAt: z.string().nullable(),
+  salesId: z.string().nullable(),
+  agentId: z.string().nullable(),
   createdAt: z.string(),
 })
 
