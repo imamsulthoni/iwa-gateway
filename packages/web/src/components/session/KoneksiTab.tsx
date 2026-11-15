@@ -1,30 +1,26 @@
 import { MESSAGE_STATUS_LABELS } from '@wa/shared'
-import { ArrowUpRight, Copy, Eye, EyeOff, Hash, KeyRound, QrCode, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
+import { ArrowUpRight, Copy, Hash, QrCode, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 
 import { Button, cn } from '../../design-system'
-import { demoListMessages, demoLogin, demoPairing, demoQr, demoRequestPairing } from '../../lib/demo'
+import { api } from '../../lib/api'
 import { getDefaultDelay } from '../../lib/delay'
 import { formatDateTime, phoneFromJid } from '../../lib/format'
-import type { BroadcastCurrentDto, MessageListDto, SessionDto } from '../../lib/types'
+import type { BroadcastCurrentDto, MessageListDto, QrResponseDto, PairingResponseDto, SessionDto } from '../../lib/types'
 import { BroadcastRail, CardLabel, FIELD_INPUT, Panel, StatusDot } from './parts'
 
 type KoneksiTabProps = {
   session: SessionDto
   agentId: string | null
-  token: string | null
-  broadcast: BroadcastCurrentDto | null
+  broadcast: BroadcastCurrentDto
   onChanged: () => void
   onDelete: () => void
 }
 
-type View = 'qr' | 'pairing'
-
 export function KoneksiTab({
   session,
   agentId,
-  token,
   broadcast,
   onChanged,
   onDelete,
@@ -32,8 +28,8 @@ export function KoneksiTab({
   const [qr, setQr] = useState<string | null>(null)
   const [code, setCode] = useState<string | null>(null)
   const [phone, setPhone] = useState(session.phoneNumber ?? '')
-  const [view, setView] = useState<View>('qr')
-  const [revealToken, setRevealToken] = useState(false)
+  const [pairingRequested, setPairingRequested] = useState(false)
+
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
@@ -48,10 +44,16 @@ export function KoneksiTab({
 
     async function load() {
       try {
-        const [qrResult, pairingResult] = [demoQr(session.id), demoPairing(session.id)]
+        // Endpoint pairing hanya relevan setelah kode pairing diminta.
+        const [qrResult, pairingResult] = await Promise.all([
+          api.get<QrResponseDto>(`/sessions/${session.id}/qr`),
+          pairingRequested
+            ? api.get<PairingResponseDto>(`/sessions/${session.id}/pairing`)
+            : Promise.resolve(null),
+        ])
         if (!active) return
         setQr(qrResult.qr)
-        setCode(pairingResult.code)
+        if (pairingResult) setCode(pairingResult.code)
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : 'Gagal memuat QR')
       }
@@ -63,9 +65,9 @@ export function KoneksiTab({
       active = false
       clearInterval(timer)
     }
-  }, [session.id, waiting, reloadKey])
+  }, [session.id, waiting, reloadKey, pairingRequested])
 
-  const recent = useRecentMessages(session.id)
+  const recent = useRecentMessages(session.id, connected)
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
@@ -82,12 +84,13 @@ export function KoneksiTab({
 
   async function requestPairing() {
     await run(() =>
-      Promise.resolve(demoRequestPairing(session.id, phone.replace(/\D/g, ''))),
+      api.post(`/sessions/${session.id}/pairing`, { phoneNumber: phone.replace(/\D/g, '') }),
     )
+    setPairingRequested(true)
   }
 
   async function login() {
-    await run(() => Promise.resolve(demoLogin(session.id)))
+    await run(() => api.post(`/sessions/${session.id}/login`))
   }
 
   const meta = (
@@ -107,35 +110,6 @@ export function KoneksiTab({
   const rail = (
     <div className="flex w-full flex-col gap-4">
       <BroadcastRail broadcast={broadcast} />
-
-      <Panel className="gap-0 p-5">
-        <div className="flex items-center justify-between">
-          <CardLabel>Token sesi</CardLabel>
-          <KeyRound className="size-[13px] text-ink-faint" aria-hidden />
-        </div>
-        <div className="h-3" />
-        <div className="flex items-center justify-between gap-2 rounded-[9px] bg-bg px-3 py-2.5">
-          <p className="font-data text-[11px] break-all text-ink-soft">
-            {token ? (revealToken ? token : `wsk_live_••••••••${token.slice(-4)}`) : 'tidak tersedia'}
-          </p>
-          {token ? (
-            <button
-              type="button"
-              onClick={() => setRevealToken((value) => !value)}
-              aria-label={revealToken ? 'Sembunyikan token' : 'Tampilkan token'}
-              className="text-ink-faint transition hover:text-ink"
-            >
-              {revealToken ? <EyeOff className="size-[13px]" /> : <Eye className="size-[13px]" />}
-            </button>
-          ) : null}
-        </div>
-        <div className="h-2.5" />
-        <p className="text-[10.5px] leading-[1.45] text-ink-faint">
-          {token
-            ? 'Token hanya tampil sekali saat dibuat. Simpan di tempat aman.'
-            : 'Token tidak tersedia di tab ini. Rotasi token untuk mendapat yang baru.'}
-        </p>
-      </Panel>
 
       <Link
         to="/settings"
@@ -270,7 +244,11 @@ export function KoneksiTab({
                   ) : (
                     <div className="flex size-[204px] flex-col items-center justify-center gap-2 text-center">
                       <QrCode className="size-8 text-ink-faint" aria-hidden />
-                      <p className="text-note text-ink-faint">Menunggu QR dari worker...</p>
+                      <p className="text-note text-ink-faint">
+                        {session.status === 'disconnected'
+                          ? 'Koneksi terputus. Klik Scan QR di bawah untuk QR baru.'
+                          : 'Menunggu QR dari worker...'}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -307,7 +285,7 @@ export function KoneksiTab({
                       variant="secondary"
                       size="sm"
                       className="h-[30px] px-3 text-[11.5px]"
-                      onClick={() => setView('pairing')}
+                      onClick={() => document.getElementById('pairing-phone')?.focus()}
                     >
                       Pakai kode pairing
                     </Button>
@@ -396,7 +374,7 @@ export function KoneksiTab({
                 variant="secondary"
                 size="sm"
                 className="h-[30px] px-3 text-[11.5px]"
-                onClick={() => setView('pairing')}
+                onClick={() => document.getElementById('pairing-phone')?.focus()}
               >
                 <Hash className="size-3 text-ink-soft" aria-hidden />
                 Kode pairing
@@ -446,6 +424,7 @@ export function KoneksiTab({
                   <input
                     value={phone}
                     onChange={(event) => setPhone(event.target.value)}
+                    id="pairing-phone"
                     placeholder="628123456789"
                     inputMode="numeric"
                     className={cn(FIELD_INPUT, 'h-10')}
@@ -454,7 +433,7 @@ export function KoneksiTab({
                     variant="secondary"
                     size="sm"
                     className="h-[32px] self-start px-3.5 text-[11.5px]"
-                    disabled={busy || phone.replace(/\D/g, '').length < 8 || view !== 'pairing'}
+                    disabled={busy || phone.replace(/\D/g, '').length < 8}
                     onClick={() => void requestPairing()}
                   >
                     Minta kode
@@ -513,16 +492,24 @@ function clock(value: string): string {
   return new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(date)
 }
 
-function useRecentMessages(sessionId: string) {
+function useRecentMessages(sessionId: string, connected: boolean) {
   const [items, setItems] = useState<MessageListDto['items']>([])
 
   useEffect(() => {
-    try {
-      setItems(demoListMessages(sessionId, 4).items)
-    } catch {
-      setItems([])
+    if (!connected) return
+    let active = true
+    api
+      .get<MessageListDto>(`/sessions/${sessionId}/messages?limit=4`)
+      .then((page) => {
+        if (active) setItems(page.items)
+      })
+      .catch(() => {
+        if (active) setItems([])
+      })
+    return () => {
+      active = false
     }
-  }, [sessionId])
+  }, [sessionId, connected])
 
   return { items }
 }

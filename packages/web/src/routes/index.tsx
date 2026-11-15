@@ -1,10 +1,9 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { getApiKey, isPreviewMode } from '../lib/auth'
+import { getApiKey } from '../lib/auth'
 
 export const Route = createFileRoute('/')({
   beforeLoad: () => {
-    const signedIn = getApiKey() || isPreviewMode()
-    throw redirect({ to: signedIn ? '/overview' : '/login' })
+    throw redirect({ to: getApiKey() ? '/overview' : '/login' })
   },
 })

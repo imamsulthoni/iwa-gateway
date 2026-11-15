@@ -97,6 +97,16 @@ export function createBroadcastsService(repo: BroadcastsRepository) {
       return toCurrent(row, await repo.listRecipients(row.id))
     },
 
+    async cancel(sessionId: string): Promise<BroadcastRow> {
+      const row = await repo.findLatestBySession(sessionId)
+      if (!row) throw new NotFoundError('Broadcast tidak ditemukan')
+      if (row.status !== 'pending' && row.status !== 'running') {
+        throw new ValidationError(`Broadcast sudah berstatus ${row.status}`)
+      }
+      await repo.updateStatus(row.id, 'cancelled')
+      return get(row.id)
+    },
+
     async setStatus(id: string, status: BroadcastRow['status']): Promise<void> {
       await repo.updateStatus(id, status)
     },

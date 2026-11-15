@@ -1,6 +1,5 @@
 import '../infra/load-env.js'
 
-import { hasAuthState, useDbAuthState } from '../baileys/auth-store.js'
 import { createDb } from '../db/client.js'
 import { createCipher } from '../infra/crypto.js'
 import { setEnv, validateEnv } from '../infra/env.js'
@@ -17,6 +16,7 @@ import { bootstrapSessions } from './bootstrap.js'
 import { createBroadcastRunProcessor } from './processors/broadcast-run.js'
 import { startProcessors } from './processors/registry.js'
 import { createSendMessageProcessor } from './processors/send-message.js'
+import { reconcileSessions } from './reconcile.js'
 import { SessionManager } from './session-manager.js'
 
 const env = validateEnv()
@@ -46,7 +46,7 @@ const manager = new SessionManager({
   messages,
 })
 
-await bootstrapSessions({ db: database.db, sessions, manager, logger })
+await bootstrapSessions({ db: database.db, cipher, sessions, manager, logger })
 
 const processors = startProcessors(
   workerRedis,
@@ -67,20 +67,7 @@ const processors = startProcessors(
 const queues = createQueues(redis)
 
 async function reconcile(): Promise<void> {
-  const rows = await sessions.startable()
-  for (const row of rows) {
-    if (row.status === 'logged_out') {
-      if (manager.has(row.id)) await manager.stop(row.id, true)
-      continue
-    }
-    if (manager.has(row.id)) continue
-    const hasAuth = await hasAuthState(database.db, row.id)
-    if (!hasAuth && row.status !== 'connecting') continue
-    if (!hasAuth && row.status === 'connecting') {
-      await useDbAuthState(row.id, { db: database.db, cipher, logger })
-    }
-    await manager.start(row)
-  }
+  await reconcileSessions({ db: database.db, sessions, manager, cipher, logger })
 }
 
 const reconcileTimer = setInterval(() => {

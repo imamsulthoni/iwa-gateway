@@ -34,6 +34,7 @@ const app = createApp({
   env,
   logger,
   redis,
+  db: database.db,
   auth: createApiKeyAuthenticator(database.db),
   sessions: createSessionsService(sessionsRepo),
   messages: createMessagesService(messagesRepo),

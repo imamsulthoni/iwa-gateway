@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm run --parallel dev:api dev:worker",
+    "dev": "pnpm run dev:api & pnpm run dev:worker",
     "dev:api": "tsx watch src/api/index.ts",
     "dev:worker": "tsx watch src/worker/index.ts",
     "build": "tsup",

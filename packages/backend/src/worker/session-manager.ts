@@ -3,12 +3,15 @@ import type { Redis } from 'ioredis'
 import QRCode from 'qrcode'
 
 import { useDbAuthState, type DbAuthState } from '../baileys/auth-store.js'
+import { jidDecode } from '../baileys/jid.js'
+import { createGetMessage } from '../baileys/message-retry.js'
 import { createSocket } from '../baileys/socket.js'
 import type { Database } from '../db/client.js'
 import type { WaSessionRow } from '../db/schema.js'
 import type { Cipher } from '../infra/crypto.js'
 import { SessionLock } from '../infra/lock.js'
 import type { AppLogger } from '../infra/logger.js'
+import { createKeyCache } from '../baileys/key-cache.js'
 import type { MessagesService } from '../modules/messages/service.js'
 import type { SessionsRepository } from '../modules/sessions/repository.js'
 import { parseConnectionUpdate, type ConnectionUpdateInput } from './events/connection.js'
@@ -21,6 +24,11 @@ type SessionHandle = {
   auth: DbAuthState
   stopRenewal: () => void
 }
+
+type OnWhatsAppResult = { exists: boolean; jid: string }
+
+const ON_WHATSAPP_TTL_MS = 60_000
+const RETRY_COUNTER_TTL_MS = 15 * 60_000
 
 export type SessionManagerDeps = {
   db: Database
@@ -36,11 +44,17 @@ export type SessionManagerDeps = {
 export class SessionManager {
   private readonly handles = new Map<string, SessionHandle>()
   private readonly reconnectAttempts = new Map<string, number>()
+  private readonly retryCounterCache = createKeyCache(RETRY_COUNTER_TTL_MS)
+  private readonly onWhatsAppCache = createKeyCache(ON_WHATSAPP_TTL_MS)
 
   constructor(private readonly deps: SessionManagerDeps) {}
 
   has(sessionId: string): boolean {
     return this.handles.has(sessionId)
+  }
+
+  activeSessionIds(): string[] {
+    return [...this.handles.keys()]
   }
 
   async start(session: WaSessionRow): Promise<void> {
@@ -68,17 +82,20 @@ export class SessionManager {
       auth: auth.state,
       logger: this.deps.logger,
       browserName: this.deps.browserName,
+      msgRetryCounterCache: this.retryCounterCache,
+      getMessage: createGetMessage(this.deps.messages, session.id),
     })
     const handle: SessionHandle = {
       socket,
       lock,
       auth,
-      stopRenewal: lock.startRenewal(),
+      stopRenewal: lock.startRenewal(() => {
+        void this.onLockLost(session.id)
+      }),
     }
     this.handles.set(session.id, handle)
     this.wire(session.id, handle)
 
-    await this.maybeRequestPairingCode(session, handle)
     this.deps.logger.info({ sessionId: session.id }, 'Socket sesi dimulai')
   }
 
@@ -103,6 +120,7 @@ export class SessionManager {
     if (event.kind === 'qr') {
       const dataUrl = await QRCode.toDataURL(event.qr)
       await this.deps.sessions.update(sessionId, { status: 'qr_pending', lastQr: dataUrl })
+      await this.maybeRequestPairingCode(sessionId)
       return
     }
 
@@ -122,9 +140,18 @@ export class SessionManager {
       return
     }
 
+    const registered = Boolean(handle.auth.state.creds.registered)
     await this.stop(sessionId, false)
-    await this.deps.sessions.update(sessionId, { status: 'disconnected' })
-    this.scheduleReconnect(sessionId)
+    await this.deps.sessions.update(
+      sessionId,
+      // QR lama sudah tidak valid setelah koneksi tutup; jangan tampilkan lagi.
+      registered ? { status: 'disconnected' } : { status: 'disconnected', lastQr: null },
+    )
+    // Sesi yang belum pairing tidak di-reconnect otomatis agar tidak
+    // kena rate limit WhatsApp (429) — tunggu user menekan Scan QR.
+    if (registered) {
+      this.scheduleReconnect(sessionId)
+    }
     void handle
   }
 
@@ -145,27 +172,30 @@ export class SessionManager {
     await this.start(session)
   }
 
-  private async maybeRequestPairingCode(
-    session: WaSessionRow,
-    handle: SessionHandle,
-  ): Promise<void> {
-    if (handle.auth.state.creds.registered) return
-    const requestKey = `wa:pairing:request:${session.id}`
+  private async maybeRequestPairingCode(sessionId: string): Promise<void> {
+    const handle = this.handles.get(sessionId)
+    if (!handle || handle.auth.state.creds.registered) return
+    const session = await this.deps.sessions.findById(sessionId)
+    if (!session) return
+    const requestKey = `wa:pairing:request:${sessionId}`
     const phoneNumber = await this.deps.redis.get(requestKey)
-    const targetPhone =
-      phoneNumber ?? (session.status === 'connecting' ? session.phoneNumber : null)
-    if (!targetPhone) return
+    if (!phoneNumber) return
     try {
-      const code = await handle.socket.requestPairingCode(targetPhone)
-      await this.deps.redis.set(`wa:pairing:code:${session.id}`, code, 'EX', 600)
+      const code = await handle.socket.requestPairingCode(phoneNumber)
+      await this.deps.redis.set(`wa:pairing:code:${sessionId}`, code, 'EX', 600)
       await this.deps.redis.del(requestKey)
-      await this.deps.sessions.update(session.id, {
-        phoneNumber: targetPhone,
+      await this.deps.sessions.update(sessionId, {
+        phoneNumber,
         status: 'connecting',
       })
     } catch (error) {
-      this.deps.logger.error({ sessionId: session.id, err: error }, 'Gagal meminta pairing code')
+      this.deps.logger.error({ sessionId, err: error }, 'Gagal meminta pairing code')
     }
+  }
+
+  private async onLockLost(sessionId: string): Promise<void> {
+    this.deps.logger.warn({ sessionId }, 'Lock sesi hilang, socket dihentikan')
+    await this.stop(sessionId)
   }
 
   private async onMessagesUpdate(sessionId: string, updates: unknown): Promise<void> {
@@ -179,7 +209,37 @@ export class SessionManager {
     if (!handle) {
       throw new Error(`Socket sesi ${sessionId} belum aktif`)
     }
-    return handle.socket.sendMessage(toJid, { text })
+    const jid = await this.resolveRecipientJid(sessionId, handle, toJid)
+    return handle.socket.sendMessage(jid, { text })
+  }
+
+  private async resolveRecipientJid(
+    sessionId: string,
+    handle: SessionHandle,
+    toJid: string,
+  ): Promise<string> {
+    const digits = jidDecode(toJid)?.user
+    if (!digits || !/^\d+$/.test(digits)) return toJid
+
+    const cacheKey = `onwa:${digits}`
+    const cached = this.onWhatsAppCache.get<OnWhatsAppResult>(cacheKey)
+    if (cached) {
+      if (!cached.exists) {
+        throw new Error(`Nomor ${digits} tidak terdaftar di WhatsApp`)
+      }
+      return cached.jid
+    }
+
+    const results = (await handle.socket.onWhatsApp(digits)) ?? []
+    const result = results[0]
+    this.onWhatsAppCache.set<OnWhatsAppResult>(
+      cacheKey,
+      result ?? { exists: false, jid: toJid },
+    )
+    if (!result?.exists) {
+      throw new Error(`Nomor ${digits} tidak terdaftar di WhatsApp`)
+    }
+    return result.jid
   }
 
   async stop(sessionId: string, clearAuth = false): Promise<void> {

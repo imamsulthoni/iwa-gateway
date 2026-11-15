@@ -1,6 +1,7 @@
 import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@wa/shared'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowUpRight, ChevronDown, Megaphone, RefreshCw } from 'lucide-react'
+import { useMemo } from 'react'
 
 import {
   Badge,
@@ -15,9 +16,13 @@ import {
 } from '../../design-system'
 import { SessionStatusBadge } from '../../components/session-status'
 import { api } from '../../lib/api'
-import { isPreviewMode } from '../../lib/auth'
 import { formatDateTime, formatNumber, usePolling } from '../../lib/format'
-import type { HealthDto, SessionListDto, StatsDto } from '../../lib/types'
+import type {
+  BroadcastCurrentDto,
+  HealthDto,
+  SessionListDto,
+  StatsDto,
+} from '../../lib/types'
 
 export const Route = createFileRoute('/_auth/overview')({
   component: OverviewPage,
@@ -32,12 +37,30 @@ function Metric({ label, value, className }: { label: string; value: string; cla
   )
 }
 
+function useBroadcasts(sessionIds: string[]) {
+  return usePolling<BroadcastCurrentDto[]>(
+    () =>
+      Promise.all(
+        sessionIds.map((id) =>
+          api
+            .get<BroadcastCurrentDto>(`/sessions/${id}/broadcast/current`)
+            .catch(() => null),
+        ),
+      ).then((rows) => rows.filter((row): row is BroadcastCurrentDto => row !== null)),
+    15_000,
+    sessionIds.length > 0,
+  )
+}
+
 function OverviewPage() {
-  const preview = isPreviewMode()
   const navigate = useNavigate()
-  const stats = usePolling(() => api.get<StatsDto>('/stats'), 15_000, !preview)
-  const sessions = usePolling(() => api.get<SessionListDto>('/sessions'), 15_000, !preview)
-  const health = usePolling(() => api.get<HealthDto>('/'), 20_000, !preview)
+  const stats = usePolling<StatsDto>(() => api.get<StatsDto>('/stats'), 15_000, true)
+  const sessions = usePolling<SessionListDto>(
+    () => api.get<SessionListDto>('/sessions'),
+    15_000,
+    true,
+  )
+  const health = usePolling<HealthDto>(() => api.get<HealthDto>('/'), 20_000, true)
 
   const items = sessions.data?.items ?? []
   const total = items.length
@@ -48,12 +71,25 @@ function OverviewPage() {
   const healthy = health.data?.status === 'ok'
   const segments = Math.max(total, 5)
 
+  const connectedIds = useMemo(
+    () =>
+      items
+        .filter((item) => item.status === 'connected')
+        .slice(0, 5)
+        .map((item) => item.id),
+    [items],
+  )
+  const broadcasts = useBroadcasts(connectedIds)
+  const activeBroadcasts = broadcasts.data?.filter((job) => job.jobId !== null) ?? []
+  const sessionById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
+
   const error = stats.error ?? sessions.error ?? health.error
 
   function refresh() {
     stats.refresh()
     sessions.refresh()
     health.refresh()
+    broadcasts.refresh()
   }
 
   return (
@@ -65,7 +101,7 @@ function OverviewPage() {
         actions={
           <>
             <span className="font-data text-[9.5px] text-ink-faint">auto-refresh 15s</span>
-            <Button variant="secondary" onClick={refresh} disabled={preview}>
+            <Button variant="secondary" onClick={refresh}>
               <RefreshCw className="size-3.5 text-ink-soft" aria-hidden />
               Segarkan
             </Button>
@@ -134,10 +170,59 @@ function OverviewPage() {
             </span>
           </div>
 
-          <div className="mt-4 flex flex-1 items-center justify-center rounded-lg border border-dashed border-line px-4 py-8 text-center text-small text-ink-faint">
-            {running > 0
-              ? 'Detail broadcast belum tersedia di versi ini.'
-              : 'Belum ada broadcast berjalan.'}
+          <div className="mt-4 flex flex-1 flex-col gap-3">
+            {activeBroadcasts.length === 0 ? (
+              <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-line px-4 py-8 text-center text-small text-ink-faint">
+                Belum ada broadcast berjalan.
+              </div>
+            ) : (
+              activeBroadcasts.map((job) => {
+                const session = job.jobId
+                  ? [...sessionById.entries()].find(([id]) =>
+                      connectedIds.includes(id),
+                    )
+                  : undefined
+                return (
+                  <div
+                    key={job.jobId}
+                    className="flex flex-col gap-2 rounded-lg border border-line px-4 py-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate font-data text-[10px] text-ink-soft">{job.jobId}</p>
+                      <Badge
+                        tone={job.status === 'running' ? 'success' : 'neutral'}
+                        dot={false}
+                      >
+                        {job.status}
+                      </Badge>
+                    </div>
+                    <div className="h-[5px] w-full rounded-pill bg-surface-soft">
+                      <div
+                        className="h-full rounded-pill bg-green"
+                        style={{
+                          width: `${job.total === 0 ? 0 : Math.round((job.done / job.total) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3 text-small text-ink-soft">
+                      <span>
+                        {job.done}/{job.total} · {job.sent} terkirim · {job.failed} gagal
+                      </span>
+                      {session ? (
+                        <Link
+                          to="/numbers/$sessionId"
+                          params={{ sessionId: session[0] }}
+                          className="flex items-center gap-1 text-[11px] font-medium text-ink hover:underline"
+                        >
+                          {session[1]?.publicId ?? 'detail'}
+                          <ArrowUpRight className="size-3" aria-hidden />
+                        </Link>
+                      ) : null}
+                    </div>
+                  </div>
+                )
+              })
+            )}
           </div>
 
           <p className="mt-4 font-data text-[9.5px] text-ink-faint">
@@ -151,20 +236,24 @@ function OverviewPage() {
               Status service
             </p>
             <Badge tone={healthy ? 'success' : 'warning'} dot={false}>
-              {healthy ? 'OK' : 'DEGRADED'}
+              {health.data?.status === 'degraded' ? 'DEGRADED' : healthy ? 'OK' : '—'}
             </Badge>
           </div>
 
           <div className="mt-4 flex items-end gap-2">
             <p className="text-[22px] font-semibold tracking-[-0.6px] text-ink">
-              {health.data?.name ?? 'wa-gateway'}
+              {health.data?.name ?? 'wa-bot-service'}
             </p>
             <p className="pb-0.5 font-data text-[10.5px] text-ink-faint">
               {health.data?.version ?? 'v—'}
             </p>
           </div>
           <p className="mt-1 text-small text-ink-soft">
-            {health.error ? 'Service tidak merespons' : 'Terhubung ke API service'}
+            {health.error
+              ? 'Service tidak merespons'
+              : health.data?.status === 'degraded'
+                ? 'Dependensi bermasalah (database/redis)'
+                : 'Terhubung ke API service'}
           </p>
 
           <div className="mt-4 flex gap-[5px]">
@@ -185,12 +274,12 @@ function OverviewPage() {
           <div className="flex-1" />
 
           <div className="mt-4 flex items-center gap-2">
-            <Button variant="secondary" onClick={refresh} disabled={preview}>
+            <Button variant="secondary" onClick={refresh}>
               <RefreshCw className="size-3.5 text-ink-soft" aria-hidden />
               Segarkan
             </Button>
             <p className="font-data text-[9.5px] text-ink-faint">
-              {preview ? 'pratinjau' : 'live 20s'}
+              live 20s
             </p>
           </div>
         </div>

@@ -47,7 +47,7 @@ export function createSessionsRoute(sessions: SessionsService, redis: Redis) {
     return c.json(toSessionDto(session))
   })
 
-  router.post('/:id/token/rotate', async (c) => {
+  router.post('/:id/token', async (c) => {
     const { session, token } = await sessions.rotateToken(c.req.param('id'))
     return c.json({ token, session: toSessionDto(session) })
   })

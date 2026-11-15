@@ -33,7 +33,12 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
   const redis = {
     incr: vi.fn(async () => 1),
     expire: vi.fn(async () => 1),
+    ping: vi.fn(async () => 'PONG'),
   } as unknown as RedisClient
+
+  const db = {
+    execute: vi.fn(async () => []),
+  } as unknown as AppDependencies['db']
 
   const sessions = {
     get: vi.fn(async (id: string) => {
@@ -83,6 +88,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     },
     logger: createLogger('silent'),
     redis,
+    db,
     auth: {
       findActive: async (plaintext) => (plaintext === 'valid-key' ? { id: 'key-1' } : null),
     },
@@ -118,6 +124,7 @@ describe('API Hono', () => {
       name: 'wa-bot-service',
       version: '0.1.0',
       status: 'ok',
+      checks: { database: true, redis: true },
     })
   })
 

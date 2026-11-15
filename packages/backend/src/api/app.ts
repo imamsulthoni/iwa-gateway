@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { createMiddleware } from 'hono/factory'
 
 import type { Env } from '../infra/env.js'
+import type { Database } from '../db/client.js'
 import type { AppLogger } from '../infra/logger.js'
 import type { QueueRegistry } from '../infra/queue.js'
 import type { RedisClient } from '../infra/redis.js'
@@ -14,7 +15,7 @@ import type { SessionsService } from '../modules/sessions/service.js'
 import type { StatsService } from '../modules/stats/service.js'
 import { apiKeyMiddleware } from './middleware/api-key.js'
 import { handleError, notFound } from './middleware/error.js'
-import { rateLimitMiddleware } from './middleware/rate-limit.js'
+import { rateLimitMiddleware, sessionRateLimitMiddleware } from './middleware/rate-limit.js'
 import { createBroadcastsRoute } from './routes/broadcasts.js'
 import { createHealthRoute } from './routes/health.js'
 import { createMessagesRoute, createSessionMessagesRoute } from './routes/messages.js'
@@ -32,6 +33,7 @@ export type AppDependencies = {
   env: Env
   logger: AppLogger
   redis: RedisClient
+  db: Database
   auth: ApiKeyAuthenticator
   sessions: SessionsService
   messages: MessagesService
@@ -64,13 +66,17 @@ export function createApp(deps: AppDependencies) {
   app.use('*', cors({ origin: deps.env.CORS_ORIGIN }))
   app.use('*', requestLogger(deps.logger))
 
-  app.route('/', createHealthRoute())
+  app.route('/', createHealthRoute({ db: deps.db, redis: deps.redis }))
 
   app.use('/stats', requireApiKey, rateLimit)
   app.route('/', createStatsRoute(deps.stats))
 
   // Endpoint pesan per sesi memakai Bearer token sesi, bukan API key.
-  app.route('/sessions', createSessionMessagesRoute(deps.sessions, deps.messages, deps.queues))
+  const sessionRateLimit = sessionRateLimitMiddleware(deps.redis, deps.env.RATE_LIMIT_PER_MIN)
+  app.route(
+    '/sessions',
+    createSessionMessagesRoute(deps.sessions, deps.messages, deps.queues, deps.auth, sessionRateLimit),
+  )
 
   app.use('/sessions', requireApiKey, rateLimit)
   app.use('/sessions/*', requireApiKey, rateLimit)

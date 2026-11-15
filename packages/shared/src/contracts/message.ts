@@ -21,6 +21,7 @@ export const messageSchema = z.object({
   status: z.enum(MESSAGE_STATUSES),
   waMessageId: z.string().nullable(),
   error: z.string().nullable(),
+  customerName: z.string().nullable(),
   createdAt: z.string(),
   deletedAt: z.string().nullable(),
 })

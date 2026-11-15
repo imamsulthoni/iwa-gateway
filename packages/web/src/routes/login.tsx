@@ -5,7 +5,7 @@ import { useState } from 'react'
 
 import { Button, cn } from '../design-system'
 import { verifyApiKey } from '../lib/api'
-import { clearPreviewMode, getApiKey, setApiKey, setPreviewMode } from '../lib/auth'
+import { getApiKey, setApiKey } from '../lib/auth'
 
 export const Route = createFileRoute('/login')({
   beforeLoad: () => {
@@ -39,18 +39,12 @@ function LoginPage() {
         return
       }
       setApiKey(apiKey.trim())
-      clearPreviewMode()
       await navigate({ to: '/overview' })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Gagal memverifikasi API key')
     } finally {
       setBusy(false)
     }
-  }
-
-  async function enterPreview() {
-    setPreviewMode()
-    await navigate({ to: '/overview' })
   }
 
   return (
@@ -172,15 +166,6 @@ function LoginPage() {
             <p className="text-[11px] text-ink-faint">Belum punya API key?</p>
             <p className="text-[11px] font-medium text-ink">Hubungi admin layanan ↗</p>
           </div>
-
-          <button
-            type="button"
-            onClick={() => void enterPreview()}
-            className="mt-4 flex w-full items-center justify-between rounded-field border border-dashed border-line-strong px-3 py-2.5 font-data text-label text-ink-faint uppercase transition hover:border-ink hover:text-ink"
-          >
-            Buka dashboard tanpa API key
-            <ArrowRight className="size-3" aria-hidden />
-          </button>
         </div>
       </main>
     </div>

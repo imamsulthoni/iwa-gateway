@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { clearApiKey, getApiKey, getSessionToken, setApiKey, setSessionToken } from './auth.js'
+import { clearApiKey, getApiKey, setApiKey } from './auth.js'
 
 class MemoryStorage {
   private readonly values = new Map<string, string>()
@@ -32,13 +32,5 @@ describe('penyimpanan auth web', () => {
     expect(getApiKey()).toBe('wa_key')
     clearApiKey()
     expect(getApiKey()).toBeNull()
-  })
-
-  it('menyimpan token per sesi tanpa saling menimpa', () => {
-    setSessionToken('s1', 'token-1')
-    setSessionToken('s2', 'token-2')
-    expect(getSessionToken('s1')).toBe('token-1')
-    expect(getSessionToken('s2')).toBe('token-2')
-    expect(getSessionToken('s3')).toBeNull()
   })
 })

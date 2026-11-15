@@ -2,7 +2,7 @@ import { Info } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button, cn } from '../design-system'
-import { demoCreateSession } from '../lib/demo'
+import { api } from '../lib/api'
 import type { SessionTokenDto } from '../lib/types'
 import { Modal } from './dialogs'
 
@@ -20,6 +20,7 @@ type Mode = 'qr' | 'pairing'
 
 export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogProps) {
   const [publicId, setPublicId] = useState('')
+  const [salesId, setSalesId] = useState('')
   const [agentId, setAgentId] = useState('')
   const [mode, setMode] = useState<Mode>('qr')
   const [phoneNumber, setPhoneNumber] = useState('')
@@ -38,6 +39,7 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
 
   function reset() {
     setPublicId('')
+    setSalesId('')
     setAgentId('')
     setMode('qr')
     setPhoneNumber('')
@@ -49,11 +51,12 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
     setBusy(true)
     setError(null)
     try {
-      const result = demoCreateSession({
-        label: agentId.trim() || publicId.trim(),
+      const result = await api.post<SessionTokenDto>('/sessions', {
+        label: publicId.trim(),
         publicId: publicId.trim(),
         mode,
         phoneNumber: mode === 'pairing' ? phone : undefined,
+        salesId: salesId.trim() || undefined,
         agentId: agentId.trim() || undefined,
       })
       reset()
@@ -98,6 +101,16 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
           <span className="text-note text-ink-faint">
             1–32 karakter · huruf, angka, garis bawah, atau tanda hubung.
           </span>
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className={LABEL}>Sales ID (opsional)</span>
+          <input
+            value={salesId}
+            onChange={(event) => setSalesId(event.target.value)}
+            placeholder="mis. rani-sales"
+            className={INPUT}
+          />
         </label>
 
         <label className="flex flex-col gap-1.5">

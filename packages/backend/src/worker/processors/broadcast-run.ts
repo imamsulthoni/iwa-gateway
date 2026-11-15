@@ -1,5 +1,6 @@
 import type { Job } from 'bullmq'
 import { pickDelayMs } from '@wa/shared'
+import { BufferJSON } from '@whiskeysockets/baileys'
 
 import type { BroadcastRunJob } from '../../infra/queue.js'
 import type { AppLogger } from '../../infra/logger.js'
@@ -22,19 +23,28 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+const CANCEL_CHECK_INTERVAL_MS = 2_000
+
 export function createBroadcastRunProcessor(deps: BroadcastRunProcessorDeps) {
   return async (job: Job<BroadcastRunJob>): Promise<void> => {
     const { broadcastId, sessionId } = job.data
     const broadcast = await deps.broadcasts.get(broadcastId)
     await deps.broadcasts.setStatus(broadcastId, 'running')
 
+    const isCancelled = async (): Promise<boolean> => {
+      const current = await deps.broadcasts.get(broadcastId)
+      return current.status === 'cancelled'
+    }
+
     const pending = await deps.broadcasts.pendingRecipients(broadcastId)
     let sent = 0
     let failed = 0
 
     for (const [index, recipient] of pending.entries()) {
-      const current = await deps.broadcasts.get(broadcastId)
-      if (current.status === 'cancelled') return
+      if (await isCancelled()) {
+        deps.logger.info({ broadcastId }, 'Broadcast dibatalkan')
+        return
+      }
 
       const session = await deps.sessions.get(sessionId)
       const sentToday = await deps.messages.countToday(
@@ -71,7 +81,11 @@ export function createBroadcastRunProcessor(deps: BroadcastRunProcessorDeps) {
 
       try {
         const result = await deps.manager.sendText(sessionId, message.to ?? '', message.body ?? '')
-        await deps.messages.markSent(message.id, result?.key?.id ?? null, result ?? null)
+        await deps.messages.markSent(
+          message.id,
+          result?.key?.id ?? null,
+          result ? JSON.stringify(result, BufferJSON.replacer) : null,
+        )
         await deps.broadcasts.markRecipient(recipient.id, 'sent')
         sent += 1
       } catch (error) {
@@ -82,9 +96,20 @@ export function createBroadcastRunProcessor(deps: BroadcastRunProcessorDeps) {
         deps.logger.error({ broadcastId, recipientId: recipient.id, err: error }, 'Penerima gagal')
       }
 
-      await sleep(pickDelayMs(broadcast.minDelayMs / 1000, broadcast.maxDelayMs / 1000))
+      if (index === pending.length - 1) break
+      const delayMs = pickDelayMs(broadcast.minDelayMs / 1000, broadcast.maxDelayMs / 1000)
+      const chunks = Math.ceil(delayMs / CANCEL_CHECK_INTERVAL_MS)
+      for (let chunk = 0; chunk < chunks; chunk += 1) {
+        await sleep(Math.min(CANCEL_CHECK_INTERVAL_MS, delayMs - chunk * CANCEL_CHECK_INTERVAL_MS))
+        if (await isCancelled()) {
+          deps.logger.info({ broadcastId }, 'Broadcast dibatalkan di tengah jeda')
+          return
+        }
+      }
     }
 
+    const latest = await deps.broadcasts.get(broadcastId)
+    if (latest.status === 'cancelled') return
     const finalStatus = sent === 0 && failed > 0 ? 'failed' : 'done'
     await deps.broadcasts.setStatus(broadcastId, finalStatus)
     deps.logger.info({ broadcastId, sent, failed }, 'Broadcast selesai')

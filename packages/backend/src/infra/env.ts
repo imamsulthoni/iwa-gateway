@@ -17,7 +17,7 @@ export const envSchema = z.object({
   CORS_ORIGIN: z.string().min(1).default('http://localhost:5173'),
   BROWSER_NAME: z.string().min(1).default('WA Bot Service'),
   SESSION_LOCK_TTL_MS: z.coerce.number().int().positive().default(30000),
-  RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(60),
+  RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(240),
 })
 
 export type Env = z.infer<typeof envSchema>

@@ -4,6 +4,7 @@ import { publicIdSchema, type SessionDto } from '@wa/shared'
 
 import { newId } from '../../db/id.js'
 import type { WaSessionRow } from '../../db/schema.js'
+import { isDuplicateKeyError } from '../db-errors.js'
 import { NotFoundError } from '../errors.js'
 import { generateSessionToken, hashSessionToken } from '../auth/session-token.js'
 import { DuplicatePhoneError, DuplicatePublicIdError, InvalidPublicIdError } from './errors.js'
@@ -32,6 +33,8 @@ export function toSessionDto(row: WaSessionRow): SessionDto {
     phoneNumber: row.phoneNumber,
     status: row.status,
     lastConnectedAt: row.lastConnectedAt?.toISOString() ?? null,
+    salesId: row.salesId,
+    agentId: row.agentId,
     createdAt: row.createdAt.toISOString(),
   }
 }
@@ -98,7 +101,14 @@ export function createSessionsService(repo: SessionsRepository) {
 
     async setPhoneNumber(id: string, phoneNumber: string): Promise<WaSessionRow> {
       await get(id)
-      await repo.update(id, { phoneNumber })
+      try {
+        await repo.update(id, { phoneNumber })
+      } catch (error) {
+        if (isDuplicateKeyError(error)) {
+          throw new DuplicatePhoneError(phoneNumber)
+        }
+        throw error
+      }
       return get(id)
     },
 

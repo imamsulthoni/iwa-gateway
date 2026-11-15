@@ -7,42 +7,33 @@ import { AddSessionDialog } from '../../components/add-session-dialog'
 import { SessionStatusBadge } from '../../components/session-status'
 import { TokenDialog } from '../../components/token-dialog'
 import { Button, cn } from '../../design-system'
-import { demoListSessions } from '../../lib/demo'
-import { formatDateTime, formatPhone } from '../../lib/format'
-import type { SessionTokenDto } from '../../lib/types'
+import { api } from '../../lib/api'
+import { formatDateTime, formatPhone, usePolling } from '../../lib/format'
+import type { SessionListDto, SessionTokenDto } from '../../lib/types'
 
 export const Route = createFileRoute('/_auth/numbers')({
   component: NumbersPage,
 })
 
-const GRID = 'grid grid-cols-[minmax(0,1fr)_150px_160px_170px_74px] items-center'
+const GRID = 'grid grid-cols-[minmax(0,1fr)_130px_130px_120px_170px_74px] items-center'
 const STATUS_OPTIONS = [{ value: 'all', label: 'Semua status' }].concat(
   Object.entries(SESSION_STATUS_LABELS).map(([value, label]) => ({ value, label })),
 )
 
-function formatTime(value: Date | null): string {
-  if (!value) return '—'
-  return new Intl.DateTimeFormat('id-ID', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(value)
-}
-
 function NumbersPage() {
   const navigate = useNavigate()
-  const [items, setItems] = useState(() => demoListSessions().items)
+  const sessions = usePolling(() => api.get<SessionListDto>('/sessions'), 10_000, true)
   const [createOpen, setCreateOpen] = useState(false)
   const [tokenResult, setTokenResult] = useState<SessionTokenDto | null>(null)
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('all')
-  const [updatedAt, setUpdatedAt] = useState<Date | null>(new Date())
 
+  const items = sessions.data?.items ?? []
   const connected = items.filter((item) => item.status === 'connected').length
+  const error = sessions.error
 
   function refresh() {
-    setItems(demoListSessions().items)
-    setUpdatedAt(new Date())
+    sessions.refresh()
   }
 
   const filtered = useMemo(() => {
@@ -57,8 +48,6 @@ function NumbersPage() {
       return matchStatus && matchQuery
     })
   }, [items, query, status])
-
-  const error = null
 
   return (
     <div className="flex flex-col">
@@ -136,9 +125,7 @@ function NumbersPage() {
               />
             </div>
           </div>
-          <p className="font-data text-[9.5px] text-ink-faint">
-            diperbarui {formatTime(updatedAt)}
-          </p>
+          <p className="font-data text-[9.5px] text-ink-faint">polling tiap 10 detik</p>
         </div>
 
         <div className="h-4" />
@@ -146,6 +133,7 @@ function NumbersPage() {
         <div className={cn(GRID, 'h-8 px-[22px]')}>
           <p className={COL_HEAD}>Session</p>
           <p className={COL_HEAD}>Sales</p>
+          <p className={COL_HEAD}>Agent</p>
           <p className={COL_HEAD}>Status</p>
           <p className={COL_HEAD}>Terakhir terhubung</p>
           <p className={cn(COL_HEAD, 'text-right')}>Aksi</p>
@@ -176,7 +164,8 @@ function NumbersPage() {
                   {formatPhone(session.phoneNumber)}
                 </p>
               </div>
-              <p className="truncate text-body text-ink">{session.label}</p>
+              <p className="truncate text-body text-ink">{session.salesId ?? '—'}</p>
+              <p className="truncate text-body text-ink">{session.agentId ?? '—'}</p>
               <div>
                 <SessionStatusBadge status={session.status} />
               </div>

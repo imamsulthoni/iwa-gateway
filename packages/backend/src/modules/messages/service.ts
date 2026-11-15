@@ -50,6 +50,7 @@ export function toMessageDto(row: MessageRow): MessageDto {
     status: row.status,
     waMessageId: row.waMessageId,
     error: row.error,
+    customerName: row.customerName,
     createdAt: row.createdAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null,
   }
@@ -150,6 +151,11 @@ export function createMessagesService(repo: MessagesRepository) {
 
     async countTotal(sessionId?: string): Promise<number> {
       return repo.countTotal(sessionId)
+    },
+
+    async getRaw(sessionId: string, waMessageId: string): Promise<unknown> {
+      const raw = await repo.findRawByWaMessageId(sessionId, waMessageId)
+      return raw ?? null
     },
   }
 }
