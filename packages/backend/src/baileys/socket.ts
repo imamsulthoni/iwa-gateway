@@ -1,7 +1,10 @@
 import makeWASocket, {
   Browsers,
   type AuthenticationState,
+  type CacheStore,
   type WASocket,
+  type WAMessageKey,
+  type proto,
 } from '@whiskeysockets/baileys'
 
 import type { AppLogger } from '../infra/logger.js'
@@ -11,6 +14,8 @@ export type CreateSocketOptions = {
   auth: AuthenticationState
   logger: AppLogger
   browserName: string
+  msgRetryCounterCache: CacheStore
+  getMessage?: (key: WAMessageKey) => Promise<proto.IMessage | undefined>
 }
 
 function baileysLogger(logger: AppLogger) {
@@ -26,7 +31,13 @@ function baileysLogger(logger: AppLogger) {
   return adapter as unknown as Parameters<typeof makeWASocket>[0]['logger']
 }
 
-export function createSocket({ auth, logger, browserName }: CreateSocketOptions): WASocket {
+export function createSocket({
+  auth,
+  logger,
+  browserName,
+  msgRetryCounterCache,
+  getMessage,
+}: CreateSocketOptions): WASocket {
   return makeWASocket({
     auth,
     browser: Browsers.ubuntu(browserName),
@@ -35,5 +46,7 @@ export function createSocket({ auth, logger, browserName }: CreateSocketOptions)
     syncFullHistory: false,
     shouldIgnoreJid: (jid) => isIgnoredJid(jid),
     generateHighQualityLinkPreview: false,
+    msgRetryCounterCache,
+    getMessage,
   })
 }

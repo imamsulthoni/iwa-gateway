@@ -151,6 +151,11 @@ export function createMessagesService(repo: MessagesRepository) {
     async countTotal(sessionId?: string): Promise<number> {
       return repo.countTotal(sessionId)
     },
+
+    async getRaw(sessionId: string, waMessageId: string): Promise<unknown> {
+      const raw = await repo.findRawByWaMessageId(sessionId, waMessageId)
+      return raw ?? null
+    },
   }
 }
 

@@ -1,5 +1,6 @@
 import type { Job } from 'bullmq'
 import { pickDelayMs } from '@wa/shared'
+import { BufferJSON } from '@whiskeysockets/baileys'
 
 import type { BroadcastRunJob } from '../../infra/queue.js'
 import type { AppLogger } from '../../infra/logger.js'
@@ -71,7 +72,11 @@ export function createBroadcastRunProcessor(deps: BroadcastRunProcessorDeps) {
 
       try {
         const result = await deps.manager.sendText(sessionId, message.to ?? '', message.body ?? '')
-        await deps.messages.markSent(message.id, result?.key?.id ?? null, result ?? null)
+        await deps.messages.markSent(
+          message.id,
+          result?.key?.id ?? null,
+          result ? JSON.stringify(result, BufferJSON.replacer) : null,
+        )
         await deps.broadcasts.markRecipient(recipient.id, 'sent')
         sent += 1
       } catch (error) {

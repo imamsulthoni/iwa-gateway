@@ -24,6 +24,7 @@ describe('factory socket', () => {
         error: vi.fn(),
       } as never,
       browserName: 'WA Bot Service',
+      msgRetryCounterCache: { get: vi.fn(), set: vi.fn(), del: vi.fn(), flushAll: vi.fn() },
     })
 
     expect(ubuntu).toHaveBeenCalledWith('WA Bot Service')

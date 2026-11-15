@@ -3,12 +3,15 @@ import type { Redis } from 'ioredis'
 import QRCode from 'qrcode'
 
 import { useDbAuthState, type DbAuthState } from '../baileys/auth-store.js'
+import { jidDecode } from '../baileys/jid.js'
+import { createGetMessage } from '../baileys/message-retry.js'
 import { createSocket } from '../baileys/socket.js'
 import type { Database } from '../db/client.js'
 import type { WaSessionRow } from '../db/schema.js'
 import type { Cipher } from '../infra/crypto.js'
 import { SessionLock } from '../infra/lock.js'
 import type { AppLogger } from '../infra/logger.js'
+import { createKeyCache } from '../baileys/key-cache.js'
 import type { MessagesService } from '../modules/messages/service.js'
 import type { SessionsRepository } from '../modules/sessions/repository.js'
 import { parseConnectionUpdate, type ConnectionUpdateInput } from './events/connection.js'
@@ -21,6 +24,11 @@ type SessionHandle = {
   auth: DbAuthState
   stopRenewal: () => void
 }
+
+type OnWhatsAppResult = { exists: boolean; jid: string }
+
+const ON_WHATSAPP_TTL_MS = 60_000
+const RETRY_COUNTER_TTL_MS = 15 * 60_000
 
 export type SessionManagerDeps = {
   db: Database
@@ -36,6 +44,8 @@ export type SessionManagerDeps = {
 export class SessionManager {
   private readonly handles = new Map<string, SessionHandle>()
   private readonly reconnectAttempts = new Map<string, number>()
+  private readonly retryCounterCache = createKeyCache(RETRY_COUNTER_TTL_MS)
+  private readonly onWhatsAppCache = createKeyCache(ON_WHATSAPP_TTL_MS)
 
   constructor(private readonly deps: SessionManagerDeps) {}
 
@@ -72,6 +82,8 @@ export class SessionManager {
       auth: auth.state,
       logger: this.deps.logger,
       browserName: this.deps.browserName,
+      msgRetryCounterCache: this.retryCounterCache,
+      getMessage: createGetMessage(this.deps.messages, session.id),
     })
     const handle: SessionHandle = {
       socket,
@@ -188,7 +200,37 @@ export class SessionManager {
     if (!handle) {
       throw new Error(`Socket sesi ${sessionId} belum aktif`)
     }
-    return handle.socket.sendMessage(toJid, { text })
+    const jid = await this.resolveRecipientJid(sessionId, handle, toJid)
+    return handle.socket.sendMessage(jid, { text })
+  }
+
+  private async resolveRecipientJid(
+    sessionId: string,
+    handle: SessionHandle,
+    toJid: string,
+  ): Promise<string> {
+    const digits = jidDecode(toJid)?.user
+    if (!digits || !/^\d+$/.test(digits)) return toJid
+
+    const cacheKey = `onwa:${digits}`
+    const cached = this.onWhatsAppCache.get<OnWhatsAppResult>(cacheKey)
+    if (cached) {
+      if (!cached.exists) {
+        throw new Error(`Nomor ${digits} tidak terdaftar di WhatsApp`)
+      }
+      return cached.jid
+    }
+
+    const results = (await handle.socket.onWhatsApp(digits)) ?? []
+    const result = results[0]
+    this.onWhatsAppCache.set<OnWhatsAppResult>(
+      cacheKey,
+      result ?? { exists: false, jid: toJid },
+    )
+    if (!result?.exists) {
+      throw new Error(`Nomor ${digits} tidak terdaftar di WhatsApp`)
+    }
+    return result.jid
   }
 
   async stop(sessionId: string, clearAuth = false): Promise<void> {

@@ -82,6 +82,15 @@ export function createMessagesRepository(db: Database) {
       return row ?? null
     },
 
+    async findRawByWaMessageId(sessionId: string, waMessageId: string): Promise<unknown> {
+      const [row] = await db
+        .select({ raw: messages.raw })
+        .from(messages)
+        .where(and(eq(messages.sessionId, sessionId), eq(messages.waMessageId, waMessageId)))
+        .limit(1)
+      return row?.raw ?? null
+    },
+
     async listBySession(
       sessionId: string,
       limit: number,

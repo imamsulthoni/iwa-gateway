@@ -1,5 +1,6 @@
 import type { Job } from 'bullmq'
 import { describe, expect, it, vi } from 'vitest'
+import { BufferJSON } from '@whiskeysockets/baileys'
 
 import type { MessageRow } from '../../db/schema.js'
 import type { SendMessageJob } from '../../infra/queue.js'
@@ -57,7 +58,11 @@ describe('processor send-message', () => {
     await processor(JOB)
 
     expect(manager.sendText).toHaveBeenCalledWith('s1', MESSAGE.toJid, 'Halo')
-    expect(messages.markSent).toHaveBeenCalledWith('m1', 'wa-1', { key: { id: 'wa-1' } })
+    expect(messages.markSent).toHaveBeenCalledWith(
+      'm1',
+      'wa-1',
+      JSON.stringify({ key: { id: 'wa-1' } }, BufferJSON.replacer),
+    )
   })
 
   it('menandai failed lalu melempar ulang saat pengiriman gagal', async () => {

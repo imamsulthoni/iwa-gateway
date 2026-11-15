@@ -1,3 +1,4 @@
+import { BufferJSON } from '@whiskeysockets/baileys'
 import type { Job } from 'bullmq'
 
 import type { SendMessageJob } from '../../infra/queue.js'
@@ -29,7 +30,11 @@ export function createSendMessageProcessor({
         message.toJid ?? '',
         message.body ?? '',
       )
-      await messages.markSent(message.id, sent?.key?.id ?? null, sent ?? null)
+      await messages.markSent(
+        message.id,
+        sent?.key?.id ?? null,
+        sent ? JSON.stringify(sent, BufferJSON.replacer) : null,
+      )
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Gagal mengirim pesan'
       await messages.markFailed(message.id, reason)
