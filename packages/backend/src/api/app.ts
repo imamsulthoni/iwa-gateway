@@ -75,7 +75,7 @@ export function createApp(deps: AppDependencies) {
   const sessionRateLimit = sessionRateLimitMiddleware(deps.redis, deps.env.RATE_LIMIT_PER_MIN)
   app.route(
     '/sessions',
-    createSessionMessagesRoute(deps.sessions, deps.messages, deps.queues, sessionRateLimit),
+    createSessionMessagesRoute(deps.sessions, deps.messages, deps.queues, deps.auth, sessionRateLimit),
   )
 
   app.use('/sessions', requireApiKey, rateLimit)
