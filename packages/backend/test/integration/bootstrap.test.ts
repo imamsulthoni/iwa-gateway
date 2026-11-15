@@ -49,6 +49,10 @@ describeIntegration('bootstrap sesi worker', () => {
       db: connection.db,
       cipher: createCipher(validateEnv().AUTH_ENC_KEY),
       logger: createLogger('silent'),
+    }).then(async (auth) => {
+      await auth.state.keys.set({
+        session: { s1: Buffer.from('auth-seed') },
+      } as never)
     })
 
     const manager = { start: vi.fn(async () => undefined) } as unknown as SessionManager
