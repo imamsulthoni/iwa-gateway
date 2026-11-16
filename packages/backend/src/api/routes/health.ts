@@ -1,27 +1,46 @@
-import { Hono } from 'hono'
+import { OpenAPIHono, createRoute } from '@hono/zod-openapi'
+import { healthSchema } from '@wa/shared'
 import { sql } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
 
 import type { Database } from '../../db/client.js'
 import { APP_NAME, APP_VERSION } from '../version.js'
+import { openApiError } from '../openapi.js'
 
 export type HealthDeps = {
   db: Database
   redis: Redis
 }
 
-export function createHealthRoute({ db, redis }: HealthDeps) {
-  const router = new Hono()
+const healthRoute = createRoute({
+  method: 'get',
+  path: '/',
+  tags: ['Health'],
+  summary: 'Status layanan API',
+  responses: {
+    200: {
+      description: 'Status API beserta hasil ping database dan Redis',
+      content: { 'application/json': { schema: healthSchema } },
+    },
+    500: openApiError('Kesalahan internal'),
+  },
+})
 
-  router.get('/', async (c) => {
+export function createHealthRoute({ db, redis }: HealthDeps) {
+  const router = new OpenAPIHono()
+
+  router.openapi(healthRoute, async (c) => {
     const database = await pingDatabase()
     const cache = await pingRedis()
-    return c.json({
-      name: APP_NAME,
-      version: APP_VERSION,
-      status: database && cache ? 'ok' : 'degraded',
-      checks: { database, redis: cache },
-    })
+    return c.json(
+      {
+        name: APP_NAME,
+        version: APP_VERSION,
+        status: database && cache ? ('ok' as const) : ('degraded' as const),
+        checks: { database, redis: cache },
+      },
+      200,
+    )
   })
 
   return router

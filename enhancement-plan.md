@@ -236,8 +236,8 @@ Penyesuaian fixture wajib (kalau tidak, semua test lama gagal):
 
 ## 8. Plan tambahan — Dokumentasi API (Hono + Scalar)
 
-Status: draft, menunggu persetujuan pemilik repo (ada penambahan dependensi)
-Dikerjakan terakhir, setelah §1–§7 selesai.
+Status: selesai dikerjakan (2026-11-16) kecuali cek manual di browser
+Dependensi baru: `@hono/zod-openapi@1.6.3`, `@scalar/hono-api-reference@0.12.20`
 
 ### 8.1 Tujuan
 
@@ -354,17 +354,27 @@ File: `packages/backend/src/api/app.test.ts`
 
 ### 8.8 Checklist
 
-- [ ] Konfirmasi penambahan dependensi `@hono/zod-openapi` + `@scalar/hono-api-reference`
-- [ ] Buat `api/openapi.ts` (OpenAPIHono + defaultHook + security schemes + info)
-- [ ] Daftarkan `GET /docs` dan `GET /openapi.json` sebelum middleware API key
-- [ ] Konversi `stats.ts`
-- [ ] Konversi `health.ts`
-- [ ] Konversi `broadcasts.ts`
-- [ ] Konversi `messages.ts`
-- [ ] Konversi `sessions.ts`
-- [ ] Tambah 4 test di `app.test.ts`
-- [ ] Jalankan `pnpm lint && pnpm typecheck && pnpm test`
+- [x] Konfirmasi penambahan dependensi `@hono/zod-openapi` + `@scalar/hono-api-reference`
+- [x] Buat `api/openapi.ts` (OpenAPIHono + defaultHook + security schemes + info)
+- [x] Daftarkan `GET /docs` dan `GET /openapi.json` sebelum middleware API key
+- [x] Konversi `stats.ts`
+- [x] Konversi `health.ts`
+- [x] Konversi `broadcasts.ts`
+- [x] Konversi `messages.ts`
+- [x] Konversi `sessions.ts`
+- [x] Tambah 4 test di `app.test.ts`
+- [x] Jalankan `pnpm lint && pnpm typecheck && pnpm test`
 - [ ] Cek manual: buka `/docs`, coba 1 endpoint dengan API key
+
+### 8.9 Catatan implementasi
+
+- Spec OpenAPI 3.1 digenerate dengan `getOpenAPI31Document()` (bukan `getOpenAPIDocument()`, yang menghasilkan 3.0).
+- Middleware Scalar memakai export `Scalar`; `apiReference` adalah alias deprecated.
+- Security scheme `ApiKey` didokumentasikan sebagai **apiKey di header `x-api-key`** (sesuai `middleware/api-key.ts`), bukan bearer. `SessionToken` bearer untuk endpoint pesan per sesi.
+- `GET /sessions` tidak mendokumentasikan query `limit`/`cursor` karena handler masih memakai limit tetap (50). `listQuerySchema` di `@wa/shared` belum dipakai.
+- `handleError` sekarang memetakan `HTTPException` dari validator zod-openapi (JSON rusak/content-type salah) agar tetap `apiErrorBody` dan bukan 500.
+- Schema respons dibiarkan inline (bukan `components.schemas` + `$ref`): pada zod 4, `registry.register()` mengembalikan instance schema baru, sehingga route harus memakai instance tersebut dan type inference respons hilang. Ukuran spec ~55 KB masih wajar untuk Scalar.
+- Halaman `/docs` memuat bundle Scalar dari CDN jsDelivr; tanpa koneksi internet UI tidak ter-render.
 
 ## 9. Catatan tambahan (menunggu input)
 

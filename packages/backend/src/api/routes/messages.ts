@@ -1,12 +1,14 @@
+import { OpenAPIHono, createRoute } from '@hono/zod-openapi'
 import {
+  apiErrorBody,
   crossSessionMessageQuerySchema,
+  messageListSchema,
   messageQuerySchema,
+  sendMessageResponseSchema,
   sendMessageSchema,
 } from '@wa/shared'
-import { Hono } from 'hono'
 import type { MiddlewareHandler } from 'hono'
 import { createMiddleware } from 'hono/factory'
-import { apiErrorBody } from '@wa/shared'
 
 import type { ApiKeyAuthenticator } from '../../modules/auth/api-key.js'
 import { verifySessionToken } from '../../modules/auth/session-token.js'
@@ -15,7 +17,7 @@ import type { SessionsService } from '../../modules/sessions/service.js'
 import type { QueueRegistry } from '../../infra/queue.js'
 import { enqueue } from '../../infra/queue.js'
 import type { AppBindings } from '../app.js'
-import { parseOrThrow } from '../validation.js'
+import { idParamSchema, openApiError } from '../openapi.js'
 
 function anyAuthMiddleware(auth: ApiKeyAuthenticator, sessions: SessionsService) {
   return createMiddleware<AppBindings>(async (c, next) => {
@@ -53,6 +55,93 @@ function anyAuthMiddleware(auth: ApiKeyAuthenticator, sessions: SessionsService)
   })
 }
 
+const anyAuthSecurity: Record<string, string[]>[] = [{ ApiKey: [] }, { SessionToken: [] }]
+
+const sendMessageRoute = createRoute({
+  method: 'post',
+  path: '/{id}/messages',
+  tags: ['Messages (sesi)'],
+  summary: 'Kirim pesan dari sebuah sesi',
+  security: anyAuthSecurity,
+  request: {
+    params: idParamSchema,
+    body: {
+      content: { 'application/json': { schema: sendMessageSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    202: {
+      description: 'Pesan masuk antrean pengiriman',
+      content: { 'application/json': { schema: sendMessageResponseSchema } },
+    },
+    200: {
+      description: 'Pesan duplikat (referenceId sudah pernah dikirim)',
+      content: { 'application/json': { schema: sendMessageResponseSchema } },
+    },
+    401: openApiError('API key / token sesi tidak valid'),
+    404: openApiError('Sesi tidak ditemukan'),
+    422: openApiError('Data pesan tidak valid'),
+    429: openApiError('Rate limit terlampaui'),
+    500: openApiError('Kesalahan internal'),
+  },
+})
+
+const listSessionMessagesRoute = createRoute({
+  method: 'get',
+  path: '/{id}/messages',
+  tags: ['Messages (sesi)'],
+  summary: 'Riwayat pesan sebuah sesi',
+  security: anyAuthSecurity,
+  request: { params: idParamSchema, query: messageQuerySchema },
+  responses: {
+    200: {
+      description: 'Halaman riwayat pesan sesi',
+      content: { 'application/json': { schema: messageListSchema } },
+    },
+    401: openApiError('API key / token sesi tidak valid'),
+    404: openApiError('Sesi tidak ditemukan'),
+    422: openApiError('Query tidak valid'),
+    429: openApiError('Rate limit terlampaui'),
+    500: openApiError('Kesalahan internal'),
+  },
+})
+
+const listMessagesRoute = createRoute({
+  method: 'get',
+  path: '/',
+  tags: ['Messages'],
+  summary: 'Riwayat pesan lintas sesi',
+  security: [{ ApiKey: [] }],
+  request: { query: crossSessionMessageQuerySchema },
+  responses: {
+    200: {
+      description: 'Halaman riwayat pesan',
+      content: { 'application/json': { schema: messageListSchema } },
+    },
+    401: openApiError('API key tidak dikirim atau tidak valid'),
+    422: openApiError('Query tidak valid'),
+    429: openApiError('Rate limit terlampaui'),
+    500: openApiError('Kesalahan internal'),
+  },
+})
+
+const deleteMessageRoute = createRoute({
+  method: 'delete',
+  path: '/{id}',
+  tags: ['Messages'],
+  summary: 'Soft delete satu pesan',
+  security: [{ ApiKey: [] }],
+  request: { params: idParamSchema },
+  responses: {
+    204: { description: 'Pesan dihapus' },
+    401: openApiError('API key tidak dikirim atau tidak valid'),
+    404: openApiError('Pesan tidak ditemukan'),
+    429: openApiError('Rate limit terlampaui'),
+    500: openApiError('Kesalahan internal'),
+  },
+})
+
 export function createSessionMessagesRoute(
   sessions: SessionsService,
   messages: MessagesService,
@@ -60,12 +149,13 @@ export function createSessionMessagesRoute(
   auth: ApiKeyAuthenticator,
   rateLimit: MiddlewareHandler<AppBindings>,
 ) {
-  const router = new Hono<AppBindings>()
-  const requireAuth = anyAuthMiddleware(auth, sessions)
+  const router = new OpenAPIHono<AppBindings>()
 
-  router.post('/:id/messages', requireAuth, rateLimit, async (c) => {
+  router.use('/:id/messages', anyAuthMiddleware(auth, sessions), rateLimit)
+
+  router.openapi(sendMessageRoute, async (c) => {
     const sessionId = c.req.param('id')
-    const input = parseOrThrow(sendMessageSchema, await c.req.json().catch(() => null))
+    const input = c.req.valid('json')
     const result = await messages.createOutgoing({ sessionId, ...input })
 
     if (!result.duplicate) {
@@ -80,25 +170,25 @@ export function createSessionMessagesRoute(
     return c.json(result, result.duplicate ? 200 : 202)
   })
 
-  router.get('/:id/messages', requireAuth, rateLimit, async (c) => {
-    const query = parseOrThrow(messageQuerySchema, c.req.query())
+  router.openapi(listSessionMessagesRoute, async (c) => {
+    const query = c.req.valid('query')
     const page = await messages.listBySession(c.req.param('id'), query.limit, query.cursor)
-    return c.json(page)
+    return c.json(page, 200)
   })
 
   return router
 }
 
 export function createMessagesRoute(messages: MessagesService) {
-  const router = new Hono<AppBindings>()
+  const router = new OpenAPIHono<AppBindings>()
 
-  router.get('/', async (c) => {
-    const query = parseOrThrow(crossSessionMessageQuerySchema, c.req.query())
+  router.openapi(listMessagesRoute, async (c) => {
+    const query = c.req.valid('query')
     const page = await messages.listAll(query.limit, query.sessionId)
-    return c.json(page)
+    return c.json(page, 200)
   })
 
-  router.delete('/:id', async (c) => {
+  router.openapi(deleteMessageRoute, async (c) => {
     await messages.remove(c.req.param('id'))
     return c.body(null, 204)
   })
