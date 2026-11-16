@@ -93,9 +93,13 @@ export function createSessionsService(repo: SessionsRepository) {
       return { session: await get(id), token }
     },
 
-    async updateStatus(id: string, status: WaSessionRow['status']): Promise<WaSessionRow> {
+    async updateStatus(
+      id: string,
+      status: WaSessionRow['status'],
+      patch: { lastQr?: null } = {},
+    ): Promise<WaSessionRow> {
       await get(id)
-      await repo.update(id, { status })
+      await repo.update(id, { status, ...patch })
       return get(id)
     },
 
@@ -119,6 +123,10 @@ export function createSessionsService(repo: SessionsRepository) {
 
     async startable(): Promise<WaSessionRow[]> {
       return repo.listStartable()
+    },
+
+    async listByStatus(status: WaSessionRow['status']): Promise<WaSessionRow[]> {
+      return repo.listByStatus(status)
     },
   }
 }

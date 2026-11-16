@@ -67,5 +67,9 @@ export function createSessionsRepository(db: Database) {
           ),
         )
     },
+
+    async listByStatus(status: WaSessionRow['status']): Promise<WaSessionRow[]> {
+      return db.select().from(waSessions).where(eq(waSessions.status, status))
+    },
   }
 }

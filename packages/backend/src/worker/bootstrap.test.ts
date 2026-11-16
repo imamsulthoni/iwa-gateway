@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { WaSessionRow } from '../db/schema.js'
+
 const state = vi.hoisted(() => ({
   getAuthPresence: vi.fn(),
   deleteAuthState: vi.fn(async () => undefined),
+  hasAuthState: vi.fn(async () => false),
   isAuthRegistered: vi.fn(async () => true),
   dbRef: {} as never,
 }))
@@ -10,12 +13,13 @@ const state = vi.hoisted(() => ({
 vi.mock('../baileys/auth-store.js', () => ({
   getAuthPresence: state.getAuthPresence,
   deleteAuthState: state.deleteAuthState,
+  hasAuthState: state.hasAuthState,
   isAuthRegistered: state.isAuthRegistered,
 }))
 
 const { bootstrapSessions } = await import('./bootstrap.js')
 
-const ROW = {
+const ROW: WaSessionRow = {
   id: 's1',
   publicId: 's1',
   label: 'Sesi',
@@ -35,6 +39,7 @@ const ROW = {
 function createDeps() {
   const sessions = {
     startable: vi.fn(async () => [ROW]),
+    listByStatus: vi.fn(async (): Promise<WaSessionRow[]> => []),
     updateStatus: vi.fn(async () => undefined),
   }
   const manager = { start: vi.fn(async () => undefined) }
@@ -106,5 +111,15 @@ describe('bootstrapSessions', () => {
     expect(started).toBe(0)
     expect(manager.start).not.toHaveBeenCalled()
     expect(state.isAuthRegistered).toHaveBeenCalledWith(state.dbRef, {}, 's1')
+  })
+
+  it('membersihkan auth sesi logged_out yang tertinggal saat worker mati', async () => {
+    state.hasAuthState.mockResolvedValue(true)
+    const { deps, sessions } = createDeps()
+    vi.mocked(sessions.listByStatus).mockResolvedValue([{ ...ROW, id: 's9', status: 'logged_out' }])
+
+    await bootstrapSessions(deps)
+
+    expect(state.deleteAuthState).toHaveBeenCalledWith(state.dbRef, 's9')
   })
 })

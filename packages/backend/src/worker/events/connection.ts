@@ -11,7 +11,7 @@ export type ConnectionUpdateInput = {
 export type ConnectionEvent =
   | { kind: 'qr'; qr: string }
   | { kind: 'open' }
-  | { kind: 'close'; loggedOut: boolean; statusCode?: number }
+  | { kind: 'close'; loggedOut: boolean; restartRequired: boolean; statusCode?: number }
   | null
 
 export function parseConnectionUpdate(update: ConnectionUpdateInput): ConnectionEvent {
@@ -27,6 +27,7 @@ export function parseConnectionUpdate(update: ConnectionUpdateInput): Connection
     return {
       kind: 'close',
       loggedOut: statusCode === DisconnectReason.loggedOut,
+      restartRequired: statusCode === DisconnectReason.restartRequired,
       statusCode,
     }
   }

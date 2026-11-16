@@ -1,5 +1,5 @@
 import { MESSAGE_STATUS_LABELS } from '@wa/shared'
-import { ArrowUpRight, Copy, Hash, QrCode, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
+import { ArrowUpRight, Copy, Hash, QrCode, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 
@@ -91,6 +91,22 @@ export function KoneksiTab({
 
   async function login() {
     await run(() => api.post(`/sessions/${session.id}/login`))
+  }
+
+  async function cancelPairing() {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.post(`/sessions/${session.id}/cancel`)
+      setQr(null)
+      setCode(null)
+      setPairingRequested(false)
+      onChanged()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Gagal membatalkan pairing')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const meta = (
@@ -206,13 +222,19 @@ export function KoneksiTab({
                 <div className="flex items-center gap-2">
                   <StatusDot tone={loggedOut ? 'faint' : 'amber'} />
                   <h2 className="text-[19px] font-semibold tracking-[-0.5px] text-ink">
-                    {loggedOut ? 'Sesi keluar' : 'Menunggu scan'}
+                    {loggedOut
+                      ? 'Sesi keluar'
+                      : session.status === 'disconnected'
+                        ? 'Koneksi terputus'
+                        : 'Menunggu scan'}
                   </h2>
                 </div>
                 <p className="text-small text-ink-soft">
                   {loggedOut
                     ? 'Perangkat sudah dilepas. Login ulang untuk menautkan nomor.'
-                    : 'QR diperbarui otomatis selama perangkat belum tertaut.'}
+                    : session.status === 'disconnected'
+                      ? 'Pairing dibatalkan. Klik Scan QR untuk membuat QR baru.'
+                      : 'QR diperbarui otomatis selama perangkat belum tertaut.'}
                 </p>
               </div>
               <p className="font-data text-[9.5px] text-ink-faint">polling 3 detik</p>
@@ -288,6 +310,16 @@ export function KoneksiTab({
                       onClick={() => document.getElementById('pairing-phone')?.focus()}
                     >
                       Pakai kode pairing
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-[30px] px-3 text-[11.5px]"
+                      disabled={busy}
+                      onClick={() => void cancelPairing()}
+                    >
+                      <X className="size-3 text-ink-soft" aria-hidden />
+                      Batalkan
                     </Button>
                   </div>
                   <div className="h-[18px]" />

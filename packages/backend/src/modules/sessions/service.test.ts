@@ -55,6 +55,9 @@ function createMemoryRepository(): SessionsRepository {
     async listStartable() {
       return [...rows.values()]
     },
+    async listByStatus(status) {
+      return [...rows.values()].filter((row) => row.status === status)
+    },
   }
 
   return repo

@@ -1,6 +1,6 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, KeyRound, LogOut, RefreshCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { ConfirmDialog } from '../../components/dialogs'
 import { BroadcastTab } from '../../components/session/BroadcastTab'
@@ -51,7 +51,6 @@ function SessionDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const [terminal, setTerminal] = useState(false)
   const detail = usePolling<SessionDto>(
     () => api.get<SessionDto>(`/sessions/${sessionId}`),
     15_000,
@@ -60,7 +59,7 @@ function SessionDetailPage() {
   const status = usePolling<SessionStatusDto>(
     () => api.get<SessionStatusDto>(`/sessions/${sessionId}/status`),
     3_000,
-    !terminal,
+    true,
   )
   const broadcast = usePolling<BroadcastCurrentDto>(
     () => api.get<BroadcastCurrentDto>(`/sessions/${sessionId}/broadcast/current`),
@@ -70,14 +69,6 @@ function SessionDetailPage() {
 
   const data = detail.data
   const currentStatus = status.data
-
-  useEffect(() => {
-    if (status.data) {
-      setTerminal(
-        status.data.status === 'connected' || status.data.status === 'logged_out',
-      )
-    }
-  }, [status.data])
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
@@ -231,7 +222,7 @@ function SessionDetailPage() {
         })}
         <span className="flex-1" />
         <p className="pb-3 font-data text-[9px] text-ink-faint">
-          polling 3s saat belum terhubung
+          status diperbarui tiap 3 detik
         </p>
       </div>
 

@@ -1,4 +1,9 @@
-import { deleteAuthState, getAuthPresence, isAuthRegistered } from '../baileys/auth-store.js'
+import {
+  deleteAuthState,
+  getAuthPresence,
+  hasAuthState,
+  isAuthRegistered,
+} from '../baileys/auth-store.js'
 import type { Database } from '../db/client.js'
 import type { Cipher } from '../infra/crypto.js'
 import type { AppLogger } from '../infra/logger.js'
@@ -22,6 +27,14 @@ export async function bootstrapSessions({
 }: BootstrapDeps): Promise<number> {
   const rows = await sessions.startable()
   let started = 0
+
+  // Logout bisa terjadi saat worker mati: bersihkan auth yang tertinggal.
+  for (const row of await sessions.listByStatus('logged_out')) {
+    if (!(await hasAuthState(db, row.id))) continue
+    await deleteAuthState(db, row.id)
+    logger.info({ sessionId: row.id }, 'Auth sesi logged_out dibersihkan')
+  }
+
   for (const row of rows) {
     const presence = await getAuthPresence(db, row.id)
     if (presence.creds !== presence.keys) {
