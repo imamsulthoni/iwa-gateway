@@ -2,7 +2,7 @@ import type { MessageDto, MessageStatus } from '@wa/shared'
 
 import { newId } from '../../db/id.js'
 import type { MessageRow } from '../../db/schema.js'
-import { NotFoundError, ValidationError } from '../errors.js'
+import { ConflictError, NotFoundError, ValidationError } from '../errors.js'
 import { normalizePhone, toUserJid } from './phone.js'
 import type { MessageCursor, MessagesRepository } from './repository.js'
 import { mapBaileysStatus, shouldAdvanceStatus } from './status.js'
@@ -76,6 +76,11 @@ export function createMessagesService(repo: MessagesRepository) {
   return {
     get,
 
+    async findByReference(sessionId: string, referenceId: string): Promise<MessageDto | null> {
+      const row = await repo.findByReference(sessionId, referenceId)
+      return row ? toMessageDto(row) : null
+    },
+
     async createOutgoing(
       input: CreateOutgoingInput,
     ): Promise<{ message: MessageDto; duplicate: boolean }> {
@@ -138,6 +143,21 @@ export function createMessagesService(repo: MessagesRepository) {
       await repo.updateStatus(row.id, next)
       await repo.addStatusEvent(row.id, next)
       return true
+    },
+
+    async retry(id: string): Promise<MessageDto> {
+      const row = await get(id)
+      if (row.deletedAt) {
+        throw new ValidationError('Pesan yang sudah dihapus tidak bisa dikirim ulang')
+      }
+      if (row.status !== 'failed') {
+        throw new ValidationError('Hanya pesan berstatus gagal yang bisa dikirim ulang')
+      }
+      const requeued = await repo.requeueFailed(id)
+      if (!requeued) {
+        throw new ConflictError('Status pesan sudah berubah, muat ulang riwayat')
+      }
+      return toMessageDto({ ...row, status: 'queued', error: null })
     },
 
     async remove(id: string): Promise<void> {

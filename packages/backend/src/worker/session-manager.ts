@@ -157,15 +157,23 @@ export class SessionManager {
       return
     }
 
-    if (event.loggedOut) {
+    // 401 (logout) dan 403 (nomor diblokir) sama-sama terminal: socket
+    // dihentikan, auth dihapus, dan sesi tidak di-reconnect otomatis.
+    if (event.loggedOut || event.forbidden) {
+      this.deps.logger.warn(
+        { sessionId, statusCode: event.statusCode },
+        event.forbidden ? 'Nomor diblokir WhatsApp, auth dihapus' : 'Sesi logout, auth dihapus',
+      )
       await this.stop(sessionId, true)
       await this.deps.sessions.update(sessionId, { status: 'logged_out', lastQr: null })
       return
     }
 
     // 515 restartRequired adalah penutupan normal tepat setelah pairing sukses:
-    // sambung ulang segera tanpa menandai sesi terputus.
+    // tandai connecting agar kirim pesan ditolak selama socket belum siap,
+    // lalu sambung ulang tanpa menandai sesi terputus.
     if (event.restartRequired) {
+      await this.deps.sessions.update(sessionId, { status: 'connecting' })
       await this.restart(sessionId)
       return
     }

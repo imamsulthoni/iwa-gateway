@@ -9,6 +9,7 @@ export type {
   MessageListDto,
   PairingResponseDto,
   QrResponseDto,
+  RetryMessageResponseDto,
   SendMessageInput,
   SendMessageResponseDto,
   SessionDto,

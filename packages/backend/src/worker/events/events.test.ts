@@ -23,8 +23,24 @@ describe('parseConnectionUpdate', () => {
     ).toEqual({
       kind: 'close',
       loggedOut: true,
+      forbidden: false,
       restartRequired: false,
       statusCode: DisconnectReason.loggedOut,
+    })
+  })
+
+  it('mengenali nomor diblokir (403) sebagai terminal', () => {
+    expect(
+      parseConnectionUpdate({
+        connection: 'close',
+        lastDisconnect: { error: { output: { statusCode: DisconnectReason.forbidden } } },
+      }),
+    ).toEqual({
+      kind: 'close',
+      loggedOut: false,
+      forbidden: true,
+      restartRequired: false,
+      statusCode: DisconnectReason.forbidden,
     })
   })
 
@@ -37,6 +53,7 @@ describe('parseConnectionUpdate', () => {
     ).toEqual({
       kind: 'close',
       loggedOut: false,
+      forbidden: false,
       restartRequired: true,
       statusCode: DisconnectReason.restartRequired,
     })
@@ -48,7 +65,13 @@ describe('parseConnectionUpdate', () => {
         connection: 'close',
         lastDisconnect: { error: { output: { statusCode: 428 } } },
       }),
-    ).toEqual({ kind: 'close', loggedOut: false, restartRequired: false, statusCode: 428 })
+    ).toEqual({
+      kind: 'close',
+      loggedOut: false,
+      forbidden: false,
+      restartRequired: false,
+      statusCode: 428,
+    })
   })
 
   it('mengabaikan update lain', () => {

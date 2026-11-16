@@ -1,19 +1,19 @@
 import { MESSAGE_STATUS_LABELS } from '@wa/shared'
-import { ArrowRight, ChevronDown, RefreshCw } from 'lucide-react'
+import { ArrowRight, ChevronDown, RefreshCw, RotateCcw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 
 import { Badge, Button, cn } from '../../design-system'
 import { api } from '../../lib/api'
 import { formatDateTime, formatPhone, truncate } from '../../lib/format'
-import type { MessageListDto, SessionDto } from '../../lib/types'
+import type { MessageListDto, RetryMessageResponseDto, SessionDto } from '../../lib/types'
 import { CardLabel, NoteRow, Panel } from './parts'
 
 type RiwayatTabProps = {
   session: SessionDto
 }
 
-const GRID = 'grid grid-cols-[70px_112px_92px_minmax(0,1fr)_96px] items-center'
+const GRID = 'grid grid-cols-[70px_112px_92px_minmax(0,1fr)_96px_30px] items-center'
 
 export function RiwayatTab({ session }: RiwayatTabProps) {
   const [items, setItems] = useState<MessageListDto['items']>([])
@@ -21,6 +21,7 @@ export function RiwayatTab({ session }: RiwayatTabProps) {
   const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [retryingId, setRetryingId] = useState<string | null>(null)
 
   async function load(nextCursor?: string) {
     setLoading(true)
@@ -44,6 +45,19 @@ export function RiwayatTab({ session }: RiwayatTabProps) {
   useEffect(() => {
     void load()
   }, [session.id])
+
+  async function retry(id: string) {
+    setRetryingId(id)
+    setError(null)
+    try {
+      const result = await api.post<RetryMessageResponseDto>(`/messages/${id}/retry`)
+      setItems((previous) => previous.map((item) => (item.id === id ? result.message : item)))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Gagal mengirim ulang pesan')
+    } finally {
+      setRetryingId(null)
+    }
+  }
 
   const sent = items.filter((item) => ['sent', 'delivered', 'read'].includes(item.status)).length
   const failed = items.filter((item) => item.status === 'failed').length
@@ -83,6 +97,7 @@ export function RiwayatTab({ session }: RiwayatTabProps) {
             <p className={COL_HEAD}>Reference</p>
             <p className={COL_HEAD}>Isi pesan</p>
             <p className={COL_HEAD}>Status</p>
+            <span />
           </div>
           <div className="h-px w-full bg-line" />
 
@@ -114,6 +129,23 @@ export function RiwayatTab({ session }: RiwayatTabProps) {
                   <Badge tone={tone(message.status)}>
                     {MESSAGE_STATUS_LABELS[message.status]}
                   </Badge>
+                </div>
+                <div className="flex justify-end">
+                  {message.status === 'failed' ? (
+                    <button
+                      type="button"
+                      aria-label="Kirim ulang pesan"
+                      title="Kirim ulang"
+                      disabled={retryingId === message.id}
+                      onClick={() => void retry(message.id)}
+                      className="text-ink-faint transition hover:text-ink disabled:opacity-50"
+                    >
+                      <RotateCcw
+                        className={cn('size-[13px]', retryingId === message.id && 'animate-spin')}
+                        aria-hidden
+                      />
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>

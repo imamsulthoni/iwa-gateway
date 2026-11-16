@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { createBroadcastSchema } from './broadcast.js'
-import { sendMessageSchema } from './message.js'
+import { retryMessageResponseSchema, sendMessageSchema } from './message.js'
 import { createSessionSchema, publicIdSchema } from './session.js'
 import { statsSchema } from './stats.js'
 
@@ -42,6 +42,24 @@ describe('kontrak pesan', () => {
       customerName: 'Budi',
     })
     expect(parsed.customerName).toBe('Budi')
+  })
+
+  it('membungkus pesan hasil kirim ulang', () => {
+    const message = {
+      id: 'm1',
+      sessionId: 's1',
+      to: '628123456789@s.whatsapp.net',
+      referenceId: 'ref-1',
+      body: 'Halo',
+      status: 'queued',
+      waMessageId: null,
+      error: null,
+      customerName: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      deletedAt: null,
+    }
+    expect(retryMessageResponseSchema.safeParse({ message }).success).toBe(true)
+    expect(retryMessageResponseSchema.safeParse({ message: { id: 'm1' } }).success).toBe(false)
   })
 })
 

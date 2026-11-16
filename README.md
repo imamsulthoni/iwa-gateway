@@ -109,6 +109,7 @@ Auth: header `x-api-key` (API key admin) untuk semua endpoint, kecuali dua endpo
 - Format error: `{ "error": { "code": "snake_case", "message": "..." } }`
 - Pagination: `limit` (default 20, maksimum 100) + `cursor` opak → `{ "items": [...], "nextCursor": "..." }`
 - Pekerjaan asinkron (kirim pesan, broadcast) → `202` + id dan status awal
+- Kirim pesan hanya diterima bila sesi berstatus `connected`; selain itu `422` (replay `referenceId` lama tetap `200`)
 - Semua waktu ISO-8601 UTC; "hari ini" memakai `APP_TIMEZONE`
 
 | Endpoint                              | Fungsi                                                    |
@@ -133,6 +134,7 @@ Auth: header `x-api-key` (API key admin) untuk semua endpoint, kecuali dua endpo
 | `POST /sessions/:id/broadcast/cancel` | Batalkan broadcast berjalan                               |
 | `GET /messages`                       | Riwayat lintas sesi (`limit`, `sessionId`)                |
 | `DELETE /messages/:id`                | Soft delete satu entri riwayat                            |
+| `POST /messages/:id/retry`            | Kirim ulang pesan berstatus `failed`                      |
 
 `:id` adalah `public_id` sesi (slug 1–32 karakter `[A-Za-z0-9_-]`).
 

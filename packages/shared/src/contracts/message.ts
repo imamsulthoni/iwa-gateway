@@ -42,6 +42,12 @@ export const sendMessageResponseSchema = z.object({
 
 export type SendMessageResponseDto = z.infer<typeof sendMessageResponseSchema>
 
+export const retryMessageResponseSchema = z.object({
+  message: messageSchema,
+})
+
+export type RetryMessageResponseDto = z.infer<typeof retryMessageResponseSchema>
+
 export const messageQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   cursor: z.string().optional(),

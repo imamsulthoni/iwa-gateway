@@ -1,16 +1,24 @@
+import { MESSAGE_STATUS_LABELS } from '@wa/shared'
 import { CheckCheck, Send } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Badge, Button } from '../../design-system'
 import { api } from '../../lib/api'
-import { formatDateTime, formatPhone } from '../../lib/format'
-import type { SendMessageResponseDto, SessionDto } from '../../lib/types'
+import { formatDateTime, formatPhone, usePolling } from '../../lib/format'
+import type {
+  MessageDto,
+  MessageListDto,
+  SendMessageResponseDto,
+  SessionDto,
+} from '../../lib/types'
 import { CardLabel, NoteRow, Panel, TextField, TextareaField } from './parts'
 
 type KirimTabProps = {
   session: SessionDto
   onChanged?: () => void
 }
+
+const STATUS_POLL_MS = 3_000
 
 export function KirimTab({ session, onChanged }: KirimTabProps) {
   const [to, setTo] = useState('')
@@ -21,8 +29,34 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
   const [result, setResult] = useState<SendMessageResponseDto | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [watchId, setWatchId] = useState<string | null>(null)
 
   const ready = to.replace(/\D/g, '').length >= 8 && text.trim().length > 0
+
+  const tracked = usePolling<MessageDto | null>(
+    async () => {
+      if (!result) return null
+      const page = await api.get<MessageListDto>(`/sessions/${session.id}/messages?limit=20`)
+      return page.items.find((item) => item.id === result.message.id) ?? null
+    },
+    STATUS_POLL_MS,
+    Boolean(result) && watchId === result?.message.id,
+  )
+
+  const polled = result && tracked.data?.id === result.message.id ? tracked.data : null
+  const status = polled?.status ?? result?.message.status
+  const polling = status === 'queued'
+
+  // Pantau status hanya sampai terminal; interval dihentikan saat itu.
+  useEffect(() => {
+    if (!result) return
+    setWatchId(result.message.id)
+    tracked.refresh()
+  }, [result, tracked.refresh])
+
+  useEffect(() => {
+    if (polled && polled.status !== 'queued') setWatchId(null)
+  }, [polled])
 
   async function submit() {
     if (!ready) return
@@ -40,7 +74,12 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
         },
       )
       setResult(response)
-      setText('')
+      // Duplikat tidak mengirim apa pun: biarkan isian utuh agar operator
+      // bisa memakai referenceId lain tanpa mengetik ulang pesan.
+      if (!response.duplicate) {
+        setText('')
+        setReferenceId('')
+      }
       onChanged?.()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Gagal mengirim pesan')
@@ -166,7 +205,9 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
         <Panel className="gap-0 p-[18px]">
           <div className="flex items-center justify-between gap-3">
             <CardLabel>Pengiriman terakhir</CardLabel>
-            {result ? <Badge tone={tone(result.message.status)}>{result.message.status}</Badge> : null}
+            {result && status ? (
+              <Badge tone={tone(status)}>{MESSAGE_STATUS_LABELS[status]}</Badge>
+            ) : null}
           </div>
           <div className="h-3.5" />
           {result ? (
@@ -178,7 +219,13 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
               <Summary label="Waktu" value={formatDateTime(result.message.createdAt)} />
               <div className="h-2.5" />
               <p className="text-[10.5px] text-ink-faint">
-                {result.duplicate ? 'Pesan duplikat, tidak dikirim ulang.' : 'Masuk antrean pengiriman.'}
+                {result.duplicate
+                  ? 'Pesan duplikat, tidak dikirim ulang.'
+                  : status === 'failed'
+                    ? 'Pengiriman gagal. Kirim ulang dari tab Riwayat.'
+                    : polling
+                      ? 'Menunggu worker, status diperbarui otomatis...'
+                      : 'Status akhir sudah diterima.'}
               </p>
             </>
           ) : (

@@ -4,6 +4,7 @@ import {
   crossSessionMessageQuerySchema,
   messageListSchema,
   messageQuerySchema,
+  retryMessageResponseSchema,
   sendMessageResponseSchema,
   sendMessageSchema,
 } from '@wa/shared'
@@ -81,7 +82,7 @@ const sendMessageRoute = createRoute({
     },
     401: openApiError('API key / token sesi tidak valid'),
     404: openApiError('Sesi tidak ditemukan'),
-    422: openApiError('Data pesan tidak valid'),
+    422: openApiError('Data pesan tidak valid atau sesi belum terhubung'),
     429: openApiError('Rate limit terlampaui'),
     500: openApiError('Kesalahan internal'),
   },
@@ -142,6 +143,27 @@ const deleteMessageRoute = createRoute({
   },
 })
 
+const retryMessageRoute = createRoute({
+  method: 'post',
+  path: '/{id}/retry',
+  tags: ['Messages'],
+  summary: 'Kirim ulang pesan yang gagal',
+  security: [{ ApiKey: [] }],
+  request: { params: idParamSchema },
+  responses: {
+    202: {
+      description: 'Pesan masuk antrean pengiriman ulang',
+      content: { 'application/json': { schema: retryMessageResponseSchema } },
+    },
+    401: openApiError('API key tidak dikirim atau tidak valid'),
+    404: openApiError('Pesan tidak ditemukan'),
+    409: openApiError('Status pesan berubah saat diproses'),
+    422: openApiError('Pesan tidak berstatus gagal'),
+    429: openApiError('Rate limit terlampaui'),
+    500: openApiError('Kesalahan internal'),
+  },
+})
+
 export function createSessionMessagesRoute(
   sessions: SessionsService,
   messages: MessagesService,
@@ -156,6 +178,24 @@ export function createSessionMessagesRoute(
   router.openapi(sendMessageRoute, async (c) => {
     const sessionId = c.req.param('id')
     const input = c.req.valid('json')
+    const session = await sessions.get(sessionId)
+
+    // Sesi yang belum terhubung tidak boleh menerima pesan baru. Replay
+    // idempoten (referenceId sama) tetap mengembalikan pesan lama.
+    if (session.status !== 'connected') {
+      const existing = await messages.findByReference(sessionId, input.referenceId)
+      if (!existing) {
+        return c.json(
+          apiErrorBody(
+            'VALIDATION_ERROR',
+            'Sesi belum terhubung. Tunggu status connected lalu kirim ulang.',
+          ),
+          422,
+        )
+      }
+      return c.json({ message: existing, duplicate: true }, 200)
+    }
+
     const result = await messages.createOutgoing({ sessionId, ...input })
 
     if (!result.duplicate) {
@@ -179,13 +219,25 @@ export function createSessionMessagesRoute(
   return router
 }
 
-export function createMessagesRoute(messages: MessagesService) {
+export function createMessagesRoute(messages: MessagesService, queues: QueueRegistry) {
   const router = new OpenAPIHono<AppBindings>()
 
   router.openapi(listMessagesRoute, async (c) => {
     const query = c.req.valid('query')
     const page = await messages.listAll(query.limit, query.sessionId)
     return c.json(page, 200)
+  })
+
+  router.openapi(retryMessageRoute, async (c) => {
+    const message = await messages.retry(c.req.param('id'))
+    // Job id unik agar pesan yang sama bisa diantrekan ulang setelah gagal.
+    await enqueue(
+      queues.send,
+      'send-message',
+      { sessionId: message.sessionId, messageId: message.id },
+      `${message.id}-retry-${Date.now()}`,
+    )
+    return c.json({ message }, 202)
   })
 
   router.openapi(deleteMessageRoute, async (c) => {

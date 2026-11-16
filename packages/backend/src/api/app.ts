@@ -93,7 +93,7 @@ export function createApp(deps: AppDependencies) {
 
   app.route('/sessions', createSessionsRoute(deps.sessions, deps.broadcasts, deps.redis))
   app.route('/sessions', createBroadcastsRoute(deps.broadcasts, deps.queues))
-  app.route('/messages', createMessagesRoute(deps.messages))
+  app.route('/messages', createMessagesRoute(deps.messages, deps.queues))
 
   app.notFound(notFound)
   app.onError((error, c) => handleError(error, c, deps.logger))

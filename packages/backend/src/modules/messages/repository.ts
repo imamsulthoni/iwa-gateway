@@ -17,6 +17,18 @@ export function createMessagesRepository(db: Database) {
     return row ?? null
   }
 
+  async function findByReference(
+    sessionId: string,
+    referenceId: string,
+  ): Promise<MessageRow | null> {
+    const [row] = await db
+      .select()
+      .from(messages)
+      .where(and(eq(messages.sessionId, sessionId), eq(messages.referenceId, referenceId)))
+      .limit(1)
+    return row ?? null
+  }
+
   async function insertIdempotent(
     values: typeof messages.$inferInsert,
   ): Promise<{ row: MessageRow; duplicate: boolean }> {
@@ -27,16 +39,7 @@ export function createMessagesRepository(db: Database) {
       return { row, duplicate: false }
     } catch (error) {
       if (!isDuplicateKeyError(error) || !values.referenceId) throw error
-      const [existing] = await db
-        .select()
-        .from(messages)
-        .where(
-          and(
-            eq(messages.sessionId, values.sessionId),
-            eq(messages.referenceId, values.referenceId),
-          ),
-        )
-        .limit(1)
+      const existing = await findByReference(values.sessionId, values.referenceId)
       if (!existing) throw error
       return { row: existing, duplicate: true }
     }
@@ -71,6 +74,7 @@ export function createMessagesRepository(db: Database) {
 
   return {
     findById,
+    findByReference,
     insertIdempotent,
 
     async findByWaMessageId(sessionId: string, waMessageId: string): Promise<MessageRow | null> {
@@ -127,6 +131,14 @@ export function createMessagesRepository(db: Database) {
 
     async addStatusEvent(messageId: string, status: string): Promise<void> {
       await db.insert(messageStatusEvents).values({ messageId, status })
+    },
+
+    async requeueFailed(id: string): Promise<boolean> {
+      const [result] = await db
+        .update(messages)
+        .set({ status: 'queued', error: null })
+        .where(and(eq(messages.id, id), eq(messages.status, 'failed'), isNull(messages.deletedAt)))
+      return result.affectedRows > 0
     },
 
     async softDelete(id: string): Promise<boolean> {

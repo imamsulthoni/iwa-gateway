@@ -1,6 +1,6 @@
 import { MESSAGE_STATUS_LABELS } from '@wa/shared'
 import { createFileRoute } from '@tanstack/react-router'
-import { ListFilter, RefreshCw, Trash2 } from 'lucide-react'
+import { ListFilter, RefreshCw, RotateCcw, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { ConfirmDialog } from '../../components/dialogs'
@@ -8,7 +8,7 @@ import { Badge, Button, cn } from '../../design-system'
 import type { BadgeTone } from '../../design-system'
 import { api } from '../../lib/api'
 import { formatPhone, truncate } from '../../lib/format'
-import type { MessageListDto } from '../../lib/types'
+import type { MessageListDto, RetryMessageResponseDto } from '../../lib/types'
 
 export const Route = createFileRoute('/_auth/history')({
   validateSearch: (search: Record<string, unknown>): { sessionId?: string } => {
@@ -21,7 +21,7 @@ export const Route = createFileRoute('/_auth/history')({
   component: HistoryPage,
 })
 
-const GRID = 'grid grid-cols-[96px_150px_128px_120px_minmax(0,1fr)_104px_40px] items-center'
+const GRID = 'grid grid-cols-[96px_150px_128px_120px_minmax(0,1fr)_104px_64px] items-center'
 const COL_HEAD = 'font-data text-[9px] tracking-[1.1px] text-ink-soft uppercase'
 
 function tone(status: string): BadgeTone {
@@ -57,6 +57,7 @@ function HistoryPage() {
   const [loaded, setLoaded] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [retryingId, setRetryingId] = useState<string | null>(null)
 
   const load = useCallback(
     async (filterSessionId?: string) => {
@@ -103,6 +104,19 @@ function HistoryPage() {
       setError(cause instanceof Error ? cause.message : 'Gagal menghapus riwayat')
     } finally {
       setDeleting(false)
+    }
+  }
+
+  async function retry(id: string) {
+    setRetryingId(id)
+    setError(null)
+    try {
+      const result = await api.post<RetryMessageResponseDto>(`/messages/${id}/retry`)
+      setRows((previous) => previous.map((row) => (row.id === id ? result.message : row)))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Gagal mengirim ulang pesan')
+    } finally {
+      setRetryingId(null)
     }
   }
 
@@ -224,7 +238,22 @@ function HistoryPage() {
                 <div>
                   <Badge tone={tone(row.status)}>{MESSAGE_STATUS_LABELS[row.status]}</Badge>
                 </div>
-                <div className="flex justify-end">
+                <div className="flex items-center justify-end gap-2.5">
+                  {row.status === 'failed' ? (
+                    <button
+                      type="button"
+                      aria-label="Kirim ulang pesan"
+                      title="Kirim ulang"
+                      disabled={retryingId === row.id}
+                      onClick={() => void retry(row.id)}
+                      className="text-ink-faint transition hover:text-ink disabled:opacity-50"
+                    >
+                      <RotateCcw
+                        className={cn('size-[13px]', retryingId === row.id && 'animate-spin')}
+                        aria-hidden
+                      />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     aria-label="Hapus entri riwayat"

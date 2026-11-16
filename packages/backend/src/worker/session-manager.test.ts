@@ -126,6 +126,30 @@ describe('SessionManager', () => {
     expect(manager.has('s1')).toBe(false)
   })
 
+  it('403 nomor diblokir menghapus auth state dan menandai logged_out', async () => {
+    const { manager, sessions, logger } = createManager()
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: DisconnectReason.forbidden } } },
+    })
+
+    await vi.waitFor(() => expect(state.auth.clear).toHaveBeenCalledOnce())
+    expect(state.socket.end).toHaveBeenCalled()
+    await vi.waitFor(() =>
+      expect(sessions.update).toHaveBeenCalledWith('s1', {
+        status: 'logged_out',
+        lastQr: null,
+      }),
+    )
+    expect(manager.has('s1')).toBe(false)
+    expect(logger.warn).toHaveBeenCalled()
+    expect(
+      (manager as unknown as { reconnectAttempts: Map<string, number> }).reconnectAttempts.size,
+    ).toBe(0)
+  })
+
   it('lock hilang menghentikan socket', async () => {
     const { manager } = createManager()
     await manager.start(SESSION)
@@ -240,6 +264,7 @@ describe('SessionManager', () => {
 
     await vi.waitFor(() => expect(state.createSocket).toHaveBeenCalledTimes(2))
     expect(manager.has('s1')).toBe(true)
+    expect(sessions.update).toHaveBeenCalledWith('s1', { status: 'connecting' })
     expect(sessions.update).not.toHaveBeenCalledWith(
       's1',
       expect.objectContaining({ status: 'disconnected' }),

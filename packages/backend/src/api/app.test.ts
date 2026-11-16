@@ -5,6 +5,7 @@ import type { QueueRegistry } from '../infra/queue.js'
 import { createLogger } from '../infra/logger.js'
 import type { RedisClient } from '../infra/redis.js'
 import { hashSessionToken } from '../modules/auth/session-token.js'
+import { ValidationError } from '../modules/errors.js'
 import type { MessagesService } from '../modules/messages/service.js'
 import type { SessionsService } from '../modules/sessions/service.js'
 import { createApp, type AppDependencies } from './app.js'
@@ -56,6 +57,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
   } as unknown as SessionsService
 
   const messages = {
+    findByReference: vi.fn(async () => null),
     createOutgoing: vi.fn(async () => ({
       message: {
         id: 'message-1',
@@ -70,6 +72,19 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
         deletedAt: null,
       },
       duplicate: false,
+    })),
+    retry: vi.fn(async () => ({
+      id: 'message-1',
+      sessionId: SESSION_ID,
+      to: '628123456789@s.whatsapp.net',
+      referenceId: 'ref-1',
+      body: 'Halo',
+      status: 'queued' as const,
+      waMessageId: null,
+      error: null,
+      customerName: null,
+      createdAt: new Date().toISOString(),
+      deletedAt: null,
     })),
   } as unknown as MessagesService
 
@@ -196,6 +211,64 @@ describe('API Hono', () => {
     expect(queue.add).toHaveBeenCalledOnce()
   })
 
+  it('kirim pesan ditolak saat sesi belum terhubung', async () => {
+    const { app, queue } = createTestApp({
+      sessions: {
+        get: vi.fn(async () => ({ ...SESSION, status: 'qr_pending' as const })),
+      } as unknown as SessionsService,
+    })
+    const response = await app.request(`/sessions/${SESSION_ID}/messages`, {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ to: '628123456789', referenceId: 'ref-1', text: 'Halo' }),
+    })
+
+    expect(response.status).toBe(422)
+    expect(await response.json()).toMatchObject({
+      error: { code: 'VALIDATION_ERROR' },
+    })
+    expect(queue.add).not.toHaveBeenCalled()
+  })
+
+  it('replay referenceId saat sesi terputus mengembalikan pesan lama', async () => {
+    const existing = {
+      id: 'message-1',
+      sessionId: SESSION_ID,
+      to: '628123456789@s.whatsapp.net',
+      referenceId: 'ref-1',
+      body: 'Halo',
+      status: 'sent' as const,
+      waMessageId: 'wa-1',
+      error: null,
+      customerName: null,
+      createdAt: new Date().toISOString(),
+      deletedAt: null,
+    }
+    const createOutgoing = vi.fn()
+    const { app, queue } = createTestApp({
+      sessions: {
+        get: vi.fn(async () => ({ ...SESSION, status: 'disconnected' as const })),
+      } as unknown as SessionsService,
+      messages: {
+        findByReference: vi.fn(async () => existing),
+        createOutgoing,
+      } as unknown as MessagesService,
+    })
+    const response = await app.request(`/sessions/${SESSION_ID}/messages`, {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ to: '628123456789', referenceId: 'ref-1', text: 'Halo' }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      duplicate: true,
+      message: { id: 'message-1' },
+    })
+    expect(createOutgoing).not.toHaveBeenCalled()
+    expect(queue.add).not.toHaveBeenCalled()
+  })
+
   it('token sesi salah ditolak', async () => {
     const { app, queue } = createTestApp()
     const response = await app.request(`/sessions/${SESSION_ID}/messages`, {
@@ -209,6 +282,51 @@ describe('API Hono', () => {
 
     expect(response.status).toBe(401)
     expect(queue.add).not.toHaveBeenCalled()
+  })
+
+  it('kirim ulang pesan gagal meng-enqueue job dengan id unik', async () => {
+    const { app, queue, messages } = createTestApp()
+    const response = await app.request('/messages/message-1/retry', {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key' },
+    })
+
+    expect(response.status).toBe(202)
+    expect(messages.retry).toHaveBeenCalledWith('message-1')
+    expect(queue.add).toHaveBeenCalledWith(
+      'send-message',
+      { sessionId: SESSION_ID, messageId: 'message-1' },
+      expect.objectContaining({
+        jobId: expect.stringContaining('message-1-retry-'),
+      }),
+    )
+  })
+
+  it('kirim ulang ditolak tanpa API key', async () => {
+    const { app, queue } = createTestApp()
+    const response = await app.request('/messages/message-1/retry', { method: 'POST' })
+
+    expect(response.status).toBe(401)
+    expect(queue.add).not.toHaveBeenCalled()
+  })
+
+  it('kirim ulang menolak pesan yang tidak berstatus gagal', async () => {
+    const { app } = createTestApp({
+      messages: {
+        retry: vi.fn(async () => {
+          throw new ValidationError('Hanya pesan berstatus gagal yang bisa dikirim ulang')
+        }),
+      } as unknown as MessagesService,
+    })
+    const response = await app.request('/messages/message-1/retry', {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key' },
+    })
+
+    expect(response.status).toBe(422)
+    expect(await response.json()).toMatchObject({
+      error: { code: 'VALIDATION_ERROR' },
+    })
   })
 
   it('live menggabungkan session, qr, pairing code, dan broadcast', async () => {
