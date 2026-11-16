@@ -17,7 +17,10 @@ const state = vi.hoisted(() => {
     sendMessage: vi.fn(),
   }
   const auth = {
-    state: { creds: { registered: true }, keys: {} },
+    state: {
+      creds: { registered: true as boolean, me: undefined as { id: string } | undefined },
+      keys: {},
+    },
     saveCreds: vi.fn(async () => undefined),
     clear: vi.fn(async () => undefined),
   }
@@ -66,17 +69,18 @@ function createManager() {
     findById: vi.fn(async () => SESSION),
   }
   const messages = { applyStatusUpdate: vi.fn(async () => true) }
+  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
   const manager = new SessionManager({
     db: {} as never,
     redis: { get: vi.fn(async () => null), del: vi.fn(async () => 1) } as never,
     cipher: {} as never,
-    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+    logger: logger as never,
     browserName: 'test',
     lockTtlMs: 30_000,
     sessions: sessions as never,
     messages: messages as never,
   })
-  return { manager, sessions, messages }
+  return { manager, sessions, messages, logger }
 }
 
 describe('SessionManager', () => {
@@ -84,6 +88,7 @@ describe('SessionManager', () => {
     vi.clearAllMocks()
     state.acquire.mockResolvedValue(state.lock as never)
     state.auth.state.creds.registered = true
+    state.auth.state.creds.me = undefined
     state.socket.ws.isOpen = false
   })
 
@@ -238,6 +243,55 @@ describe('SessionManager', () => {
     expect(sessions.update).not.toHaveBeenCalledWith(
       's1',
       expect.objectContaining({ status: 'disconnected' }),
+    )
+  })
+
+  it('event open mengisi phone_number dari creds', async () => {
+    const { manager, sessions } = createManager()
+    state.auth.state.creds.me = { id: '628123456789:12@s.whatsapp.net' }
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({ connection: 'open' })
+
+    await vi.waitFor(() =>
+      expect(sessions.update).toHaveBeenCalledWith('s1', { phoneNumber: '628123456789' }),
+    )
+  })
+
+  it('event open tidak menimpa phone_number yang sudah ada', async () => {
+    const { manager, sessions } = createManager()
+    state.auth.state.creds.me = { id: '628999999999@s.whatsapp.net' }
+    sessions.findById.mockResolvedValueOnce({ ...SESSION, phoneNumber: '628111111111' })
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({ connection: 'open' })
+
+    await vi.waitFor(() =>
+      expect(sessions.update).toHaveBeenCalledWith(
+        's1',
+        expect.objectContaining({ status: 'connected' }),
+      ),
+    )
+    expect(sessions.update).not.toHaveBeenCalledWith(
+      's1',
+      expect.objectContaining({ phoneNumber: expect.any(String) }),
+    )
+  })
+
+  it('gagal menyimpan nomor tidak menggagalkan koneksi', async () => {
+    const { manager, sessions, logger } = createManager()
+    state.auth.state.creds.me = { id: '628123456789@s.whatsapp.net' }
+    sessions.update
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('duplicate'))
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({ connection: 'open' })
+
+    await vi.waitFor(() => expect(logger.warn).toHaveBeenCalledOnce())
+    expect(sessions.update).toHaveBeenCalledWith(
+      's1',
+      expect.objectContaining({ status: 'connected' }),
     )
   })
 })

@@ -6,12 +6,14 @@ const state = vi.hoisted(() => ({
   hasAuthState: vi.fn(),
   isAuthRegistered: vi.fn(),
   useDbAuthState: vi.fn(async () => undefined),
+  deleteAuthState: vi.fn(),
 }))
 
 vi.mock('../baileys/auth-store.js', () => ({
   hasAuthState: state.hasAuthState,
   isAuthRegistered: state.isAuthRegistered,
   useDbAuthState: state.useDbAuthState,
+  deleteAuthState: state.deleteAuthState,
 }))
 
 const { reconcileSessions } = await import('./reconcile.js')
@@ -39,6 +41,7 @@ function createDeps(rows: WaSessionRow[]) {
   const sessions = {
     startable: vi.fn(async () => rows),
     get: vi.fn(async () => rows[0]),
+    listByStatus: vi.fn(async () => [] as WaSessionRow[]),
   }
   const manager = {
     has: vi.fn(() => false),
@@ -49,7 +52,7 @@ function createDeps(rows: WaSessionRow[]) {
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
   const cipher = {}
   const deps = { db: {}, cipher, sessions, manager, logger } as never
-  return { deps, sessions, manager }
+  return { deps, sessions, manager, logger }
 }
 
 describe('reconcileSessions', () => {
@@ -114,6 +117,7 @@ describe('reconcileSessions', () => {
     const sessions = {
       startable: vi.fn(async () => rows),
       get: vi.fn(async () => rows[0]),
+      listByStatus: vi.fn(async () => rows),
     }
     const manager = {
       has: vi.fn(() => false),
@@ -121,10 +125,47 @@ describe('reconcileSessions', () => {
       stop: vi.fn(async () => undefined),
       activeSessionIds: vi.fn(() => ['s1']),
     }
-    const deps = { db: {}, cipher: {}, sessions, manager, logger: { info: vi.fn() } } as never
+    const deps = {
+      db: {},
+      cipher: {},
+      sessions,
+      manager,
+      logger: { info: vi.fn(), warn: vi.fn() },
+    } as never
 
     await reconcileSessions(deps)
 
     expect(manager.stop).toHaveBeenCalledWith('s1', true)
+  })
+
+  it('auth sesi logged_out yang tertinggal dibersihkan', async () => {
+    const { deps, sessions } = createDeps([])
+    sessions.listByStatus.mockResolvedValueOnce([row('logged_out')])
+    state.hasAuthState.mockResolvedValue(true)
+
+    await reconcileSessions(deps)
+
+    expect(state.deleteAuthState).toHaveBeenCalledWith(expect.anything(), 's1')
+  })
+
+  it('sesi logged_out tanpa auth tidak dihapus ulang', async () => {
+    const { deps, sessions } = createDeps([])
+    sessions.listByStatus.mockResolvedValueOnce([row('logged_out')])
+    state.hasAuthState.mockResolvedValue(false)
+
+    await reconcileSessions(deps)
+
+    expect(state.deleteAuthState).not.toHaveBeenCalled()
+  })
+
+  it('gagal menghapus auth logged_out dicatat dan tidak menggagalkan reconcile', async () => {
+    const { deps, sessions, logger } = createDeps([])
+    sessions.listByStatus.mockResolvedValueOnce([row('logged_out')])
+    state.hasAuthState.mockResolvedValue(true)
+    state.deleteAuthState.mockRejectedValueOnce(new Error('db down'))
+
+    await reconcileSessions(deps)
+
+    expect(logger.warn).toHaveBeenCalledOnce()
   })
 })
