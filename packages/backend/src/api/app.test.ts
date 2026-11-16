@@ -34,6 +34,8 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     incr: vi.fn(async () => 1),
     expire: vi.fn(async () => 1),
     ping: vi.fn(async () => 'PONG'),
+    publish: vi.fn(async () => 1),
+    get: vi.fn(async () => null),
   } as unknown as RedisClient
 
   const db = {
@@ -46,6 +48,11 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
       return SESSION
     }),
     list: vi.fn(async () => [SESSION]),
+    updateStatus: vi.fn(async (_id: string, status: WaSessionRow['status'], patch = {}) => ({
+      ...SESSION,
+      status,
+      ...patch,
+    })),
   } as unknown as SessionsService
 
   const messages = {
@@ -112,7 +119,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     ...overrides,
   }
 
-  return { app: createApp(deps), queue, messages }
+  return { app: createApp(deps), queue, messages, redis, sessions }
 }
 
 describe('API Hono', () => {
@@ -202,6 +209,74 @@ describe('API Hono', () => {
 
     expect(response.status).toBe(401)
     expect(queue.add).not.toHaveBeenCalled()
+  })
+
+  it('live menggabungkan session, qr, pairing code, dan broadcast', async () => {
+    const { app } = createTestApp()
+    const response = await app.request(`/sessions/${SESSION_ID}/live`, {
+      headers: { 'x-api-key': 'valid-key' },
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      session: { id: SESSION_ID, status: 'connected' },
+      qr: null,
+      pairingCode: null,
+      broadcast: { jobId: null, total: 0, recipients: [] },
+    })
+  })
+
+  it('login memulai sesi lewat kanal kontrol worker', async () => {
+    const { app, redis } = createTestApp()
+    const response = await app.request(`/sessions/${SESSION_ID}/login`, {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key' },
+    })
+
+    expect(response.status).toBe(200)
+    expect(redis.publish).toHaveBeenCalledWith(
+      'wa:session:control',
+      JSON.stringify({ sessionId: SESSION_ID, action: 'start' }),
+    )
+  })
+
+  it('cancel pairing menghentikan sesi dan mengosongkan QR', async () => {
+    const pairingSession = { ...SESSION, status: 'qr_pending' as const, lastQr: 'data:image/png' }
+    const { app, redis } = createTestApp({
+      sessions: {
+        get: vi.fn(async () => pairingSession),
+        list: vi.fn(async () => [pairingSession]),
+        updateStatus: vi.fn(
+          async (_id: string, status: WaSessionRow['status'], patch = {}) => ({
+            ...pairingSession,
+            status,
+            ...patch,
+          }),
+        ),
+      } as unknown as SessionsService,
+    })
+
+    const response = await app.request(`/sessions/${SESSION_ID}/cancel`, {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key' },
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ status: 'disconnected' })
+    expect(redis.publish).toHaveBeenCalledWith(
+      'wa:session:control',
+      JSON.stringify({ sessionId: SESSION_ID, action: 'stop', clearAuth: true }),
+    )
+  })
+
+  it('cancel ditolak saat sesi sudah terhubung', async () => {
+    const { app } = createTestApp()
+    const response = await app.request(`/sessions/${SESSION_ID}/cancel`, {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key' },
+    })
+
+    expect(response.status).toBe(409)
   })
 
   it('rate limit per API key mengembalikan 429 dan Retry-After', async () => {

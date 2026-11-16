@@ -6,6 +6,7 @@ import { setEnv, validateEnv } from '../infra/env.js'
 import { createLogger } from '../infra/logger.js'
 import { closeQueues, createQueues } from '../infra/queue.js'
 import { closeRedis, createRedis } from '../infra/redis.js'
+import { subscribeSessionControl } from '../infra/session-control.js'
 import { createBroadcastsRepository } from '../modules/broadcasts/repository.js'
 import { createBroadcastsService } from '../modules/broadcasts/service.js'
 import { createMessagesRepository } from '../modules/messages/repository.js'
@@ -25,6 +26,7 @@ setEnv(env)
 const logger = createLogger(env.LOG_LEVEL)
 const redis = createRedis(env.REDIS_URL)
 const workerRedis = createRedis(env.REDIS_URL)
+const controlRedis = createRedis(env.REDIS_URL)
 const database = createDb(env.DATABASE_URL)
 const cipher = createCipher(env.AUTH_ENC_KEY)
 
@@ -47,6 +49,21 @@ const manager = new SessionManager({
 })
 
 await bootstrapSessions({ db: database.db, cipher, sessions, manager, logger })
+
+const unsubscribeControl = subscribeSessionControl(controlRedis, async (message) => {
+  try {
+    if (message.action === 'stop') {
+      await manager.stop(message.sessionId, message.clearAuth)
+      return
+    }
+    if (manager.has(message.sessionId)) return
+    const row = await sessions.get(message.sessionId).catch(() => null)
+    if (!row || row.status === 'logged_out') return
+    await manager.start(row)
+  } catch (error) {
+    logger.error({ err: error, message }, 'Perintah kontrol sesi gagal')
+  }
+})
 
 const processors = startProcessors(
   workerRedis,
@@ -93,10 +110,11 @@ async function shutdown(signal: string): Promise<void> {
   timeout.unref()
 
   clearInterval(reconcileTimer)
+  unsubscribeControl()
   await processors.close()
   await manager.stopAll()
   await closeQueues(queues)
-  await Promise.all([closeRedis(redis), closeRedis(workerRedis)])
+  await Promise.all([closeRedis(redis), closeRedis(workerRedis), closeRedis(controlRedis)])
   await database.pool.end()
   clearTimeout(timeout)
   process.exit(0)

@@ -1,6 +1,6 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, KeyRound, LogOut, RefreshCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { ConfirmDialog } from '../../components/dialogs'
 import { BroadcastTab } from '../../components/session/BroadcastTab'
@@ -12,12 +12,7 @@ import { TokenDialog } from '../../components/token-dialog'
 import { Button, cn } from '../../design-system'
 import { api } from '../../lib/api'
 import { formatPhone, usePolling } from '../../lib/format'
-import type {
-  BroadcastCurrentDto,
-  SessionDto,
-  SessionStatusDto,
-  SessionTokenDto,
-} from '../../lib/types'
+import type { BroadcastCurrentDto, SessionLiveDto, SessionTokenDto } from '../../lib/types'
 
 export const Route = createFileRoute('/_auth/numbers_/$sessionId')({
   component: SessionDetailPage,
@@ -51,33 +46,17 @@ function SessionDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const [terminal, setTerminal] = useState(false)
-  const detail = usePolling<SessionDto>(
-    () => api.get<SessionDto>(`/sessions/${sessionId}`),
-    15_000,
+  const intervalRef = useRef(3_000)
+  const live = usePolling<SessionLiveDto>(
+    () => api.get<SessionLiveDto>(`/sessions/${sessionId}/live`),
+    intervalRef.current,
     true,
   )
-  const status = usePolling<SessionStatusDto>(
-    () => api.get<SessionStatusDto>(`/sessions/${sessionId}/status`),
-    3_000,
-    !terminal,
-  )
-  const broadcast = usePolling<BroadcastCurrentDto>(
-    () => api.get<BroadcastCurrentDto>(`/sessions/${sessionId}/broadcast/current`),
-    status.data?.status === 'connected' ? 3_000 : 10_000,
-    true,
-  )
+  // Polling rapat hanya saat pairing; sesi terhubung cukup 15 detik sekali.
+  intervalRef.current = live.data?.session.status === 'connected' ? 15_000 : 3_000
 
-  const data = detail.data
-  const currentStatus = status.data
-
-  useEffect(() => {
-    if (status.data) {
-      setTerminal(
-        status.data.status === 'connected' || status.data.status === 'logged_out',
-      )
-    }
-  }, [status.data])
+  const data = live.data?.session
+  const broadcastCurrent = live.data?.broadcast ?? EMPTY_BROADCAST
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
@@ -93,9 +72,7 @@ function SessionDetailPage() {
   }
 
   function refreshAll() {
-    detail.refresh()
-    status.refresh()
-    broadcast.refresh()
+    live.refresh()
   }
 
   function rotateToken() {
@@ -116,11 +93,11 @@ function SessionDetailPage() {
     await navigate({ to: '/numbers' })
   }
 
-  if (detail.error) {
+  if (live.error) {
     return (
       <div className="flex flex-col gap-3">
         <p className="rounded-[9px] bg-red-soft px-3 py-2 text-note text-red">
-          {detail.error}
+          {live.error}
         </p>
         <Link
           to="/numbers"
@@ -139,9 +116,8 @@ function SessionDetailPage() {
     )
   }
 
-  const broadcastCurrent = broadcast.data ?? EMPTY_BROADCAST
   const broadcastCount = broadcastCurrent.jobId ? 1 : 0
-  const meta = [data.label, currentStatus?.agentId, formatPhone(data.phoneNumber)]
+  const meta = [data.label, data.agentId, formatPhone(data.phoneNumber)]
     .filter((value) => Boolean(value))
     .join('  ·  ')
 
@@ -165,7 +141,7 @@ function SessionDetailPage() {
             <h1 className="font-data text-title font-semibold tracking-[-1px] text-ink">
               {data.publicId}
             </h1>
-            <SessionStatusBadge status={currentStatus?.status ?? data.status} />
+            <SessionStatusBadge status={data.status} />
           </div>
           <p className="text-[12px] text-ink-soft">{meta}</p>
         </div>
@@ -194,7 +170,7 @@ function SessionDetailPage() {
             variant="secondary"
             size="sm"
             className="h-[30px] px-[13px] text-[12px]"
-            disabled={busy || currentStatus?.status === 'logged_out'}
+            disabled={busy || data.status === 'logged_out'}
             onClick={() => setConfirm('logout')}
           >
             <LogOut className="size-[13px] text-ink-soft" aria-hidden />
@@ -231,7 +207,7 @@ function SessionDetailPage() {
         })}
         <span className="flex-1" />
         <p className="pb-3 font-data text-[9px] text-ink-faint">
-          polling 3s saat belum terhubung
+          status diperbarui tiap 3 detik
         </p>
       </div>
 
@@ -245,9 +221,12 @@ function SessionDetailPage() {
 
       {tab === 'koneksi' ? (
         <KoneksiTab
-          session={{ ...data, status: currentStatus?.status ?? data.status }}
-          agentId={currentStatus?.agentId ?? null}
+          session={data}
+          agentId={data.agentId}
           broadcast={broadcastCurrent}
+          qr={live.data?.qr ?? null}
+          pairingCode={live.data?.pairingCode ?? null}
+          onRefresh={refreshAll}
           onChanged={refreshAll}
           onDelete={() => setConfirm('delete')}
         />

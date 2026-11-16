@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { DisconnectReason } from '@whiskeysockets/baileys'
 
 import type { WaSessionRow } from '../db/schema.js'
 
@@ -10,7 +11,9 @@ const state = vi.hoisted(() => {
         handlers[event] = handler
       },
     },
+    ws: { isOpen: false },
     end: vi.fn(),
+    logout: vi.fn(async () => undefined),
     sendMessage: vi.fn(),
   }
   const auth = {
@@ -65,7 +68,7 @@ function createManager() {
   const messages = { applyStatusUpdate: vi.fn(async () => true) }
   const manager = new SessionManager({
     db: {} as never,
-    redis: { get: vi.fn(async () => null) } as never,
+    redis: { get: vi.fn(async () => null), del: vi.fn(async () => 1) } as never,
     cipher: {} as never,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
     browserName: 'test',
@@ -81,6 +84,7 @@ describe('SessionManager', () => {
     vi.clearAllMocks()
     state.acquire.mockResolvedValue(state.lock as never)
     state.auth.state.creds.registered = true
+    state.socket.ws.isOpen = false
   })
 
   it('manager kedua ditolak lock dan tidak membuat socket', async () => {
@@ -109,7 +113,10 @@ describe('SessionManager', () => {
     await vi.waitFor(() => expect(state.auth.clear).toHaveBeenCalledOnce())
     expect(state.socket.end).toHaveBeenCalled()
     await vi.waitFor(() =>
-      expect(sessions.update).toHaveBeenCalledWith('s1', { status: 'logged_out' }),
+      expect(sessions.update).toHaveBeenCalledWith('s1', {
+        status: 'logged_out',
+        lastQr: null,
+      }),
     )
     expect(manager.has('s1')).toBe(false)
   })
@@ -201,5 +208,36 @@ describe('SessionManager', () => {
     expect(
       (manager as unknown as { reconnectAttempts: Map<string, number> }).reconnectAttempts.size,
     ).toBe(0)
+  })
+
+  it('logout melepas perangkat di WhatsApp dan membersihkan auth', async () => {
+    const { manager, sessions } = createManager()
+    await manager.start(SESSION)
+    state.socket.ws.isOpen = true
+
+    await manager.stop('s1', true)
+
+    expect(state.socket.logout).toHaveBeenCalled()
+    expect(state.auth.clear).toHaveBeenCalled()
+    expect(sessions.update).not.toHaveBeenCalled()
+  })
+
+  it('515 restartRequired menyambung ulang tanpa menandai sesi terputus', async () => {
+    const { manager, sessions } = createManager()
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({
+      connection: 'close',
+      lastDisconnect: {
+        error: { output: { statusCode: DisconnectReason.restartRequired } },
+      },
+    })
+
+    await vi.waitFor(() => expect(state.createSocket).toHaveBeenCalledTimes(2))
+    expect(manager.has('s1')).toBe(true)
+    expect(sessions.update).not.toHaveBeenCalledWith(
+      's1',
+      expect.objectContaining({ status: 'disconnected' }),
+    )
   })
 })

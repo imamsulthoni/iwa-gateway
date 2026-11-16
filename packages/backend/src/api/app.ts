@@ -83,7 +83,7 @@ export function createApp(deps: AppDependencies) {
   app.use('/messages', requireApiKey, rateLimit)
   app.use('/messages/*', requireApiKey, rateLimit)
 
-  app.route('/sessions', createSessionsRoute(deps.sessions, deps.redis))
+  app.route('/sessions', createSessionsRoute(deps.sessions, deps.broadcasts, deps.redis))
   app.route('/sessions', createBroadcastsRoute(deps.broadcasts, deps.queues))
   app.route('/messages', createMessagesRoute(deps.messages))
 

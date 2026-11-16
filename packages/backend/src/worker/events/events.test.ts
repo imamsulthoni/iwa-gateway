@@ -20,7 +20,26 @@ describe('parseConnectionUpdate', () => {
         connection: 'close',
         lastDisconnect: { error: { output: { statusCode: DisconnectReason.loggedOut } } },
       }),
-    ).toEqual({ kind: 'close', loggedOut: true, statusCode: DisconnectReason.loggedOut })
+    ).toEqual({
+      kind: 'close',
+      loggedOut: true,
+      restartRequired: false,
+      statusCode: DisconnectReason.loggedOut,
+    })
+  })
+
+  it('mengenali restart required setelah pairing', () => {
+    expect(
+      parseConnectionUpdate({
+        connection: 'close',
+        lastDisconnect: { error: { output: { statusCode: DisconnectReason.restartRequired } } },
+      }),
+    ).toEqual({
+      kind: 'close',
+      loggedOut: false,
+      restartRequired: true,
+      statusCode: DisconnectReason.restartRequired,
+    })
   })
 
   it('mengenali putus sementara', () => {
@@ -29,7 +48,7 @@ describe('parseConnectionUpdate', () => {
         connection: 'close',
         lastDisconnect: { error: { output: { statusCode: 428 } } },
       }),
-    ).toEqual({ kind: 'close', loggedOut: false, statusCode: 428 })
+    ).toEqual({ kind: 'close', loggedOut: false, restartRequired: false, statusCode: 428 })
   })
 
   it('mengabaikan update lain', () => {

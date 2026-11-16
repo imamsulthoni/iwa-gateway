@@ -72,8 +72,39 @@ export function usePolling<T>(
 
   useEffect(() => {
     if (!enabled) return
-    const timer = setInterval(refresh, intervalMs)
-    return () => clearInterval(timer)
+    let timer: ReturnType<typeof setInterval> | null = null
+
+    function stop(): void {
+      if (timer === null) return
+      clearInterval(timer)
+      timer = null
+    }
+
+    function start(): void {
+      if (timer !== null) return
+      if (typeof document !== 'undefined' && document.hidden) return
+      timer = setInterval(refresh, intervalMs)
+    }
+
+    function onVisibility(): void {
+      if (document.hidden) {
+        stop()
+        return
+      }
+      refresh()
+      start()
+    }
+
+    start()
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibility)
+    }
+    return () => {
+      stop()
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibility)
+      }
+    }
   }, [enabled, intervalMs, refresh])
 
   return { data, error, loading, refresh, enabled }

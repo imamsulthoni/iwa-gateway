@@ -15,7 +15,6 @@ import { createKeyCache } from '../baileys/key-cache.js'
 import type { MessagesService } from '../modules/messages/service.js'
 import type { SessionsRepository } from '../modules/sessions/repository.js'
 import { parseConnectionUpdate, type ConnectionUpdateInput } from './events/connection.js'
-import { createCredsHandler } from './events/creds.js'
 import { parseMessagesUpdate } from './events/messages-update.js'
 
 type SessionHandle = {
@@ -23,6 +22,7 @@ type SessionHandle = {
   lock: SessionLock
   auth: DbAuthState
   stopRenewal: () => void
+  pendingCredsSave: Promise<void>
 }
 
 type OnWhatsAppResult = { exists: boolean; jid: string }
@@ -59,6 +59,7 @@ export class SessionManager {
 
   async start(session: WaSessionRow): Promise<void> {
     if (this.handles.has(session.id)) return
+    if (session.status === 'logged_out') return
 
     const lock = await SessionLock.acquire(
       this.deps.redis,
@@ -92,6 +93,7 @@ export class SessionManager {
       stopRenewal: lock.startRenewal(() => {
         void this.onLockLost(session.id)
       }),
+      pendingCredsSave: Promise.resolve(),
     }
     this.handles.set(session.id, handle)
     this.wire(session.id, handle)
@@ -100,7 +102,13 @@ export class SessionManager {
   }
 
   private wire(sessionId: string, handle: SessionHandle): void {
-    handle.socket.ev.on('creds.update', createCredsHandler(handle.auth.saveCreds))
+    handle.socket.ev.on('creds.update', () => {
+      // Socket lama (sudah dihentikan) tidak boleh menulis creds lagi.
+      if (this.handles.get(sessionId) !== handle) return
+      handle.pendingCredsSave = handle.auth.saveCreds().catch((error: unknown) => {
+        this.deps.logger.error({ sessionId, err: error }, 'Gagal menyimpan creds')
+      })
+    })
     handle.socket.ev.on('connection.update', (update) => {
       void this.onConnectionUpdate(sessionId, handle, update)
     })
@@ -114,11 +122,19 @@ export class SessionManager {
     handle: SessionHandle,
     update: ConnectionUpdateInput,
   ): Promise<void> {
+    // Event dari socket yang sudah diganti (logout/cancel/restart) diabaikan
+    // agar tidak menimpa status terbaru di database.
+    if (this.handles.get(sessionId) !== handle) return
     const event = parseConnectionUpdate(update)
     if (!event) return
 
+    const session = await this.deps.sessions.findById(sessionId)
+    if (!session || session.status === 'logged_out') return
+    if (this.handles.get(sessionId) !== handle) return
+
     if (event.kind === 'qr') {
       const dataUrl = await QRCode.toDataURL(event.qr)
+      if (this.handles.get(sessionId) !== handle) return
       await this.deps.sessions.update(sessionId, { status: 'qr_pending', lastQr: dataUrl })
       await this.maybeRequestPairingCode(sessionId)
       return
@@ -136,12 +152,19 @@ export class SessionManager {
 
     if (event.loggedOut) {
       await this.stop(sessionId, true)
-      await this.deps.sessions.update(sessionId, { status: 'logged_out' })
+      await this.deps.sessions.update(sessionId, { status: 'logged_out', lastQr: null })
+      return
+    }
+
+    // 515 restartRequired adalah penutupan normal tepat setelah pairing sukses:
+    // sambung ulang segera tanpa menandai sesi terputus.
+    if (event.restartRequired) {
+      await this.restart(sessionId)
       return
     }
 
     const registered = Boolean(handle.auth.state.creds.registered)
-    await this.stop(sessionId, false)
+    await this.stop(sessionId)
     await this.deps.sessions.update(
       sessionId,
       // QR lama sudah tidak valid setelah koneksi tutup; jangan tampilkan lagi.
@@ -152,7 +175,13 @@ export class SessionManager {
     if (registered) {
       this.scheduleReconnect(sessionId)
     }
-    void handle
+  }
+
+  private async restart(sessionId: string): Promise<void> {
+    await this.stop(sessionId)
+    const session = await this.deps.sessions.findById(sessionId)
+    if (!session || session.status === 'logged_out') return
+    await this.start(session)
   }
 
   private scheduleReconnect(sessionId: string): void {
@@ -247,6 +276,17 @@ export class SessionManager {
     if (!handle) return
     this.handles.delete(sessionId)
     handle.stopRenewal()
+    // Pastikan creds terakhir (mis. hasil pairing) sudah tersimpan sebelum
+    // socket baru membaca ulang state dari database.
+    await handle.pendingCredsSave
+    if (clearAuth && handle.auth.state.creds.registered && handle.socket.ws?.isOpen) {
+      try {
+        // Lepas perangkat di sisi WhatsApp, bukan hanya menutup socket lokal.
+        await handle.socket.logout()
+      } catch (error) {
+        this.deps.logger.warn({ sessionId, err: error }, 'Gagal logout perangkat')
+      }
+    }
     try {
       handle.socket.end(undefined)
     } catch (error) {
@@ -254,9 +294,21 @@ export class SessionManager {
     }
     if (clearAuth) {
       await handle.auth.clear()
+      await this.clearPairingKeys(sessionId)
     }
     await handle.lock.release()
     this.deps.logger.info({ sessionId, clearAuth }, 'Socket sesi dihentikan')
+  }
+
+  private async clearPairingKeys(sessionId: string): Promise<void> {
+    try {
+      await this.deps.redis.del(
+        `wa:pairing:request:${sessionId}`,
+        `wa:pairing:code:${sessionId}`,
+      )
+    } catch (error) {
+      this.deps.logger.warn({ sessionId, err: error }, 'Gagal menghapus state pairing')
+    }
   }
 
   async stopAll(): Promise<void> {
