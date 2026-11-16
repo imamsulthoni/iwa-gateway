@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 
 import type { Database } from '../../db/client.js'
 import {
@@ -41,6 +41,15 @@ export function createBroadcastsRepository(db: Database) {
       return row ?? null
     },
 
+    async findByClientRef(sessionId: string, clientRef: string): Promise<BroadcastRow | null> {
+      const [row] = await db
+        .select()
+        .from(broadcasts)
+        .where(and(eq(broadcasts.sessionId, sessionId), eq(broadcasts.clientRef, clientRef)))
+        .limit(1)
+      return row ?? null
+    },
+
     async listRecipients(broadcastId: string): Promise<BroadcastRecipientRow[]> {
       return db
         .select()
@@ -49,10 +58,14 @@ export function createBroadcastsRepository(db: Database) {
         .orderBy(broadcastRecipients.id)
     },
 
-    async updateStatus(id: string, status: BroadcastRow['status']): Promise<void> {
+    async updateStatus(
+      id: string,
+      status: BroadcastRow['status'],
+      patch: Partial<typeof broadcasts.$inferInsert> = {},
+    ): Promise<void> {
       await db
         .update(broadcasts)
-        .set({ status, updatedAt: new Date() })
+        .set({ ...patch, status, updatedAt: new Date() })
         .where(eq(broadcasts.id, id))
     },
 
@@ -61,6 +74,14 @@ export function createBroadcastsRepository(db: Database) {
       values: Partial<typeof broadcastRecipients.$inferInsert>,
     ): Promise<void> {
       await db.update(broadcastRecipients).set(values).where(eq(broadcastRecipients.id, id))
+    },
+
+    async skipRecipients(ids: number[], reason: string): Promise<void> {
+      if (ids.length === 0) return
+      await db
+        .update(broadcastRecipients)
+        .set({ status: 'skipped', error: reason })
+        .where(inArray(broadcastRecipients.id, ids))
     },
 
     async countByStatus(status: BroadcastRow['status']): Promise<number> {

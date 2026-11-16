@@ -94,7 +94,7 @@ export function RiwayatTab({ session }: RiwayatTabProps) {
           <div className={cn(GRID, 'h-8 px-[22px]')}>
             <p className={COL_HEAD}>Waktu</p>
             <p className={COL_HEAD}>Tujuan</p>
-            <p className={COL_HEAD}>Reference</p>
+            <p className={COL_HEAD}>Client Ref</p>
             <p className={COL_HEAD}>Isi pesan</p>
             <p className={COL_HEAD}>Status</p>
             <span />
@@ -120,7 +120,7 @@ export function RiwayatTab({ session }: RiwayatTabProps) {
                 <p className="font-data text-[10px] text-ink-soft">{clock(message.createdAt)}</p>
                 <p className="font-data text-[9px] text-ink-soft">{formatPhone(message.to)}</p>
                 <p className="truncate font-data text-[9.5px] text-ink-soft">
-                  {message.referenceId ?? '—'}
+                  {message.clientRef ?? '—'}
                 </p>
                 <p className="truncate text-[10.5px] text-ink-soft">
                   {truncate(message.body ?? '—', 80)}
@@ -223,7 +223,7 @@ export function RiwayatTab({ session }: RiwayatTabProps) {
               <div className="h-3" />
               <SummaryRow label="Message ID" value={last.id} />
               <SummaryRow label="Ke" value={formatPhone(last.to)} />
-              <SummaryRow label="Reference" value={last.referenceId ?? '—'} />
+              <SummaryRow label="Client Ref" value={last.clientRef ?? '—'} />
               <SummaryRow label="Waktu" value={formatDateTime(last.createdAt)} />
             </>
           ) : (

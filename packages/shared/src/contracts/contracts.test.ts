@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { createBroadcastSchema } from './broadcast.js'
+import { broadcastV1Schema, createBroadcastSchema } from './broadcast.js'
+import { conversationListSchema, conversationSchema, roomMessageSchema } from './conversation.js'
+import { sseEventSchema } from './event.js'
 import { retryMessageResponseSchema, sendMessageSchema } from './message.js'
+import { createOptOutSchema, optOutSchema } from './opt-out.js'
+import { paginationQuerySchema } from './pagination.js'
 import { createSessionSchema, publicIdSchema } from './session.js'
 import { statsSchema } from './stats.js'
+import { webhookPayloadSchema } from './webhook.js'
 
 describe('kontrak sesi', () => {
   it('menerima input minimal', () => {
@@ -29,14 +34,14 @@ describe('kontrak sesi', () => {
 describe('kontrak pesan', () => {
   it('menolak pesan kosong', () => {
     expect(
-      sendMessageSchema.safeParse({ to: '62812345678', referenceId: 'r1', text: '' }).success,
+      sendMessageSchema.safeParse({ to: '62812345678', clientRef: 'r1', text: '' }).success,
     ).toBe(false)
   })
 
   it('menerima pesan dengan field opsional', () => {
     const parsed = sendMessageSchema.parse({
       to: '62812345678',
-      referenceId: 'r1',
+      clientRef: 'r1',
       text: 'Halo',
       customerId: 'c1',
       customerName: 'Budi',
@@ -49,7 +54,7 @@ describe('kontrak pesan', () => {
       id: 'm1',
       sessionId: 's1',
       to: '628123456789@s.whatsapp.net',
-      referenceId: 'ref-1',
+      clientRef: 'ref-1',
       body: 'Halo',
       status: 'queued',
       waMessageId: null,
@@ -71,7 +76,7 @@ describe('kontrak broadcast', () => {
         text: 'Halo',
         minDelay: 10,
         maxDelay: 20,
-        referenceId: 'b1',
+        clientRef: 'b1',
       }).success,
     ).toBe(false)
   })
@@ -83,9 +88,121 @@ describe('kontrak broadcast', () => {
         text: 'Halo',
         minDelay: 60,
         maxDelay: 30,
-        referenceId: 'b1',
+        clientRef: 'b1',
       }).success,
     ).toBe(false)
+  })
+
+  it('menerima jadwal UTC opsional pada broadcast v1', () => {
+    const body = {
+      sessionId: 'sales-a',
+      recipients: [{ to: '62812345678' }],
+      text: 'Halo',
+      minDelay: 10,
+      maxDelay: 20,
+      clientRef: 'b1',
+    }
+    expect(broadcastV1Schema.safeParse(body).success).toBe(true)
+    expect(
+      broadcastV1Schema.safeParse({ ...body, scheduledAt: '2026-11-20T10:00:00.000Z' }).success,
+    ).toBe(true)
+    expect(broadcastV1Schema.safeParse({ ...body, scheduledAt: '20 Nov 2026 10:00' }).success).toBe(
+      false,
+    )
+  })
+})
+
+describe('kontrak percakapan', () => {
+  it('memvalidasi room dan pesan room', () => {
+    const conversation = {
+      id: 'c1',
+      sessionId: 's1',
+      waJid: '628123456789@s.whatsapp.net',
+      waJidAlt: null,
+      lastMessageAt: '2026-11-16T10:00:00.000Z',
+      unreadCount: 2,
+    }
+    expect(conversationSchema.safeParse(conversation).success).toBe(true)
+    expect(
+      conversationListSchema.safeParse({ items: [conversation], nextCursor: null }).success,
+    ).toBe(true)
+    expect(
+      roomMessageSchema.safeParse({
+        id: 'm1',
+        conversationId: 'c1',
+        sessionId: 's1',
+        direction: 'in',
+        type: 'image',
+        body: 'Gambar',
+        status: 'delivered',
+        clientRef: null,
+        waMessageId: 'wa-1',
+        createdAt: '2026-11-16T10:00:00.000Z',
+      }).success,
+    ).toBe(true)
+  })
+})
+
+describe('kontrak event SSE', () => {
+  it('menerima event pesan masuk dan menolak event tak dikenal', () => {
+    const message = {
+      id: 'm1',
+      conversationId: 'c1',
+      sessionId: 's1',
+      direction: 'in',
+      type: 'text',
+      body: 'Halo',
+      status: 'delivered',
+      clientRef: null,
+      waMessageId: 'wa-1',
+      createdAt: '2026-11-16T10:00:00.000Z',
+    }
+    expect(
+      sseEventSchema.safeParse({ id: 'e1', event: 'message.received', data: { message } }).success,
+    ).toBe(true)
+    expect(sseEventSchema.safeParse({ id: 'e1', event: 'contact.updated', data: {} }).success).toBe(
+      false,
+    )
+  })
+})
+
+describe('kontrak webhook', () => {
+  it('memvalidasi payload status pesan dan menolak tipe lain', () => {
+    const payload = {
+      id: 'evt-1',
+      type: 'message.status',
+      session_id: 's1',
+      data: {
+        message_id: 'm1',
+        client_ref: 'order-1',
+        status: 'delivered',
+        occurred_at: '2026-11-16T10:00:00.000Z',
+      },
+    }
+    expect(webhookPayloadSchema.safeParse(payload).success).toBe(true)
+    expect(webhookPayloadSchema.safeParse({ ...payload, type: 'optout' }).success).toBe(false)
+  })
+})
+
+describe('kontrak opt-out', () => {
+  it('hanya menerima nomor digit dan sumber yang dikenal', () => {
+    expect(createOptOutSchema.safeParse({ phone: '62812345678' }).success).toBe(true)
+    expect(createOptOutSchema.safeParse({ phone: '+62812345678' }).success).toBe(false)
+    expect(
+      optOutSchema.safeParse({
+        id: 'o1',
+        phoneE164: '62812345678',
+        source: 'manual',
+        optedOutAt: '2026-11-16T10:00:00.000Z',
+      }).success,
+    ).toBe(true)
+  })
+})
+
+describe('kontrak pagination', () => {
+  it('memakai batas default dan maksimum', () => {
+    expect(paginationQuerySchema.parse({})).toEqual({ limit: 20 })
+    expect(paginationQuerySchema.safeParse({ limit: '101' }).success).toBe(false)
   })
 })
 

@@ -21,3 +21,16 @@ export function areJidsSameUser(left: string, right: string): boolean {
 export function isIgnoredJid(jid: string): boolean {
   return jid.endsWith('@g.us') || jid.endsWith('@broadcast') || jid.endsWith('@newsletter')
 }
+
+export type ConversationJid = {
+  waJid: string
+  waJidAlt: string | null
+}
+
+export function resolveConversationJid(primary: string, alt?: string | null): ConversationJid {
+  const candidates = [primary, alt].filter((jid): jid is string => Boolean(jid))
+  const waJid = candidates.find((jid) => jidDecode(jid)?.server === 'lid') ?? primary
+  const waJidAlt =
+    candidates.find((jid) => jid !== waJid && jidDecode(jid)?.server === 's.whatsapp.net') ?? null
+  return { waJid, waJidAlt }
+}

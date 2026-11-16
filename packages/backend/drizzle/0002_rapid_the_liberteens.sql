@@ -1,0 +1,1 @@
+ALTER TABLE `broadcasts` ADD `pause_reason` text;

@@ -16,47 +16,43 @@ vi.mock('@wa/shared', async (importOriginal) => {
 const BROADCAST: BroadcastRow = {
   id: 'b1',
   sessionId: 's1',
-  name: 'Broadcast',
-  template: 'Halo',
+  text: 'Halo',
   status: 'pending',
   minDelayMs: 10_000,
   maxDelayMs: 10_000,
-  referenceId: 'ref',
+  clientRef: 'ref',
+  scheduledAt: null,
+  startedAt: null,
+  finishedAt: null,
+  pauseReason: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 }
 
-const RECIPIENTS: BroadcastRecipientRow[] = [
-  {
-    id: 1,
+function recipients(count = 2): BroadcastRecipientRow[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: index + 1,
     broadcastId: 'b1',
-    toJid: '628111111111@s.whatsapp.net',
-    name: 'A',
-    contactId: null,
+    toJid: `6281111111${String(index).padStart(2, '0')}@s.whatsapp.net`,
+    name: `P${index}`,
     messageId: null,
-    status: 'pending',
+    status: 'pending' as const,
     error: null,
-  },
-  {
-    id: 2,
-    broadcastId: 'b1',
-    toJid: '628222222222@s.whatsapp.net',
-    name: 'B',
-    contactId: null,
-    messageId: null,
-    status: 'pending',
-    error: null,
-  },
-]
+  }))
+}
 
 const LOGGER = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as AppLogger
 const JOB = { data: { sessionId: 's1', broadcastId: 'b1' } }
 
-function createDeps(sentToday = 0) {
+function createDeps(count = 2, sentToday = 0) {
+  let status: BroadcastRow['status'] = 'pending'
   const broadcasts = {
-    get: vi.fn(async () => BROADCAST),
-    setStatus: vi.fn(async () => undefined),
-    pendingRecipients: vi.fn(async () => RECIPIENTS),
+    get: vi.fn(async () => ({ ...BROADCAST, status })),
+    setStatus: vi.fn(async (_id: string, next: BroadcastRow['status']) => {
+      status = next
+    }),
+    skipOptedOut: vi.fn(async () => undefined),
+    pendingRecipients: vi.fn(async () => recipients(count)),
     markRecipient: vi.fn(async () => undefined),
   } as unknown as BroadcastsService
 
@@ -78,7 +74,15 @@ function createDeps(sentToday = 0) {
     sendText: vi.fn(async () => ({ key: { id: 'wa-1' } })),
   } as unknown as SessionManager
 
-  return { broadcasts, messages, sessions, manager }
+  return {
+    broadcasts,
+    messages,
+    sessions,
+    manager,
+    setStatus: (next: BroadcastRow['status']) => {
+      status = next
+    },
+  }
 }
 
 describe('processor broadcast-run', () => {
@@ -88,28 +92,71 @@ describe('processor broadcast-run', () => {
       ...deps,
       logger: LOGGER,
       timezone: 'Asia/Jakarta',
+      autoPauseRatio: 0.2,
     })
 
     await processor(JOB as never)
 
     expect(deps.manager.sendText).toHaveBeenCalledTimes(2)
     expect(deps.broadcasts.markRecipient).toHaveBeenCalledTimes(2)
-    expect(deps.broadcasts.setStatus).toHaveBeenNthCalledWith(1, 'b1', 'running')
-    expect(deps.broadcasts.setStatus).toHaveBeenLastCalledWith('b1', 'done')
+    expect(deps.broadcasts.setStatus).toHaveBeenNthCalledWith(1, 'b1', 'running', expect.anything())
+    expect(deps.broadcasts.setStatus).toHaveBeenLastCalledWith('b1', 'done', expect.anything())
   })
 
   it('menghentikan broadcast saat batas harian tercapai', async () => {
-    const deps = createDeps(200)
+    const deps = createDeps(2, 200)
     const processor = createBroadcastRunProcessor({
       ...deps,
       logger: LOGGER,
       timezone: 'Asia/Jakarta',
+      autoPauseRatio: 0.2,
     })
 
     await processor(JOB as never)
 
     expect(deps.manager.sendText).not.toHaveBeenCalled()
     expect(deps.broadcasts.markRecipient).toHaveBeenCalledTimes(2)
-    expect(deps.broadcasts.setStatus).toHaveBeenLastCalledWith('b1', 'failed')
+    expect(deps.broadcasts.setStatus).toHaveBeenLastCalledWith('b1', 'failed', expect.anything())
+  })
+
+  it('berhenti tanpa mengirim sisa penerima saat dijeda', async () => {
+    const deps = createDeps()
+    deps.manager.sendText = vi.fn(async () => {
+      deps.setStatus('paused')
+      return { key: { id: 'wa-1' } }
+    }) as unknown as SessionManager['sendText']
+    const processor = createBroadcastRunProcessor({
+      ...deps,
+      logger: LOGGER,
+      timezone: 'Asia/Jakarta',
+      autoPauseRatio: 0.2,
+    })
+
+    await processor(JOB as never)
+
+    expect(deps.manager.sendText).toHaveBeenCalledTimes(1)
+    expect(deps.broadcasts.setStatus).not.toHaveBeenLastCalledWith('b1', 'done', expect.anything())
+  })
+
+  it('menjeda otomatis saat tingkat gagal melewati ambang', async () => {
+    const deps = createDeps(21)
+    deps.manager.sendText = vi.fn(async () => {
+      throw new Error('gagal')
+    }) as unknown as SessionManager['sendText']
+    const processor = createBroadcastRunProcessor({
+      ...deps,
+      logger: LOGGER,
+      timezone: 'Asia/Jakarta',
+      autoPauseRatio: 0.2,
+    })
+
+    await processor(JOB as never)
+
+    expect(deps.manager.sendText).toHaveBeenCalledTimes(20)
+    expect(deps.broadcasts.setStatus).toHaveBeenLastCalledWith(
+      'b1',
+      'paused',
+      expect.objectContaining({ pauseReason: expect.stringContaining('Tingkat gagal') }),
+    )
   })
 })

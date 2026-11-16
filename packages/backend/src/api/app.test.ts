@@ -17,6 +17,7 @@ const SESSION: WaSessionRow = {
   id: SESSION_ID,
   publicId: 'smoke',
   label: 'Smoke',
+  engine: 'baileys',
   phoneNumber: null,
   status: 'connected',
   lastQr: null,
@@ -26,6 +27,8 @@ const SESSION: WaSessionRow = {
   salesId: null,
   agentId: null,
   dailySendLimit: 200,
+  authFormat: 'v7',
+  pairingMethod: 'qr',
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 }
@@ -37,6 +40,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     ping: vi.fn(async () => 'PONG'),
     publish: vi.fn(async () => 1),
     get: vi.fn(async () => null),
+    hmget: vi.fn(async () => []),
   } as unknown as RedisClient
 
   const db = {
@@ -48,6 +52,10 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
       if (id !== SESSION_ID) throw new Error('tidak dipakai')
       return SESSION
     }),
+    getByPublicId: vi.fn(async (publicId: string) => {
+      if (publicId !== SESSION.publicId) throw new Error('tidak dipakai')
+      return SESSION
+    }),
     list: vi.fn(async () => [SESSION]),
     updateStatus: vi.fn(async (_id: string, status: WaSessionRow['status'], patch = {}) => ({
       ...SESSION,
@@ -57,13 +65,13 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
   } as unknown as SessionsService
 
   const messages = {
-    findByReference: vi.fn(async () => null),
+    findByClientRef: vi.fn(async () => null),
     createOutgoing: vi.fn(async () => ({
       message: {
         id: 'message-1',
         sessionId: SESSION_ID,
         to: '628123456789@s.whatsapp.net',
-        referenceId: 'ref-1',
+        clientRef: 'ref-1',
         body: 'Halo',
         status: 'queued' as const,
         waMessageId: null,
@@ -77,7 +85,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
       id: 'message-1',
       sessionId: SESSION_ID,
       to: '628123456789@s.whatsapp.net',
-      referenceId: 'ref-1',
+      clientRef: 'ref-1',
       body: 'Halo',
       status: 'queued' as const,
       waMessageId: null,
@@ -94,6 +102,13 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     broadcast: queue,
   } as unknown as QueueRegistry
 
+  const conversations = {
+    findBySessionAndAddress: vi.fn(async () => null),
+    listRooms: vi.fn(async () => ({ items: [], nextCursor: null })),
+    listMessages: vi.fn(async () => ({ items: [], nextCursor: null })),
+    markRead: vi.fn(async () => ({})),
+  } as unknown as AppDependencies['conversations']
+
   const deps: AppDependencies = {
     env: {
       NODE_ENV: 'test',
@@ -107,6 +122,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
       BROWSER_NAME: 'test',
       SESSION_LOCK_TTL_MS: 30000,
       RATE_LIMIT_PER_MIN: 60,
+      BROADCAST_AUTO_PAUSE_RATIO: 0.2,
     },
     logger: createLogger('silent'),
     redis,
@@ -116,6 +132,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     },
     sessions,
     messages,
+    conversations,
     broadcasts: {
       current: async () => null,
       create: async () => {
@@ -130,15 +147,16 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
         runningBroadcasts: 0,
       }),
     } as unknown as AppDependencies['stats'],
+    webhooks: {} as unknown as AppDependencies['webhooks'],
     queues,
     ...overrides,
   }
 
-  return { app: createApp(deps), queue, messages, redis, sessions }
+  return { app: createApp(deps), queue, messages, conversations, redis, sessions }
 }
 
 describe('API Hono', () => {
-  it('GET / publik mengembalikan nama, versi, dan status', async () => {
+  it('GET / publik mengembalikan nama, versi, status, dan metrik', async () => {
     const { app } = createTestApp()
     const response = await app.request('/')
     expect(response.status).toBe(200)
@@ -147,7 +165,35 @@ describe('API Hono', () => {
       version: '0.1.0',
       status: 'ok',
       checks: { database: true, redis: true },
+      metrics: {
+        inbound: { processed: 0, duplicates: 0, nonText: 0 },
+        sse: { activeConnections: 0 },
+        webhooks: { delivered: 0, failed: 0, retry: 0, pendingDue: 0, outboxLagMs: 0 },
+        optOuts: 0,
+        broadcastsPaused: 0,
+      },
     })
+  })
+
+  it('GET / degraded saat outbox webhook tertinggal', async () => {
+    const db = {
+      execute: vi.fn(async () => [
+        [{ optOuts: 2, broadcastsPaused: 1, pendingDue: 3, outboxLagMs: 60_000 }],
+        [],
+      ]),
+    } as unknown as AppDependencies['db']
+    const { app } = createTestApp({ db })
+    const response = await app.request('/')
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      status: string
+      metrics: { webhooks: Record<string, number>; optOuts: number; broadcastsPaused: number }
+    }
+    expect(body.status).toBe('degraded')
+    expect(body.metrics.webhooks).toMatchObject({ pendingDue: 3, outboxLagMs: 60_000 })
+    expect(body.metrics.optOuts).toBe(2)
+    expect(body.metrics.broadcastsPaused).toBe(1)
   })
 
   it('GET /stats menolak tanpa API key dan menerima key valid', async () => {
@@ -203,7 +249,7 @@ describe('API Hono', () => {
         authorization: `Bearer ${TOKEN}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ to: '628123456789', referenceId: 'ref-1', text: 'Halo' }),
+      body: JSON.stringify({ to: '628123456789', clientRef: 'ref-1', text: 'Halo' }),
     })
 
     expect(response.status).toBe(202)
@@ -220,7 +266,7 @@ describe('API Hono', () => {
     const response = await app.request(`/sessions/${SESSION_ID}/messages`, {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
-      body: JSON.stringify({ to: '628123456789', referenceId: 'ref-1', text: 'Halo' }),
+      body: JSON.stringify({ to: '628123456789', clientRef: 'ref-1', text: 'Halo' }),
     })
 
     expect(response.status).toBe(422)
@@ -230,12 +276,12 @@ describe('API Hono', () => {
     expect(queue.add).not.toHaveBeenCalled()
   })
 
-  it('replay referenceId saat sesi terputus mengembalikan pesan lama', async () => {
+  it('replay clientRef saat sesi terputus mengembalikan pesan lama', async () => {
     const existing = {
       id: 'message-1',
       sessionId: SESSION_ID,
       to: '628123456789@s.whatsapp.net',
-      referenceId: 'ref-1',
+      clientRef: 'ref-1',
       body: 'Halo',
       status: 'sent' as const,
       waMessageId: 'wa-1',
@@ -250,14 +296,14 @@ describe('API Hono', () => {
         get: vi.fn(async () => ({ ...SESSION, status: 'disconnected' as const })),
       } as unknown as SessionsService,
       messages: {
-        findByReference: vi.fn(async () => existing),
+        findByClientRef: vi.fn(async () => existing),
         createOutgoing,
       } as unknown as MessagesService,
     })
     const response = await app.request(`/sessions/${SESSION_ID}/messages`, {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
-      body: JSON.stringify({ to: '628123456789', referenceId: 'ref-1', text: 'Halo' }),
+      body: JSON.stringify({ to: '628123456789', clientRef: 'ref-1', text: 'Halo' }),
     })
 
     expect(response.status).toBe(200)
@@ -277,7 +323,7 @@ describe('API Hono', () => {
         authorization: 'Bearer token-salah',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ to: '628123456789', referenceId: 'ref-1', text: 'Halo' }),
+      body: JSON.stringify({ to: '628123456789', clientRef: 'ref-1', text: 'Halo' }),
     })
 
     expect(response.status).toBe(401)
@@ -364,13 +410,11 @@ describe('API Hono', () => {
       sessions: {
         get: vi.fn(async () => pairingSession),
         list: vi.fn(async () => [pairingSession]),
-        updateStatus: vi.fn(
-          async (_id: string, status: WaSessionRow['status'], patch = {}) => ({
-            ...pairingSession,
-            status,
-            ...patch,
-          }),
-        ),
+        updateStatus: vi.fn(async (_id: string, status: WaSessionRow['status'], patch = {}) => ({
+          ...pairingSession,
+          status,
+          ...patch,
+        })),
       } as unknown as SessionsService,
     })
 
@@ -445,6 +489,7 @@ describe('API Hono', () => {
     expect(response.status).toBe(200)
     const document = (await response.json()) as {
       openapi: string
+      info: { description: string }
       paths: Record<string, unknown>
       components: { securitySchemes: Record<string, { type: string }> }
     }
@@ -454,8 +499,13 @@ describe('API Hono', () => {
     expect(document.paths).toHaveProperty('/sessions/{id}/live')
     expect(document.paths).toHaveProperty('/messages')
     expect(document.paths).toHaveProperty('/stats')
+    expect(document.paths).toHaveProperty('/v1/conversations/{id}/messages')
+    expect(document.paths).toHaveProperty('/v1/broadcasts')
+    expect(document.paths).toHaveProperty('/v1/webhooks')
     expect(document.components.securitySchemes.ApiKey?.type).toBe('apiKey')
     expect(document.components.securitySchemes.SessionToken?.type).toBe('http')
+    expect(document.info.description).toContain('X-Signature: sha256=')
+    expect(document.info.description).toContain('message.received')
   })
 
   it('GET /sessions tanpa API key tetap 401 dengan format error yang sama', async () => {
@@ -479,5 +529,51 @@ describe('API Hono', () => {
     expect(response.status).toBe(422)
     const body = (await response.json()) as { error: { code: string } }
     expect(body.error.code).toBe('VALIDATION_ERROR')
+  })
+
+  it('daftar room chat memakai public_id sesi dan API key', async () => {
+    const { app, conversations } = createTestApp()
+    const unauthorized = await app.request(`/v1/sessions/${SESSION.publicId}/conversations`)
+    expect(unauthorized.status).toBe(401)
+
+    const response = await app.request(`/v1/sessions/${SESSION.publicId}/conversations`, {
+      headers: { 'x-api-key': 'valid-key' },
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ items: [], nextCursor: null })
+    expect(conversations.listRooms).toHaveBeenCalledWith(SESSION_ID, 20, undefined)
+  })
+
+  it('menandai room dibaca dan mengirim pesan lewat /v1', async () => {
+    const { app, conversations, queue, messages } = createTestApp()
+
+    const read = await app.request('/v1/conversations/c1/read', {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key' },
+    })
+    expect(read.status).toBe(200)
+    expect(conversations.markRead).toHaveBeenCalledWith('c1')
+
+    const sent = await app.request('/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: SESSION.publicId,
+        to: '628123456789',
+        text: 'Halo',
+        clientRef: 'inbox-1',
+      }),
+    })
+    expect(sent.status).toBe(202)
+    expect(messages.createOutgoing).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: SESSION_ID, clientRef: 'inbox-1' }),
+    )
+    expect(queue.add).toHaveBeenCalledOnce()
+  })
+
+  it('SSE menolak request tanpa API key', async () => {
+    const { app } = createTestApp()
+    const response = await app.request(`/v1/sessions/${SESSION.publicId}/events`)
+    expect(response.status).toBe(401)
   })
 })

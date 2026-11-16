@@ -16,6 +16,7 @@ function createMemoryRepository(): SessionsRepository {
         id: values.id,
         publicId: values.publicId,
         label: values.label,
+        engine: 'baileys',
         phoneNumber: values.phoneNumber ?? null,
         status: values.status ?? 'created',
         lastQr: null,
@@ -25,6 +26,8 @@ function createMemoryRepository(): SessionsRepository {
         salesId: values.salesId ?? null,
         agentId: values.agentId ?? null,
         dailySendLimit: values.dailySendLimit ?? 200,
+        authFormat: 'v7',
+        pairingMethod: 'qr',
         createdAt: now,
         updatedAt: now,
       })

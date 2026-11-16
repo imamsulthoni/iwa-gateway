@@ -13,9 +13,11 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthHistoryRouteImport } from './routes/_auth/history'
+import { Route as AuthInboxRouteImport } from './routes/_auth/inbox'
 import { Route as AuthNumbersRouteImport } from './routes/_auth/numbers'
 import { Route as AuthOverviewRouteImport } from './routes/_auth/overview'
 import { Route as AuthSettingsRouteImport } from './routes/_auth/settings'
+import { Route as AuthWebhooksRouteImport } from './routes/_auth/webhooks'
 import { Route as AuthNumbersSessionIdRouteImport } from './routes/_auth/numbers_.$sessionId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -37,6 +39,11 @@ const AuthHistoryRoute = AuthHistoryRouteImport.update({
   path: '/history',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthInboxRoute = AuthInboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthNumbersRoute = AuthNumbersRouteImport.update({
   id: '/numbers',
   path: '/numbers',
@@ -52,6 +59,11 @@ const AuthSettingsRoute = AuthSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthWebhooksRoute = AuthWebhooksRouteImport.update({
+  id: '/webhooks',
+  path: '/webhooks',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthNumbersSessionIdRoute = AuthNumbersSessionIdRouteImport.update({
   id: '/numbers_/$sessionId',
   path: '/numbers/$sessionId',
@@ -62,18 +74,22 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/history': typeof AuthHistoryRoute
+  '/inbox': typeof AuthInboxRoute
   '/numbers': typeof AuthNumbersRoute
   '/overview': typeof AuthOverviewRoute
   '/settings': typeof AuthSettingsRoute
+  '/webhooks': typeof AuthWebhooksRoute
   '/numbers/$sessionId': typeof AuthNumbersSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/history': typeof AuthHistoryRoute
+  '/inbox': typeof AuthInboxRoute
   '/numbers': typeof AuthNumbersRoute
   '/overview': typeof AuthOverviewRoute
   '/settings': typeof AuthSettingsRoute
+  '/webhooks': typeof AuthWebhooksRoute
   '/numbers/$sessionId': typeof AuthNumbersSessionIdRoute
 }
 export interface FileRoutesById {
@@ -82,9 +98,11 @@ export interface FileRoutesById {
   '/_auth': typeof AuthRouteWithChildren
   '/login': typeof LoginRoute
   '/_auth/history': typeof AuthHistoryRoute
+  '/_auth/inbox': typeof AuthInboxRoute
   '/_auth/numbers': typeof AuthNumbersRoute
   '/_auth/overview': typeof AuthOverviewRoute
   '/_auth/settings': typeof AuthSettingsRoute
+  '/_auth/webhooks': typeof AuthWebhooksRoute
   '/_auth/numbers_/$sessionId': typeof AuthNumbersSessionIdRoute
 }
 export interface FileRouteTypes {
@@ -93,18 +111,22 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/history'
+    | '/inbox'
     | '/numbers'
     | '/overview'
     | '/settings'
+    | '/webhooks'
     | '/numbers/$sessionId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
     | '/history'
+    | '/inbox'
     | '/numbers'
     | '/overview'
     | '/settings'
+    | '/webhooks'
     | '/numbers/$sessionId'
   id:
     | '__root__'
@@ -112,9 +134,11 @@ export interface FileRouteTypes {
     | '/_auth'
     | '/login'
     | '/_auth/history'
+    | '/_auth/inbox'
     | '/_auth/numbers'
     | '/_auth/overview'
     | '/_auth/settings'
+    | '/_auth/webhooks'
     | '/_auth/numbers_/$sessionId'
   fileRoutesById: FileRoutesById
 }
@@ -154,6 +178,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthHistoryRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/inbox': {
+      id: '/_auth/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof AuthInboxRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/numbers': {
       id: '/_auth/numbers'
       path: '/numbers'
@@ -175,6 +206,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSettingsRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/webhooks': {
+      id: '/_auth/webhooks'
+      path: '/webhooks'
+      fullPath: '/webhooks'
+      preLoaderRoute: typeof AuthWebhooksRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/numbers_/$sessionId': {
       id: '/_auth/numbers_/$sessionId'
       path: '/numbers/$sessionId'
@@ -187,17 +225,21 @@ declare module '@tanstack/react-router' {
 
 interface AuthRouteChildren {
   AuthHistoryRoute: typeof AuthHistoryRoute
+  AuthInboxRoute: typeof AuthInboxRoute
   AuthNumbersRoute: typeof AuthNumbersRoute
   AuthOverviewRoute: typeof AuthOverviewRoute
   AuthSettingsRoute: typeof AuthSettingsRoute
+  AuthWebhooksRoute: typeof AuthWebhooksRoute
   AuthNumbersSessionIdRoute: typeof AuthNumbersSessionIdRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
   AuthHistoryRoute: AuthHistoryRoute,
+  AuthInboxRoute: AuthInboxRoute,
   AuthNumbersRoute: AuthNumbersRoute,
   AuthOverviewRoute: AuthOverviewRoute,
   AuthSettingsRoute: AuthSettingsRoute,
+  AuthWebhooksRoute: AuthWebhooksRoute,
   AuthNumbersSessionIdRoute: AuthNumbersSessionIdRoute,
 }
 

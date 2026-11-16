@@ -31,6 +31,10 @@ const EMPTY_BROADCAST: BroadcastCurrentDto = {
   done: 0,
   sent: 0,
   failed: 0,
+  skipped: 0,
+  optedOut: 0,
+  scheduledAt: null,
+  pauseReason: null,
   recipients: [],
 }
 

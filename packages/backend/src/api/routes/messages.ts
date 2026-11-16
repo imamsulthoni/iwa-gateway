@@ -7,12 +7,15 @@ import {
   retryMessageResponseSchema,
   sendMessageResponseSchema,
   sendMessageSchema,
+  sendMessageV1Schema,
 } from '@wa/shared'
 import type { MiddlewareHandler } from 'hono'
 import { createMiddleware } from 'hono/factory'
 
 import type { ApiKeyAuthenticator } from '../../modules/auth/api-key.js'
 import { verifySessionToken } from '../../modules/auth/session-token.js'
+import type { ConversationsService } from '../../modules/conversations/service.js'
+import { toUserJid } from '../../modules/messages/phone.js'
 import type { MessagesService } from '../../modules/messages/service.js'
 import type { SessionsService } from '../../modules/sessions/service.js'
 import type { QueueRegistry } from '../../infra/queue.js'
@@ -77,10 +80,39 @@ const sendMessageRoute = createRoute({
       content: { 'application/json': { schema: sendMessageResponseSchema } },
     },
     200: {
-      description: 'Pesan duplikat (referenceId sudah pernah dikirim)',
+      description: 'Pesan duplikat (clientRef sudah pernah dikirim)',
       content: { 'application/json': { schema: sendMessageResponseSchema } },
     },
     401: openApiError('API key / token sesi tidak valid'),
+    404: openApiError('Sesi tidak ditemukan'),
+    422: openApiError('Data pesan tidak valid atau sesi belum terhubung'),
+    429: openApiError('Rate limit terlampaui'),
+    500: openApiError('Kesalahan internal'),
+  },
+})
+
+const sendMessageV1Route = createRoute({
+  method: 'post',
+  path: '/messages',
+  tags: ['Messages'],
+  summary: 'Kirim pesan teks lintas sesi',
+  security: [{ ApiKey: [] }],
+  request: {
+    body: {
+      content: { 'application/json': { schema: sendMessageV1Schema } },
+      required: true,
+    },
+  },
+  responses: {
+    202: {
+      description: 'Pesan masuk antrean pengiriman',
+      content: { 'application/json': { schema: sendMessageResponseSchema } },
+    },
+    200: {
+      description: 'Pesan duplikat (clientRef sudah pernah dikirim)',
+      content: { 'application/json': { schema: sendMessageResponseSchema } },
+    },
+    401: openApiError('API key tidak dikirim atau tidak valid'),
     404: openApiError('Sesi tidak ditemukan'),
     422: openApiError('Data pesan tidak valid atau sesi belum terhubung'),
     429: openApiError('Rate limit terlampaui'),
@@ -181,9 +213,9 @@ export function createSessionMessagesRoute(
     const session = await sessions.get(sessionId)
 
     // Sesi yang belum terhubung tidak boleh menerima pesan baru. Replay
-    // idempoten (referenceId sama) tetap mengembalikan pesan lama.
+    // idempoten (clientRef sama) tetap mengembalikan pesan lama.
     if (session.status !== 'connected') {
-      const existing = await messages.findByReference(sessionId, input.referenceId)
+      const existing = await messages.findByClientRef(sessionId, input.clientRef)
       if (!existing) {
         return c.json(
           apiErrorBody(
@@ -214,6 +246,58 @@ export function createSessionMessagesRoute(
     const query = c.req.valid('query')
     const page = await messages.listBySession(c.req.param('id'), query.limit, query.cursor)
     return c.json(page, 200)
+  })
+
+  return router
+}
+
+export function createV1MessagesRoute(
+  messages: MessagesService,
+  conversations: ConversationsService,
+  sessions: SessionsService,
+  queues: QueueRegistry,
+) {
+  const router = new OpenAPIHono<AppBindings>()
+
+  router.openapi(sendMessageV1Route, async (c) => {
+    const input = c.req.valid('json')
+    const session = await sessions.getByPublicId(input.sessionId)
+
+    if (session.status !== 'connected') {
+      const existing = await messages.findByClientRef(session.id, input.clientRef)
+      if (!existing) {
+        return c.json(
+          apiErrorBody(
+            'VALIDATION_ERROR',
+            'Sesi belum terhubung. Tunggu status connected lalu kirim ulang.',
+          ),
+          422,
+        )
+      }
+      return c.json({ message: existing, duplicate: true }, 200)
+    }
+
+    const conversation = await conversations.findBySessionAndAddress(
+      session.id,
+      toUserJid(input.to),
+    )
+    const { sessionId: _publicId, ...body } = input
+    const result = await messages.createOutgoing({
+      ...body,
+      sessionId: session.id,
+      conversationId: conversation?.id,
+    })
+
+    if (!result.duplicate) {
+      await enqueue(
+        queues.send,
+        'send-message',
+        { sessionId: session.id, messageId: result.message.id },
+        result.message.id,
+      )
+    }
+
+    return c.json(result, result.duplicate ? 200 : 202)
   })
 
   return router

@@ -23,6 +23,7 @@ function row(status: WaSessionRow['status'], id = 's1'): WaSessionRow {
     id,
     publicId: id,
     label: 'Sesi',
+    engine: 'baileys',
     phoneNumber: null,
     status,
     lastQr: null,
@@ -32,6 +33,8 @@ function row(status: WaSessionRow['status'], id = 's1'): WaSessionRow {
     salesId: null,
     agentId: null,
     dailySendLimit: 200,
+    authFormat: 'v7',
+    pairingMethod: 'qr',
     createdAt: new Date(),
     updatedAt: new Date(),
   }

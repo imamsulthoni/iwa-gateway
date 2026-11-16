@@ -2,12 +2,16 @@ import {
   BROADCAST_STATUSES,
   MESSAGE_DIRECTIONS,
   MESSAGE_STATUSES,
+  OPT_OUT_SOURCES,
   RECIPIENT_STATUSES,
   SESSION_STATUSES,
+  type WebhookEventType,
+  type WebhookPayload,
 } from '@wa/shared'
 import { sql } from 'drizzle-orm'
 import {
   bigint,
+  boolean,
   char,
   datetime,
   index,
@@ -44,6 +48,7 @@ export const waSessions = mysqlTable(
     id: char('id', { length: 36 }).primaryKey(),
     publicId: varchar('public_id', { length: 32 }).notNull(),
     label: varchar('label', { length: 255 }).notNull(),
+    engine: mysqlEnum('engine', ['baileys']).notNull().default('baileys'),
     phoneNumber: varchar('phone_number', { length: 32 }),
     status: mysqlEnum('status', [...SESSION_STATUSES])
       .notNull()
@@ -55,6 +60,8 @@ export const waSessions = mysqlTable(
     salesId: varchar('sales_id', { length: 64 }),
     agentId: varchar('agent_id', { length: 64 }),
     dailySendLimit: int('daily_send_limit').notNull().default(200),
+    authFormat: varchar('auth_format', { length: 16 }).notNull().default('v7'),
+    pairingMethod: mysqlEnum('pairing_method', ['qr', 'code']).notNull().default('qr'),
     createdAt: createdAt(),
     updatedAt: datetime('updated_at', { fsp: 3 })
       .notNull()
@@ -89,15 +96,40 @@ export const waAuthKeys = mysqlTable(
   (table) => [primaryKey({ columns: [table.sessionId, table.type, table.keyId] })],
 )
 
-export const messages = mysqlTable(
-  'messages',
+export const conversations = mysqlTable(
+  'conversations',
   {
     id: char('id', { length: 36 }).primaryKey(),
     sessionId: char('session_id', { length: 36 })
       .notNull()
       .references(() => waSessions.id, { onDelete: 'cascade' }),
+    waJid: varchar('wa_jid', { length: 191 }).notNull(),
+    waJidAlt: varchar('wa_jid_alt', { length: 191 }),
+    lastMessageAt: datetime('last_message_at', { fsp: 3 }),
+    unreadCount: int('unread_count').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('conversations_session_jid_uq').on(table.sessionId, table.waJid),
+    index('conversations_session_recent').on(
+      table.sessionId,
+      sql.raw(`${table.lastMessageAt.name} DESC`),
+    ),
+  ],
+)
+
+export const messages = mysqlTable(
+  'messages',
+  {
+    id: char('id', { length: 36 }).primaryKey(),
+    conversationId: char('conversation_id', { length: 36 }).references(() => conversations.id, {
+      onDelete: 'cascade',
+    }),
+    sessionId: char('session_id', { length: 36 })
+      .notNull()
+      .references(() => waSessions.id, { onDelete: 'cascade' }),
     waMessageId: varchar('wa_message_id', { length: 191 }),
-    referenceId: varchar('reference_id', { length: 191 }),
+    clientRef: varchar('client_ref', { length: 191 }),
     direction: mysqlEnum('direction', [...MESSAGE_DIRECTIONS])
       .notNull()
       .default('out'),
@@ -117,8 +149,9 @@ export const messages = mysqlTable(
     deletedAt: datetime('deleted_at', { fsp: 3 }),
   },
   (table) => [
-    uniqueIndex('messages_session_reference_uq').on(table.sessionId, table.referenceId),
+    uniqueIndex('messages_client_ref_uq').on(table.sessionId, table.clientRef),
     uniqueIndex('messages_session_wa_id_uq').on(table.sessionId, table.waMessageId),
+    index('messages_conv_time').on(table.conversationId, sql.raw(`${table.createdAt.name} DESC`)),
     index('messages_session_created_idx').on(table.sessionId, table.createdAt),
     index('messages_created_idx').on(table.createdAt),
   ],
@@ -139,6 +172,21 @@ export const messageStatusEvents = mysqlTable(
   (table) => [index('message_status_events_message_idx').on(table.messageId)],
 )
 
+export const optOuts = mysqlTable(
+  'opt_outs',
+  {
+    id: char('id', { length: 36 }).primaryKey(),
+    phoneE164: varchar('phone_e164', { length: 32 }).notNull(),
+    source: mysqlEnum('source', [...OPT_OUT_SOURCES])
+      .notNull()
+      .default('keyword'),
+    optedOutAt: datetime('opted_out_at', { fsp: 3 })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP(3)`),
+  },
+  (table) => [uniqueIndex('opt_outs_phone_uq').on(table.phoneE164)],
+)
+
 export const broadcasts = mysqlTable(
   'broadcasts',
   {
@@ -146,21 +194,24 @@ export const broadcasts = mysqlTable(
     sessionId: char('session_id', { length: 36 })
       .notNull()
       .references(() => waSessions.id, { onDelete: 'cascade' }),
-    name: varchar('name', { length: 255 }).notNull(),
-    template: text('template').notNull(),
+    text: text('text').notNull(),
     status: mysqlEnum('status', [...BROADCAST_STATUSES])
       .notNull()
       .default('pending'),
-    minDelayMs: int('min_delay_ms').notNull().default(10000),
-    maxDelayMs: int('max_delay_ms').notNull().default(30000),
-    referenceId: varchar('reference_id', { length: 191 }),
+    minDelayMs: int('min_delay_ms').notNull().default(5000),
+    maxDelayMs: int('max_delay_ms').notNull().default(15000),
+    clientRef: varchar('client_ref', { length: 191 }),
+    scheduledAt: datetime('scheduled_at', { fsp: 3 }),
+    startedAt: datetime('started_at', { fsp: 3 }),
+    finishedAt: datetime('finished_at', { fsp: 3 }),
+    pauseReason: text('pause_reason'),
     createdAt: createdAt(),
     updatedAt: datetime('updated_at', { fsp: 3 })
       .notNull()
       .default(sql`CURRENT_TIMESTAMP(3)`),
   },
   (table) => [
-    uniqueIndex('broadcasts_session_reference_uq').on(table.sessionId, table.referenceId),
+    uniqueIndex('broadcasts_client_ref_uq').on(table.sessionId, table.clientRef),
     index('broadcasts_session_created_idx').on(table.sessionId, table.createdAt),
   ],
 )
@@ -174,7 +225,6 @@ export const broadcastRecipients = mysqlTable(
       .references(() => broadcasts.id, { onDelete: 'cascade' }),
     toJid: varchar('to_jid', { length: 191 }).notNull(),
     name: varchar('name', { length: 255 }),
-    contactId: char('contact_id', { length: 36 }),
     messageId: char('message_id', { length: 36 }),
     status: mysqlEnum('status', [...RECIPIENT_STATUSES])
       .notNull()
@@ -184,11 +234,48 @@ export const broadcastRecipients = mysqlTable(
   (table) => [uniqueIndex('broadcast_recipients_to_uq').on(table.broadcastId, table.toJid)],
 )
 
+export const webhookEndpoints = mysqlTable('webhook_endpoints', {
+  id: char('id', { length: 36 }).primaryKey(),
+  url: text('url').notNull(),
+  secret: varchar('secret', { length: 255 }).notNull(),
+  events: json('events').$type<WebhookEventType[]>().notNull(),
+  active: boolean('active').notNull().default(true),
+  createdAt: createdAt(),
+})
+
+export const webhookDeliveries = mysqlTable(
+  'webhook_deliveries',
+  {
+    id: char('id', { length: 36 }).primaryKey(),
+    endpointId: char('endpoint_id', { length: 36 })
+      .notNull()
+      .references(() => webhookEndpoints.id, { onDelete: 'cascade' }),
+    eventType: varchar('event_type', { length: 64 }).notNull(),
+    payload: json('payload').$type<WebhookPayload>().notNull(),
+    status: mysqlEnum('status', ['pending', 'delivered', 'failed']).notNull().default('pending'),
+    attempts: int('attempts').notNull().default(0),
+    nextAttemptAt: datetime('next_attempt_at', { fsp: 3 })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP(3)`),
+    lastStatusCode: int('last_status_code'),
+    lastError: text('last_error'),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index('webhook_deliveries_due').on(table.status, table.nextAttemptAt),
+    index('webhook_deliveries_endpoint_fk').on(table.endpointId),
+  ],
+)
+
 export type ApiKeyRow = typeof apiKeys.$inferSelect
 export type WaSessionRow = typeof waSessions.$inferSelect
 export type WaAuthCredsRow = typeof waAuthCreds.$inferSelect
 export type WaAuthKeyRow = typeof waAuthKeys.$inferSelect
+export type ConversationRow = typeof conversations.$inferSelect
 export type MessageRow = typeof messages.$inferSelect
 export type MessageStatusEventRow = typeof messageStatusEvents.$inferSelect
+export type OptOutRow = typeof optOuts.$inferSelect
 export type BroadcastRow = typeof broadcasts.$inferSelect
 export type BroadcastRecipientRow = typeof broadcastRecipients.$inferSelect
+export type WebhookEndpointRow = typeof webhookEndpoints.$inferSelect
+export type WebhookDeliveryRow = typeof webhookDeliveries.$inferSelect

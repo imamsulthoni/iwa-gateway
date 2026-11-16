@@ -23,6 +23,7 @@ const ROW: WaSessionRow = {
   id: 's1',
   publicId: 's1',
   label: 'Sesi',
+  engine: 'baileys',
   phoneNumber: null,
   status: 'connected',
   lastQr: null,
@@ -32,6 +33,8 @@ const ROW: WaSessionRow = {
   salesId: null,
   agentId: null,
   dailySendLimit: 200,
+  authFormat: 'v7',
+  pairingMethod: 'qr',
   createdAt: new Date(),
   updatedAt: new Date(),
 }

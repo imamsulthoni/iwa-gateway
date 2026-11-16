@@ -26,10 +26,14 @@ export async function setupTestDb() {
 }
 
 const TABLES = [
+  'webhook_deliveries',
+  'webhook_endpoints',
   'message_status_events',
   'broadcast_recipients',
   'messages',
+  'conversations',
   'broadcasts',
+  'opt_outs',
   'wa_auth_keys',
   'wa_auth_creds',
   'wa_sessions',

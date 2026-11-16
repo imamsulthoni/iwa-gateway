@@ -51,6 +51,14 @@ export function createSessionsService(repo: SessionsRepository) {
   return {
     get,
 
+    async getByPublicId(publicId: string): Promise<WaSessionRow> {
+      const row = await repo.findByPublicId(publicId)
+      if (!row) {
+        throw new NotFoundError('Sesi tidak ditemukan')
+      }
+      return row
+    },
+
     async list(limit = 50): Promise<WaSessionRow[]> {
       return repo.list(limit)
     },

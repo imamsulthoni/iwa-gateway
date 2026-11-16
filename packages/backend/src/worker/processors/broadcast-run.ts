@@ -1,5 +1,5 @@
 import type { Job } from 'bullmq'
-import { pickDelayMs } from '@wa/shared'
+import { BROADCAST_AUTO_PAUSE_MIN_RECIPIENTS, pickDelayMs } from '@wa/shared'
 import { BufferJSON } from '@whiskeysockets/baileys'
 
 import type { BroadcastRunJob } from '../../infra/queue.js'
@@ -17,6 +17,7 @@ export type BroadcastRunProcessorDeps = {
   sessions: SessionsService
   logger: AppLogger
   timezone: string
+  autoPauseRatio: number
 }
 
 function sleep(ms: number): Promise<void> {
@@ -29,11 +30,20 @@ export function createBroadcastRunProcessor(deps: BroadcastRunProcessorDeps) {
   return async (job: Job<BroadcastRunJob>): Promise<void> => {
     const { broadcastId, sessionId } = job.data
     const broadcast = await deps.broadcasts.get(broadcastId)
-    await deps.broadcasts.setStatus(broadcastId, 'running')
 
-    const isCancelled = async (): Promise<boolean> => {
+    // Job terjadwal yang usang (sudah dimulai/dijeda/dibatalkan) tidak dijalankan ulang.
+    if (broadcast.status !== 'scheduled' && broadcast.status !== 'pending') return
+
+    if (broadcast.status === 'scheduled') {
+      await deps.broadcasts.setStatus(broadcastId, 'pending')
+    }
+    await deps.broadcasts.setStatus(broadcastId, 'running', { startedAt: new Date() })
+
+    await deps.broadcasts.skipOptedOut(broadcastId)
+
+    const isStopped = async (): Promise<boolean> => {
       const current = await deps.broadcasts.get(broadcastId)
-      return current.status === 'cancelled'
+      return current.status === 'cancelled' || current.status === 'paused'
     }
 
     const pending = await deps.broadcasts.pendingRecipients(broadcastId)
@@ -41,8 +51,8 @@ export function createBroadcastRunProcessor(deps: BroadcastRunProcessorDeps) {
     let failed = 0
 
     for (const [index, recipient] of pending.entries()) {
-      if (await isCancelled()) {
-        deps.logger.info({ broadcastId }, 'Broadcast dibatalkan')
+      if (await isStopped()) {
+        deps.logger.info({ broadcastId }, 'Broadcast dihentikan')
         return
       }
 
@@ -62,8 +72,8 @@ export function createBroadcastRunProcessor(deps: BroadcastRunProcessorDeps) {
       const { message, duplicate } = await deps.messages.createOutgoing({
         sessionId,
         to: recipient.toJid,
-        referenceId: `${broadcastId}:${recipient.id}`,
-        text: broadcast.template,
+        clientRef: `${broadcastId}:${recipient.id}`,
+        text: broadcast.text,
         customerName: recipient.name ?? undefined,
         broadcastId,
       })
@@ -96,22 +106,33 @@ export function createBroadcastRunProcessor(deps: BroadcastRunProcessorDeps) {
         deps.logger.error({ broadcastId, recipientId: recipient.id, err: error }, 'Penerima gagal')
       }
 
+      const processed = sent + failed
+      if (
+        processed >= BROADCAST_AUTO_PAUSE_MIN_RECIPIENTS &&
+        failed / processed > deps.autoPauseRatio
+      ) {
+        const reason = `Tingkat gagal ${Math.round((failed / processed) * 100)}% melewati ambang ${Math.round(deps.autoPauseRatio * 100)}%`
+        await deps.broadcasts.setStatus(broadcastId, 'paused', { pauseReason: reason })
+        deps.logger.warn({ broadcastId, sent, failed }, 'Broadcast dijeda otomatis')
+        return
+      }
+
       if (index === pending.length - 1) break
       const delayMs = pickDelayMs(broadcast.minDelayMs / 1000, broadcast.maxDelayMs / 1000)
       const chunks = Math.ceil(delayMs / CANCEL_CHECK_INTERVAL_MS)
       for (let chunk = 0; chunk < chunks; chunk += 1) {
         await sleep(Math.min(CANCEL_CHECK_INTERVAL_MS, delayMs - chunk * CANCEL_CHECK_INTERVAL_MS))
-        if (await isCancelled()) {
-          deps.logger.info({ broadcastId }, 'Broadcast dibatalkan di tengah jeda')
+        if (await isStopped()) {
+          deps.logger.info({ broadcastId }, 'Broadcast dihentikan di tengah jeda')
           return
         }
       }
     }
 
     const latest = await deps.broadcasts.get(broadcastId)
-    if (latest.status === 'cancelled') return
+    if (latest.status === 'cancelled' || latest.status === 'paused') return
     const finalStatus = sent === 0 && failed > 0 ? 'failed' : 'done'
-    await deps.broadcasts.setStatus(broadcastId, finalStatus)
+    await deps.broadcasts.setStatus(broadcastId, finalStatus, { finishedAt: new Date() })
     deps.logger.info({ broadcastId, sent, failed }, 'Broadcast selesai')
   }
 }

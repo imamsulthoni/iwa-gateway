@@ -5,8 +5,10 @@ import {
   Lock,
   LogOut,
   MessageCircle,
+  MessageSquare,
   Settings,
   Smartphone,
+  Webhook,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -21,13 +23,17 @@ const GROUPS = [
     label: 'OPERATE',
     items: [
       { to: '/overview', label: 'Ringkasan', icon: LayoutDashboard },
+      { to: '/inbox', label: 'Inbox', icon: MessageSquare },
       { to: '/numbers', label: 'Nomor', icon: Smartphone },
       { to: '/history', label: 'Riwayat', icon: History },
     ],
   },
   {
     label: 'SISTEM',
-    items: [{ to: '/settings', label: 'Pengaturan', icon: Settings }],
+    items: [
+      { to: '/webhooks', label: 'Webhook', icon: Webhook },
+      { to: '/settings', label: 'Pengaturan', icon: Settings },
+    ],
   },
 ] as const
 
@@ -116,7 +122,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                 health.error ? 'text-red' : healthy ? 'text-green' : 'text-amber',
               )}
             >
-              {health.error ? 'Gangguan' : health.data?.status === 'degraded' ? 'Degraded' : healthy ? 'Aktif' : 'Menunggu'}
+              {health.error
+                ? 'Gangguan'
+                : health.data?.status === 'degraded'
+                  ? 'Degraded'
+                  : healthy
+                    ? 'Aktif'
+                    : 'Menunggu'}
             </span>
           </div>
           <p className="mt-2 font-data text-note leading-[1.5] text-ink-soft">

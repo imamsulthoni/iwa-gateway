@@ -3,7 +3,7 @@ import '../infra/load-env.js'
 import { createDb } from '../db/client.js'
 import { createCipher } from '../infra/crypto.js'
 import { setEnv, validateEnv } from '../infra/env.js'
-import { createLogger } from '../infra/logger.js'
+import { createRoleLogger } from '../infra/logger.js'
 import { closeQueues, createQueues } from '../infra/queue.js'
 import { closeRedis, createRedis } from '../infra/redis.js'
 import { subscribeSessionControl } from '../infra/session-control.js'
@@ -11,19 +11,24 @@ import { createBroadcastsRepository } from '../modules/broadcasts/repository.js'
 import { createBroadcastsService } from '../modules/broadcasts/service.js'
 import { createMessagesRepository } from '../modules/messages/repository.js'
 import { createMessagesService } from '../modules/messages/service.js'
+import { createOptOutsRepository } from '../modules/opt-outs/repository.js'
+import { createOptOutsService } from '../modules/opt-outs/service.js'
 import { createSessionsRepository } from '../modules/sessions/repository.js'
 import { createSessionsService } from '../modules/sessions/service.js'
+import { createWebhookOutbox } from '../modules/webhooks/outbox.js'
+import { createWebhooksRepository } from '../modules/webhooks/repository.js'
 import { bootstrapSessions } from './bootstrap.js'
 import { createBroadcastRunProcessor } from './processors/broadcast-run.js'
 import { startProcessors } from './processors/registry.js'
 import { createSendMessageProcessor } from './processors/send-message.js'
+import { createWebhookDispatchProcessor } from './processors/webhook-dispatch.js'
 import { reconcileSessions } from './reconcile.js'
 import { SessionManager } from './session-manager.js'
 
 const env = validateEnv()
 setEnv(env)
 
-const logger = createLogger(env.LOG_LEVEL)
+const logger = createRoleLogger(env.LOG_LEVEL, 'worker', env.LOG_DIR)
 const redis = createRedis(env.REDIS_URL)
 const workerRedis = createRedis(env.REDIS_URL)
 const controlRedis = createRedis(env.REDIS_URL)
@@ -33,9 +38,13 @@ const cipher = createCipher(env.AUTH_ENC_KEY)
 const sessionsRepo = createSessionsRepository(database.db)
 const messagesRepo = createMessagesRepository(database.db)
 const broadcastsRepo = createBroadcastsRepository(database.db)
+const optOutsRepo = createOptOutsRepository(database.db)
+const webhooksRepo = createWebhooksRepository(database.db)
 const sessions = createSessionsService(sessionsRepo)
 const messages = createMessagesService(messagesRepo)
-const broadcasts = createBroadcastsService(broadcastsRepo)
+const optOuts = createOptOutsService(optOutsRepo)
+const broadcasts = createBroadcastsService(broadcastsRepo, optOuts)
+const webhooks = createWebhookOutbox(webhooksRepo)
 
 const manager = new SessionManager({
   db: database.db,
@@ -46,6 +55,8 @@ const manager = new SessionManager({
   lockTtlMs: env.SESSION_LOCK_TTL_MS,
   sessions: sessionsRepo,
   messages,
+  optOuts,
+  webhooks,
 })
 
 await bootstrapSessions({ db: database.db, cipher, sessions, manager, logger })
@@ -76,12 +87,20 @@ const processors = startProcessors(
       sessions,
       logger,
       timezone: env.APP_TIMEZONE,
+      autoPauseRatio: env.BROADCAST_AUTO_PAUSE_RATIO,
     }),
+    webhookDispatch: createWebhookDispatchProcessor({ db: database.db, logger, redis }),
   },
   logger,
 )
 
 const queues = createQueues(redis)
+
+await queues.webhook.upsertJobScheduler(
+  'webhook-dispatch',
+  { every: 1000 },
+  { name: 'webhook-dispatch', data: {} },
+)
 
 async function reconcile(): Promise<void> {
   await reconcileSessions({ db: database.db, sessions, manager, cipher, logger })

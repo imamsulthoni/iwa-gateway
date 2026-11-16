@@ -17,6 +17,25 @@ export const healthSchema = z.object({
     database: z.boolean(),
     redis: z.boolean(),
   }),
+  metrics: z.object({
+    inbound: z.object({
+      processed: z.number(),
+      duplicates: z.number(),
+      nonText: z.number(),
+    }),
+    sse: z.object({
+      activeConnections: z.number(),
+    }),
+    webhooks: z.object({
+      delivered: z.number(),
+      failed: z.number(),
+      retry: z.number(),
+      pendingDue: z.number(),
+      outboxLagMs: z.number(),
+    }),
+    optOuts: z.number(),
+    broadcastsPaused: z.number(),
+  }),
 })
 
 export type HealthDto = z.infer<typeof healthSchema>

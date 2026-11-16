@@ -53,7 +53,7 @@ describeIntegration('integrasi MySQL', () => {
     const values = {
       id: newId(),
       sessionId,
-      referenceId: 'ref-1',
+      clientRef: 'ref-1',
       body: 'Halo',
       toJid: '628123456789@s.whatsapp.net',
       direction: 'out' as const,
@@ -81,7 +81,7 @@ describeIntegration('integrasi MySQL', () => {
     const first = await repo.insertIdempotent({
       id: newId(),
       sessionId,
-      referenceId: 'a',
+      clientRef: 'a',
       body: 'A',
       direction: 'out',
       type: 'text',
@@ -90,7 +90,7 @@ describeIntegration('integrasi MySQL', () => {
     await repo.insertIdempotent({
       id: newId(),
       sessionId,
-      referenceId: 'b',
+      clientRef: 'b',
       body: 'B',
       direction: 'out',
       type: 'text',
@@ -100,7 +100,7 @@ describeIntegration('integrasi MySQL', () => {
     expect(await repo.softDelete(first.row.id)).toBe(true)
     const page = await repo.listBySession(sessionId, 20)
     expect(page.items).toHaveLength(1)
-    expect(page.items[0]?.referenceId).toBe('b')
+    expect(page.items[0]?.clientRef).toBe('b')
   })
 
   it('API key dicabut gagal diverifikasi', async () => {

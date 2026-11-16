@@ -11,9 +11,10 @@ import { createSendMessageProcessor } from './send-message.js'
 
 const MESSAGE: MessageRow = {
   id: 'm1',
+  conversationId: null,
   sessionId: 's1',
   waMessageId: null,
-  referenceId: 'r1',
+  clientRef: 'r1',
   direction: 'out',
   type: 'text',
   body: 'Halo',

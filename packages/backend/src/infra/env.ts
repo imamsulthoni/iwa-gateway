@@ -18,6 +18,8 @@ export const envSchema = z.object({
   BROWSER_NAME: z.string().min(1).default('WA Bot Service'),
   SESSION_LOCK_TTL_MS: z.coerce.number().int().positive().default(30000),
   RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(240),
+  BROADCAST_AUTO_PAUSE_RATIO: z.coerce.number().min(0).max(1).default(0.2),
+  LOG_DIR: z.string().min(1).optional(),
 })
 
 export type Env = z.infer<typeof envSchema>

@@ -338,7 +338,7 @@ export function KoneksiTab({
                         Pesan {MESSAGE_STATUS_LABELS[message.status].toLowerCase()}
                       </p>
                       <p className="truncate font-data text-[9.5px] text-ink-faint">
-                        ke {phoneFromJid(message.to)} · {message.referenceId ?? '—'}
+                        ke {phoneFromJid(message.to)} · {message.clientRef ?? '—'}
                       </p>
                     </div>
                     <p className="font-data text-[9.5px] text-ink-faint">

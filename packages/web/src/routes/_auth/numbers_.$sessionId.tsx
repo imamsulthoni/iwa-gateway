@@ -34,6 +34,10 @@ const EMPTY_BROADCAST: BroadcastCurrentDto = {
   done: 0,
   sent: 0,
   failed: 0,
+  skipped: 0,
+  optedOut: 0,
+  scheduledAt: null,
+  pauseReason: null,
   recipients: [],
 }
 
@@ -96,9 +100,7 @@ function SessionDetailPage() {
   if (live.error) {
     return (
       <div className="flex flex-col gap-3">
-        <p className="rounded-[9px] bg-red-soft px-3 py-2 text-note text-red">
-          {live.error}
-        </p>
+        <p className="rounded-[9px] bg-red-soft px-3 py-2 text-note text-red">{live.error}</p>
         <Link
           to="/numbers"
           className="flex items-center gap-1.5 font-data text-[9.5px] text-ink-faint hover:text-ink"
@@ -111,9 +113,7 @@ function SessionDetailPage() {
   }
 
   if (!data) {
-    return (
-      <p className="px-[22px] py-10 text-center text-small text-ink-faint">Memuat sesi...</p>
-    )
+    return <p className="px-[22px] py-10 text-center text-small text-ink-faint">Memuat sesi...</p>
   }
 
   const broadcastCount = broadcastCurrent.jobId ? 1 : 0
@@ -206,17 +206,13 @@ function SessionDetailPage() {
           )
         })}
         <span className="flex-1" />
-        <p className="pb-3 font-data text-[9px] text-ink-faint">
-          status diperbarui tiap 3 detik
-        </p>
+        <p className="pb-3 font-data text-[9px] text-ink-faint">status diperbarui tiap 3 detik</p>
       </div>
 
       <div className="h-5" />
 
       {actionError ? (
-        <p className="mb-4 rounded-[9px] bg-red-soft px-3 py-2 text-note text-red">
-          {actionError}
-        </p>
+        <p className="mb-4 rounded-[9px] bg-red-soft px-3 py-2 text-note text-red">{actionError}</p>
       ) : null}
 
       {tab === 'koneksi' ? (

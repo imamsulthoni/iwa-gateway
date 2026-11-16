@@ -1,21 +1,27 @@
 import { DisconnectReason, type WASocket } from '@whiskeysockets/baileys'
 import type { Redis } from 'ioredis'
 import QRCode from 'qrcode'
+import type { SseEvent, WebhookPayload } from '@wa/shared'
 
 import { useDbAuthState, type DbAuthState } from '../baileys/auth-store.js'
 import { jidDecode } from '../baileys/jid.js'
 import { createGetMessage } from '../baileys/message-retry.js'
 import { createSocket } from '../baileys/socket.js'
 import type { Database } from '../db/client.js'
+import { newId } from '../db/id.js'
 import type { WaSessionRow } from '../db/schema.js'
 import type { Cipher } from '../infra/crypto.js'
 import { SessionLock } from '../infra/lock.js'
 import type { AppLogger } from '../infra/logger.js'
+import { publishSessionEvent } from '../infra/pubsub.js'
 import { createKeyCache } from '../baileys/key-cache.js'
 import type { MessagesService } from '../modules/messages/service.js'
+import type { OptOutsService } from '../modules/opt-outs/service.js'
 import type { SessionsRepository } from '../modules/sessions/repository.js'
+import type { WebhookOutbox } from '../modules/webhooks/outbox.js'
 import { parseConnectionUpdate, type ConnectionUpdateInput } from './events/connection.js'
 import { parseMessagesUpdate } from './events/messages-update.js'
+import { handleMessagesUpsert } from './events/messages-upsert.js'
 
 type SessionHandle = {
   socket: WASocket
@@ -45,6 +51,8 @@ export type SessionManagerDeps = {
   lockTtlMs: number
   sessions: SessionsRepository
   messages: MessagesService
+  optOuts: OptOutsService
+  webhooks: WebhookOutbox
 }
 
 export class SessionManager {
@@ -121,6 +129,9 @@ export class SessionManager {
     handle.socket.ev.on('messages.update', (updates) => {
       void this.onMessagesUpdate(sessionId, updates)
     })
+    handle.socket.ev.on('messages.upsert', (payload) => {
+      void this.onMessagesUpsert(sessionId, payload)
+    })
   }
 
   private async onConnectionUpdate(
@@ -142,6 +153,11 @@ export class SessionManager {
       const dataUrl = await QRCode.toDataURL(event.qr)
       if (this.handles.get(sessionId) !== handle) return
       await this.deps.sessions.update(sessionId, { status: 'qr_pending', lastQr: dataUrl })
+      await this.publish(sessionId, {
+        id: newId(),
+        event: 'session.qr',
+        data: { qr: dataUrl, status: 'qr_pending' },
+      })
       await this.maybeRequestPairingCode(sessionId)
       return
     }
@@ -154,6 +170,7 @@ export class SessionManager {
         lastConnectedAt: new Date(),
       })
       await this.syncPhoneNumber(sessionId, handle, session)
+      await this.publishSessionStatus(sessionId)
       return
     }
 
@@ -166,6 +183,7 @@ export class SessionManager {
       )
       await this.stop(sessionId, true)
       await this.deps.sessions.update(sessionId, { status: 'logged_out', lastQr: null })
+      await this.publishSessionStatus(sessionId)
       return
     }
 
@@ -174,6 +192,7 @@ export class SessionManager {
     // lalu sambung ulang tanpa menandai sesi terputus.
     if (event.restartRequired) {
       await this.deps.sessions.update(sessionId, { status: 'connecting' })
+      await this.publishSessionStatus(sessionId)
       await this.restart(sessionId)
       return
     }
@@ -185,6 +204,7 @@ export class SessionManager {
       // QR lama sudah tidak valid setelah koneksi tutup; jangan tampilkan lagi.
       registered ? { status: 'disconnected' } : { status: 'disconnected', lastQr: null },
     )
+    await this.publishSessionStatus(sessionId)
     // Sesi yang belum pairing tidak di-reconnect otomatis agar tidak
     // kena rate limit WhatsApp (429) — tunggu user menekan Scan QR.
     if (registered) {
@@ -260,7 +280,92 @@ export class SessionManager {
 
   private async onMessagesUpdate(sessionId: string, updates: unknown): Promise<void> {
     for (const update of parseMessagesUpdate(updates)) {
-      await this.deps.messages.applyStatusUpdate(sessionId, update.waMessageId, update.status)
+      const changed = await this.deps.messages.applyStatusUpdate(
+        sessionId,
+        update.waMessageId,
+        update.status,
+      )
+      if (!changed) continue
+      await this.publish(sessionId, {
+        id: newId(),
+        event: 'message.status',
+        data: {
+          messageId: changed.id,
+          sessionId,
+          status: changed.status,
+          occurredAt: new Date().toISOString(),
+        },
+      })
+      await this.recordWebhook({
+        id: newId(),
+        type: 'message.status',
+        session_id: sessionId,
+        data: {
+          message_id: changed.id,
+          client_ref: changed.clientRef,
+          status: changed.status,
+          occurred_at: new Date().toISOString(),
+        },
+      })
+    }
+  }
+
+  private async onMessagesUpsert(sessionId: string, payload: unknown): Promise<void> {
+    try {
+      await handleMessagesUpsert(sessionId, payload, {
+        messages: this.deps.messages,
+        optOuts: this.deps.optOuts,
+        publish: (event) => this.publish(sessionId, event),
+        webhook: (event) => this.recordWebhook(event),
+        redis: this.deps.redis,
+      })
+    } catch (error) {
+      this.deps.logger.error({ sessionId, err: error }, 'Gagal memproses pesan masuk')
+    }
+  }
+
+  private async publish(sessionId: string, event: SseEvent): Promise<void> {
+    try {
+      await publishSessionEvent(this.deps.redis, sessionId, event)
+    } catch (error) {
+      this.deps.logger.warn({ sessionId, err: error }, 'Gagal publish event sesi')
+    }
+  }
+
+  private async publishSessionStatus(sessionId: string): Promise<void> {
+    const session = await this.deps.sessions.findById(sessionId)
+    if (!session) return
+    await this.publish(sessionId, {
+      id: newId(),
+      event: 'session.status',
+      data: {
+        status: session.status,
+        phoneNumber: session.phoneNumber,
+        lastConnectedAt: session.lastConnectedAt?.toISOString() ?? null,
+      },
+    })
+    if (['connected', 'disconnected', 'logged_out'].includes(session.status)) {
+      await this.recordWebhook({
+        id: newId(),
+        type: 'session.status',
+        session_id: sessionId,
+        data: {
+          status: session.status as 'connected' | 'disconnected' | 'logged_out',
+          phone_number: session.phoneNumber,
+          occurred_at: new Date().toISOString(),
+        },
+      })
+    }
+  }
+
+  private async recordWebhook(payload: WebhookPayload): Promise<void> {
+    try {
+      await this.deps.webhooks.record(payload)
+    } catch (error) {
+      this.deps.logger.warn(
+        { sessionId: payload.session_id, eventType: payload.type, err: error },
+        'Gagal menulis outbox webhook',
+      )
     }
   }
 
@@ -292,10 +397,7 @@ export class SessionManager {
 
     const results = (await handle.socket.onWhatsApp(digits)) ?? []
     const result = results[0]
-    this.onWhatsAppCache.set<OnWhatsAppResult>(
-      cacheKey,
-      result ?? { exists: false, jid: toJid },
-    )
+    this.onWhatsAppCache.set<OnWhatsAppResult>(cacheKey, result ?? { exists: false, jid: toJid })
     if (!result?.exists) {
       throw new Error(`Nomor ${digits} tidak terdaftar di WhatsApp`)
     }
@@ -333,10 +435,7 @@ export class SessionManager {
 
   private async clearPairingKeys(sessionId: string): Promise<void> {
     try {
-      await this.deps.redis.del(
-        `wa:pairing:request:${sessionId}`,
-        `wa:pairing:code:${sessionId}`,
-      )
+      await this.deps.redis.del(`wa:pairing:request:${sessionId}`, `wa:pairing:code:${sessionId}`)
     } catch (error) {
       this.deps.logger.warn({ sessionId, err: error }, 'Gagal menghapus state pairing')
     }

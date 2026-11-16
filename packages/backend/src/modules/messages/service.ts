@@ -1,20 +1,21 @@
-import type { MessageDto, MessageStatus } from '@wa/shared'
+import type { MessageDto, MessageStatus, RoomMessageDto } from '@wa/shared'
 
 import { newId } from '../../db/id.js'
 import type { MessageRow } from '../../db/schema.js'
 import { ConflictError, NotFoundError, ValidationError } from '../errors.js'
 import { normalizePhone, toUserJid } from './phone.js'
-import type { MessageCursor, MessagesRepository } from './repository.js'
+import type { IncomingMessageValues, MessageCursor, MessagesRepository } from './repository.js'
 import { mapBaileysStatus, shouldAdvanceStatus } from './status.js'
 
 export type CreateOutgoingInput = {
   sessionId: string
   to: string
-  referenceId: string
+  clientRef: string
   text: string
   customerId?: string
   customerName?: string
   broadcastId?: string
+  conversationId?: string
 }
 
 export type MessagesService = ReturnType<typeof createMessagesService>
@@ -45,7 +46,7 @@ export function toMessageDto(row: MessageRow): MessageDto {
     id: row.id,
     sessionId: row.sessionId,
     to: row.toJid,
-    referenceId: row.referenceId,
+    clientRef: row.clientRef,
     body: row.body,
     status: row.status,
     waMessageId: row.waMessageId,
@@ -53,6 +54,21 @@ export function toMessageDto(row: MessageRow): MessageDto {
     customerName: row.customerName,
     createdAt: row.createdAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null,
+  }
+}
+
+export function toRoomMessageDto(row: MessageRow): RoomMessageDto {
+  return {
+    id: row.id,
+    conversationId: row.conversationId ?? '',
+    sessionId: row.sessionId,
+    direction: row.direction,
+    type: row.type,
+    body: row.body,
+    status: row.status,
+    clientRef: row.clientRef,
+    waMessageId: row.waMessageId,
+    createdAt: row.createdAt.toISOString(),
   }
 }
 
@@ -76,8 +92,8 @@ export function createMessagesService(repo: MessagesRepository) {
   return {
     get,
 
-    async findByReference(sessionId: string, referenceId: string): Promise<MessageDto | null> {
-      const row = await repo.findByReference(sessionId, referenceId)
+    async findByClientRef(sessionId: string, clientRef: string): Promise<MessageDto | null> {
+      const row = await repo.findByClientRef(sessionId, clientRef)
       return row ? toMessageDto(row) : null
     },
 
@@ -88,7 +104,7 @@ export function createMessagesService(repo: MessagesRepository) {
       const { row, duplicate } = await repo.insertIdempotent({
         id: newId(),
         sessionId: input.sessionId,
-        referenceId: input.referenceId,
+        clientRef: input.clientRef,
         direction: 'out',
         type: 'text',
         body: input.text,
@@ -97,8 +113,17 @@ export function createMessagesService(repo: MessagesRepository) {
         customerId: input.customerId ?? null,
         customerName: input.customerName ?? null,
         broadcastId: input.broadcastId ?? null,
+        conversationId: input.conversationId ?? null,
       })
       return { message: toMessageDto(row), duplicate }
+    },
+
+    async ingestIncoming(
+      sessionId: string,
+      input: IncomingMessageValues,
+    ): Promise<{ message: RoomMessageDto; duplicate: boolean }> {
+      const { row, duplicate } = await repo.insertIncoming(sessionId, input)
+      return { message: toRoomMessageDto(row), duplicate }
     },
 
     async listBySession(
@@ -134,15 +159,15 @@ export function createMessagesService(repo: MessagesRepository) {
       sessionId: string,
       waMessageId: string,
       statusValue: number | string | null | undefined,
-    ): Promise<boolean> {
+    ): Promise<{ id: string; clientRef: string | null; status: MessageStatus } | null> {
       const next = mapBaileysStatus(statusValue)
-      if (!next) return false
+      if (!next) return null
       const row = await repo.findByWaMessageId(sessionId, waMessageId)
-      if (!row) return false
-      if (!shouldAdvanceStatus(row.status, next)) return false
+      if (!row) return null
+      if (!shouldAdvanceStatus(row.status, next)) return null
       await repo.updateStatus(row.id, next)
       await repo.addStatusEvent(row.id, next)
-      return true
+      return { id: row.id, clientRef: row.clientRef, status: next }
     },
 
     async retry(id: string): Promise<MessageDto> {

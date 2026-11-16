@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { areJidsSameUser, isIgnoredJid, jidDecode, toUserJid } from './jid.js'
+import {
+  areJidsSameUser,
+  isIgnoredJid,
+  jidDecode,
+  resolveConversationJid,
+  toUserJid,
+} from './jid.js'
 
 describe('utilitas JID', () => {
   it('menormalkan nomor ke JID user', () => {
@@ -28,5 +34,16 @@ describe('utilitas JID', () => {
       false,
     )
     expect(areJidsSameUser('bukan-jid', 'bukan-jid')).toBe(false)
+  })
+
+  it('memilih LID sebagai JID kanonis dan menyimpan PN sebagai alt', () => {
+    expect(resolveConversationJid('628123456789@s.whatsapp.net', '123456789012345@lid')).toEqual({
+      waJid: '123456789012345@lid',
+      waJidAlt: '628123456789@s.whatsapp.net',
+    })
+    expect(resolveConversationJid('628123456789@s.whatsapp.net')).toEqual({
+      waJid: '628123456789@s.whatsapp.net',
+      waJidAlt: null,
+    })
   })
 })

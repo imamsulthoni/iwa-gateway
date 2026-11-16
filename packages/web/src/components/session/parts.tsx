@@ -8,7 +8,9 @@ export const FIELD_INPUT =
 
 export function Panel({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn('flex flex-col rounded-card border border-line bg-surface p-[22px]', className)}>
+    <div
+      className={cn('flex flex-col rounded-card border border-line bg-surface p-[22px]', className)}
+    >
       {children}
     </div>
   )
@@ -24,7 +26,9 @@ export function CardLabel({ className, children }: { className?: string; childre
 
 export function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <span className="font-data text-label tracking-[1.1px] text-ink-soft uppercase">{children}</span>
+    <span className="font-data text-label tracking-[1.1px] text-ink-soft uppercase">
+      {children}
+    </span>
   )
 }
 
@@ -69,12 +73,7 @@ export function Stat({
   return (
     <div className={cn('flex flex-1 flex-col gap-[3px]', className)}>
       <p className="font-data text-[8.5px] tracking-[1px] text-ink-faint uppercase">{label}</p>
-      <p
-        className={cn(
-          'text-base font-semibold',
-          tone === 'danger' ? 'text-red' : 'text-ink',
-        )}
-      >
+      <p className={cn('text-base font-semibold', tone === 'danger' ? 'text-red' : 'text-ink')}>
         {value}
       </p>
     </div>
@@ -120,9 +119,7 @@ export function BroadcastRail({ broadcast }: { broadcast: BroadcastCurrentDto | 
             running ? 'bg-green-soft text-green' : 'bg-surface-soft text-ink-soft',
           )}
         >
-          <span
-            className={cn('size-[5px] rounded-pill', running ? 'bg-green' : 'bg-ink-soft')}
-          />
+          <span className={cn('size-[5px] rounded-pill', running ? 'bg-green' : 'bg-ink-soft')} />
           {broadcast.status ?? 'idle'}
         </span>
       </div>
@@ -143,12 +140,13 @@ export function BroadcastRail({ broadcast }: { broadcast: BroadcastCurrentDto | 
         <VRule />
         <Stat label="Gagal" value={String(broadcast.failed)} tone="danger" className="px-3" />
         <VRule />
-        <Stat
-          label="Sisa"
-          value={String(Math.max(broadcast.total - broadcast.done, 0))}
-          className="px-3"
-        />
+        <Stat label="Dilewati" value={String(broadcast.skipped)} className="px-3" />
+        <VRule />
+        <Stat label="Opt-out" value={String(broadcast.optedOut)} className="px-3" />
       </div>
+      {broadcast.pauseReason ? (
+        <p className="pt-3 text-note text-red">{broadcast.pauseReason}</p>
+      ) : null}
     </Panel>
   )
 }

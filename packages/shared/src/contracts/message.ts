@@ -4,7 +4,7 @@ import { MESSAGE_STATUSES } from '../constants/status.js'
 
 export const sendMessageSchema = z.object({
   to: z.string().min(8).max(32),
-  referenceId: z.string().min(1).max(191),
+  clientRef: z.string().min(1).max(191),
   text: z.string().min(1).max(4096),
   customerId: z.string().max(64).optional(),
   customerName: z.string().max(255).optional(),
@@ -12,11 +12,17 @@ export const sendMessageSchema = z.object({
 
 export type SendMessageInput = z.infer<typeof sendMessageSchema>
 
+export const sendMessageV1Schema = sendMessageSchema.extend({
+  sessionId: z.string().min(1).max(32),
+})
+
+export type SendMessageV1Input = z.infer<typeof sendMessageV1Schema>
+
 export const messageSchema = z.object({
   id: z.string(),
   sessionId: z.string(),
   to: z.string().nullable(),
-  referenceId: z.string().nullable(),
+  clientRef: z.string().nullable(),
   body: z.string().nullable(),
   status: z.enum(MESSAGE_STATUSES),
   waMessageId: z.string().nullable(),

@@ -50,6 +50,7 @@ const SESSION: WaSessionRow = {
   id: 's1',
   publicId: 's1',
   label: 'Sesi',
+  engine: 'baileys',
   phoneNumber: null,
   status: 'disconnected',
   lastQr: null,
@@ -59,6 +60,8 @@ const SESSION: WaSessionRow = {
   salesId: null,
   agentId: null,
   dailySendLimit: 200,
+  authFormat: 'v7',
+  pairingMethod: 'qr',
   createdAt: new Date(),
   updatedAt: new Date(),
 }
@@ -68,17 +71,23 @@ function createManager() {
     update: vi.fn(async () => undefined),
     findById: vi.fn(async () => SESSION),
   }
-  const messages = { applyStatusUpdate: vi.fn(async () => true) }
+  const messages = { applyStatusUpdate: vi.fn(async () => null) }
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
   const manager = new SessionManager({
     db: {} as never,
-    redis: { get: vi.fn(async () => null), del: vi.fn(async () => 1) } as never,
+    redis: {
+      get: vi.fn(async () => null),
+      del: vi.fn(async () => 1),
+      publish: vi.fn(async () => 1),
+    } as never,
     cipher: {} as never,
     logger: logger as never,
     browserName: 'test',
     lockTtlMs: 30_000,
     sessions: sessions as never,
     messages: messages as never,
+    optOuts: { recordKeyword: vi.fn(async () => false) } as never,
+    webhooks: { record: vi.fn(async () => 0) } as never,
   })
   return { manager, sessions, messages, logger }
 }
@@ -181,12 +190,7 @@ describe('SessionManager', () => {
     state.handlers['connection.update']?.({ qr: 'qr-string' })
 
     await vi.waitFor(() => expect(requestPairingCode).toHaveBeenCalledWith('628123456789'))
-    expect(redis.set).toHaveBeenCalledWith(
-      'wa:pairing:code:s1',
-      'ABCD-1234',
-      'EX',
-      600,
-    )
+    expect(redis.set).toHaveBeenCalledWith('wa:pairing:code:s1', 'ABCD-1234', 'EX', 600)
     expect(redis.del).toHaveBeenCalledWith('wa:pairing:request:s1')
     expect(sessions.update).toHaveBeenCalledWith('s1', {
       phoneNumber: '628123456789',
@@ -306,9 +310,7 @@ describe('SessionManager', () => {
   it('gagal menyimpan nomor tidak menggagalkan koneksi', async () => {
     const { manager, sessions, logger } = createManager()
     state.auth.state.creds.me = { id: '628123456789@s.whatsapp.net' }
-    sessions.update
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error('duplicate'))
+    sessions.update.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('duplicate'))
     await manager.start(SESSION)
 
     state.handlers['connection.update']?.({ connection: 'open' })

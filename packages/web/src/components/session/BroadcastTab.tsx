@@ -1,15 +1,11 @@
-import { Send } from 'lucide-react'
+import { Pause, Play, Send } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Badge, Button } from '../../design-system'
 import { api } from '../../lib/api'
 import { getDefaultDelay } from '../../lib/delay'
 import { usePolling } from '../../lib/format'
-import type {
-  BroadcastCurrentDto,
-  CreateBroadcastResponseDto,
-  SessionDto,
-} from '../../lib/types'
+import type { BroadcastCurrentDto, CreateBroadcastResponseDto, SessionDto } from '../../lib/types'
 import { BroadcastRail, CardLabel, NoteRow, Panel } from './parts'
 
 type BroadcastTabProps = {
@@ -38,7 +34,8 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
   const [text, setText] = useState('')
   const [minDelay, setMinDelay] = useState(defaults.min)
   const [maxDelay, setMaxDelay] = useState(defaults.max)
-  const [referenceId, setReferenceId] = useState('')
+  const [clientRef, setClientRef] = useState('')
+  const [scheduledAt, setScheduledAt] = useState('')
   const [created, setCreated] = useState<CreateBroadcastResponseDto | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cancelError, setCancelError] = useState<string | null>(null)
@@ -49,7 +46,10 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
   const average = (Number(minDelay) + Number(maxDelay)) / 2
   const estimateMinutes = Math.max(1, Math.ceil((parsed.length * average) / 60))
 
-  const live = broadcast?.status === 'running' || broadcast?.status === 'pending'
+  const live =
+    broadcast?.status === 'running' ||
+    broadcast?.status === 'pending' ||
+    broadcast?.status === 'scheduled'
   const current = usePolling<BroadcastCurrentDto>(
     () => api.get<BroadcastCurrentDto>(`/sessions/${session.id}/broadcast/current`),
     3_000,
@@ -61,22 +61,33 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
     setBusy(true)
     setError(null)
     try {
-      const response = await api.post<CreateBroadcastResponseDto>(
-        `/sessions/${session.id}/broadcast`,
-        {
-          recipients: parsed,
-          text,
-          minDelay: Number(minDelay),
-          maxDelay: Number(maxDelay),
-          referenceId: referenceId.trim() || `bc-${Date.now()}`,
-        },
-      )
+      const response = await api.post<CreateBroadcastResponseDto>('/v1/broadcasts', {
+        sessionId: session.id,
+        recipients: parsed,
+        text,
+        minDelay: Number(minDelay),
+        maxDelay: Number(maxDelay),
+        clientRef: clientRef.trim() || `bc-${Date.now()}`,
+        scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+      })
       setCreated(response)
       onRefresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Gagal memulai broadcast')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function control(action: 'start' | 'pause') {
+    if (!activeBroadcast?.jobId) return
+    setCancelError(null)
+    try {
+      await api.post(`/v1/broadcasts/${activeBroadcast.jobId}/${action}`)
+      current.refresh()
+      onRefresh()
+    } catch (cause) {
+      setCancelError(cause instanceof Error ? cause.message : 'Gagal mengubah broadcast')
     }
   }
 
@@ -151,7 +162,9 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
 
           <div className="flex items-center justify-between gap-3">
             <CardLabel>Delay acak</CardLabel>
-            <span className="font-data text-[8.5px] text-ink-faint">nilai awal dari Pengaturan</span>
+            <span className="font-data text-[8.5px] text-ink-faint">
+              nilai awal dari Pengaturan
+            </span>
           </div>
           <div className="h-2" />
           <div className="flex flex-wrap gap-3.5">
@@ -171,13 +184,24 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
             />
             <label className="flex min-w-[200px] flex-1 flex-col gap-1.5">
               <span className="font-data text-[8.5px] tracking-[1px] text-ink-faint uppercase">
-                Reference ID
+                Client Ref
               </span>
               <input
-                value={referenceId}
-                onChange={(event) => setReferenceId(event.target.value)}
+                value={clientRef}
+                onChange={(event) => setClientRef(event.target.value)}
                 placeholder="bc_ramadan_02"
                 className="h-[42px] w-full rounded-[9px] bg-bg px-3 font-data text-[12.5px] text-ink outline-none placeholder:text-ink-faint focus:ring-1 focus:ring-ink/15"
+              />
+            </label>
+            <label className="flex min-w-[200px] flex-1 flex-col gap-1.5">
+              <span className="font-data text-[8.5px] tracking-[1px] text-ink-faint uppercase">
+                Jadwal (opsional)
+              </span>
+              <input
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(event) => setScheduledAt(event.target.value)}
+                className="h-[42px] w-full rounded-[9px] bg-bg px-3 font-data text-[12px] text-ink outline-none focus:ring-1 focus:ring-ink/15"
               />
             </label>
           </div>
@@ -190,7 +214,7 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
               onClick={() => void start()}
             >
               <Send className="size-[13px]" aria-hidden />
-              {busy ? 'Memulai...' : 'Mulai broadcast'}
+              {busy ? 'Memproses...' : scheduledAt ? 'Jadwalkan broadcast' : 'Mulai broadcast'}
             </Button>
             <div className="flex flex-col items-end gap-0.5">
               <p className="font-data text-[9.5px] text-ink-soft">
@@ -212,16 +236,42 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
         {activeBroadcast?.jobId ? (
           <div key={activeBroadcast.jobId} className="flex flex-col gap-4">
             <BroadcastRail broadcast={activeBroadcast} />
-            {activeBroadcast.status === 'running' || activeBroadcast.status === 'pending' ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-[32px] self-start border-line px-3.5 text-[11.5px] text-red hover:bg-red-soft"
-                onClick={() => void cancel()}
-              >
-                Batalkan broadcast
-              </Button>
-            ) : null}
+            <div className="flex flex-wrap gap-2">
+              {activeBroadcast.status === 'running' || activeBroadcast.status === 'pending' ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-[32px] px-3.5 text-[11.5px]"
+                  onClick={() => void control('pause')}
+                >
+                  <Pause className="size-3" aria-hidden />
+                  Jeda
+                </Button>
+              ) : null}
+              {activeBroadcast.status === 'paused' || activeBroadcast.status === 'scheduled' ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-[32px] px-3.5 text-[11.5px]"
+                  onClick={() => void control('start')}
+                >
+                  <Play className="size-3" aria-hidden />
+                  Lanjutkan
+                </Button>
+              ) : null}
+              {['scheduled', 'pending', 'running', 'paused'].includes(
+                activeBroadcast.status ?? '',
+              ) ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-[32px] border-line px-3.5 text-[11.5px] text-red hover:bg-red-soft"
+                  onClick={() => void cancel()}
+                >
+                  Batalkan broadcast
+                </Button>
+              ) : null}
+            </div>
             <Panel className="gap-0 pt-[18px] pr-[18px] pb-2.5 pl-[18px]">
               <div className="flex items-center justify-between gap-3">
                 <CardLabel>Penerima</CardLabel>
@@ -238,6 +288,9 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
                           {recipient.name ?? recipient.to}
                         </p>
                         <p className="font-data text-[8.5px] text-ink-faint">{recipient.to}</p>
+                        {recipient.error ? (
+                          <p className="font-data text-[8.5px] text-red">{recipient.error}</p>
+                        ) : null}
                       </div>
                       <Badge tone={recipientTone(recipient.status)}>{recipient.status}</Badge>
                     </div>
@@ -273,7 +326,9 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
         )}
 
         {created ? (
-          <p className="font-data text-[9px] break-all text-ink-faint">Job {created.jobId}</p>
+          <p className="font-data text-[9px] break-all text-ink-faint">
+            Job {created.jobId} · {created.status}
+          </p>
         ) : null}
 
         <Panel className="gap-2.5 p-[18px]">
@@ -302,7 +357,9 @@ function NumberField({
 }) {
   return (
     <label className="flex w-[150px] flex-col gap-1.5">
-      <span className="font-data text-[8.5px] tracking-[1px] text-ink-faint uppercase">{label}</span>
+      <span className="font-data text-[8.5px] tracking-[1px] text-ink-faint uppercase">
+        {label}
+      </span>
       <div className="flex h-[42px] items-center justify-between rounded-[9px] bg-bg px-3">
         <input
           type="number"

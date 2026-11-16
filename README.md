@@ -1,6 +1,6 @@
 # WA Bot Service
 
-Monorepo layanan WhatsApp berbasis Baileys: API Hono, worker BullMQ, MySQL 8, Redis 7, dan dashboard React 19 + TanStack Router. **Fase 1** — kelola nomor (QR/pairing code), kirim pesan teks, broadcast teks dengan jeda acak dan batas harian, riwayat pesan keluar, dan statistik. Tanpa pesan masuk, media, webhook, atau multi-tenant.
+Monorepo layanan WhatsApp berbasis Baileys: API Hono, worker BullMQ, MySQL 8, Redis 7, dan dashboard React 19 + TanStack Router. **Fase 1** — kelola nomor (QR/pairing code), kirim pesan teks, broadcast teks dengan jeda acak dan batas harian, riwayat pesan keluar, dan statistik. **Fase 2** — inbox/room chat per JID (teks dan label non-teks), SSE real-time, webhook keluar dengan HMAC + retry, opt-out global per nomor, dan broadcast terjadwal dengan pause/resume. Tanpa media, master kontak, user/role/JWT, template, import riwayat, Cloud API, atau multi-tenant.
 
 ## Prasyarat
 
@@ -45,21 +45,23 @@ pnpm dev
 
 Hanya ada satu file env: `.env` di root. Jangan membuat env di dalam `packages/`.
 
-| Variabel              | Contoh                                     | Dipakai                      |
-| --------------------- | ------------------------------------------ | ---------------------------- |
-| `NODE_ENV`            | `development`                              | semua                        |
-| `PORT`                | `8467`                                     | api                          |
-| `DATABASE_URL`        | `mysql://wa:wa@localhost:3306/wa_bot`      | api, worker, drizzle, seed   |
-| `DATABASE_URL_TEST`   | `mysql://wa:wa@localhost:3306/wa_bot_test` | test integrasi               |
-| `REDIS_URL`           | `redis://localhost:6379`                   | api, worker                  |
-| `AUTH_ENC_KEY`        | base64 32 byte                             | worker (enkripsi auth state) |
-| `LOG_LEVEL`           | `info`                                     | api, worker                  |
-| `APP_TIMEZONE`        | `Asia/Jakarta`                             | api, worker                  |
-| `CORS_ORIGIN`         | `http://localhost:8468`                    | api                          |
-| `BROWSER_NAME`        | `WA Bot Service`                           | worker                       |
-| `SESSION_LOCK_TTL_MS` | `30000`                                    | worker                       |
-| `RATE_LIMIT_PER_MIN`  | `240`                                       | api                          |
-| `VITE_API_BASE_URL`   | `http://localhost:8467`                    | web                          |
+| Variabel                     | Contoh                                     | Dipakai                        |
+| ---------------------------- | ------------------------------------------ | ------------------------------ |
+| `NODE_ENV`                   | `development`                              | semua                          |
+| `PORT`                       | `8467`                                     | api                            |
+| `DATABASE_URL`               | `mysql://wa:wa@localhost:3306/wa_bot`      | api, worker, drizzle, seed     |
+| `DATABASE_URL_TEST`          | `mysql://wa:wa@localhost:3306/wa_bot_test` | test integrasi                 |
+| `REDIS_URL`                  | `redis://localhost:6379`                   | api, worker                    |
+| `AUTH_ENC_KEY`               | base64 32 byte                             | worker (enkripsi auth state)   |
+| `LOG_LEVEL`                  | `info`                                     | api, worker                    |
+| `APP_TIMEZONE`               | `Asia/Jakarta`                             | api, worker                    |
+| `CORS_ORIGIN`                | `http://localhost:8468`                    | api                            |
+| `BROWSER_NAME`               | `WA Bot Service`                           | worker                         |
+| `SESSION_LOCK_TTL_MS`        | `30000`                                    | worker                         |
+| `RATE_LIMIT_PER_MIN`         | `240`                                      | api                            |
+| `BROADCAST_AUTO_PAUSE_RATIO` | `0.2`                                      | worker (auto-pause broadcast)  |
+| `LOG_DIR`                    | `logs` (opsional)                          | api, worker (log JSON ke file) |
+| `VITE_API_BASE_URL`          | `http://localhost:8467`                    | web                            |
 
 Buat `AUTH_ENC_KEY` dengan `openssl rand -base64 32`. Hanya variabel `VITE_*` yang diekspos ke web.
 
@@ -102,55 +104,166 @@ Keduanya membaca environment container (bukan file `.env`). Worker memegang lock
 - Secret (`AUTH_ENC_KEY`, `DATABASE_URL`, `REDIS_URL`) hanya dari environment/secret manager — tidak pernah masuk repo atau log.
 - Auth state (creds + keys) terenkripsi AES-256-GCM di database. Backup database harus terenkripsi dan diuji restore-nya; sesi tetap terhubung setelah restore karena auth state dibaca ulang saat worker start.
 
+### Log
+
+Log ditulis sebagai JSON line ke stdout (tertangkap `docker logs`/journald). Set `LOG_DIR=logs` bila ingin salinan lokal: API menulis `logs/api.log`, worker menulis `logs/worker.log`. Secret tetap diredaksi (`creds`, `value`, `token`, `x-api-key`).
+
+Berkas log tidak dirotasi aplikasi; serahkan ke logrotate:
+
+```
+logs/*.log {
+  daily
+  rotate 7
+  compress
+  missingok
+  notifempty
+  copytruncate
+}
+```
+
+### Metrik
+
+`GET /` (publik, tanpa API key) mengembalikan `status`, `checks`, dan `metrics`:
+
+| Field                                          | Arti                                                                       |
+| ---------------------------------------------- | -------------------------------------------------------------------------- |
+| `inbound.processed` / `duplicates` / `nonText` | Pesan `notify` yang diproses, event ganda yang dibuang, dan pesan non-teks |
+| `sse.activeConnections`                        | Koneksi SSE terbuka pada instance API yang menjawab                        |
+| `webhooks.delivered` / `failed` / `retry`      | Hasil dispatch webhook sejak counter terakhir direset                      |
+| `webhooks.pendingDue` / `outboxLagMs`          | Delivery jatuh tempo yang belum terkirim dan umur yang tertua              |
+| `optOuts` / `broadcastsPaused`                 | Jumlah nomor opt-out dan broadcast berstatus `paused`                      |
+
+`status` menjadi `degraded` bila database/Redis gagal atau `webhooks.outboxLagMs` melebihi 30 detik. Counter disimpan di hash Redis `wa:metrics` (bertahan saat proses restart) dan direset dengan `redis-cli DEL wa:metrics`; angka `optOuts`, `broadcastsPaused`, `pendingDue`, dan `outboxLagMs` dibaca langsung dari database.
+
 ## Dokumentasi API
+
+Referensi interaktif: `GET /openapi.json` (OpenAPI 3.1) dan `GET /docs` (Scalar).
 
 Auth: header `x-api-key` (API key admin) untuk semua endpoint, kecuali dua endpoint pesan per sesi yang juga menerima `Authorization: Bearer <token sesi>`.
 
 - Format error: `{ "error": { "code": "snake_case", "message": "..." } }`
 - Pagination: `limit` (default 20, maksimum 100) + `cursor` opak → `{ "items": [...], "nextCursor": "..." }`
 - Pekerjaan asinkron (kirim pesan, broadcast) → `202` + id dan status awal
-- Kirim pesan hanya diterima bila sesi berstatus `connected`; selain itu `422` (replay `referenceId` lama tetap `200`)
+- Kirim pesan hanya diterima bila sesi berstatus `connected`; selain itu `422` (replay `clientRef` lama tetap `200`)
 - Semua waktu ISO-8601 UTC; "hari ini" memakai `APP_TIMEZONE`
+- Rate limit per API key dan per sesi → `429` + `Retry-After`
+- SSE memakai `fetch` streaming + header `x-api-key`, bukan `EventSource`
 
-| Endpoint                              | Fungsi                                                    |
-| ------------------------------------- | --------------------------------------------------------- |
-| `GET /`                               | Nama, versi, status dependensi (database, redis)          |
-| `GET /stats`                          | Sesi terhubung, pesan hari ini, total pesan, broadcast    |
-| `GET /sessions`                       | Daftar sesi                                               |
-| `POST /sessions`                      | Buat sesi (mode `qr`/`pairing`) + token sekali tampil     |
-| `GET /sessions/:id`                   | Detail sesi                                               |
-| `GET /sessions/:id/status`            | Status internal + label UI + sales/agent                  |
-| `GET /sessions/:id/qr`                | QR sebagai data-URL                                       |
-| `GET /sessions/:id/pairing`           | Kode pairing                                              |
-| `POST /sessions/:id/pairing`          | Minta kode pairing untuk nomor                            |
-| `POST /sessions/:id/login`            | Login ulang setelah `logged_out`                          |
-| `POST /sessions/:id/token`            | Rotasi token sesi (tampil sekali)                         |
-| `POST /sessions/:id/logout`           | Logout sesi                                               |
-| `DELETE /sessions/:id`                | Hapus sesi + auth state (cascade)                         |
-| `POST /sessions/:id/messages`         | Kirim pesan teks — admin key atau token sesi              |
-| `GET /sessions/:id/messages`          | Riwayat pesan keluar per sesi (`limit`, `cursor`)         |
-| `POST /sessions/:id/broadcast`        | Buat dan mulai broadcast                                  |
-| `GET /sessions/:id/broadcast/current` | Job broadcast berjalan/terakhir                           |
-| `POST /sessions/:id/broadcast/cancel` | Batalkan broadcast berjalan                               |
-| `GET /messages`                       | Riwayat lintas sesi (`limit`, `sessionId`)                |
-| `DELETE /messages/:id`                | Soft delete satu entri riwayat                            |
-| `POST /messages/:id/retry`            | Kirim ulang pesan berstatus `failed`                      |
+### Endpoint Fase 1
+
+| Endpoint                              | Fungsi                                                 |
+| ------------------------------------- | ------------------------------------------------------ |
+| `GET /`                               | Nama, versi, status dependensi (database, redis)       |
+| `GET /stats`                          | Sesi terhubung, pesan hari ini, total pesan, broadcast |
+| `GET /sessions`                       | Daftar sesi                                            |
+| `POST /sessions`                      | Buat sesi (mode `qr`/`pairing`) + token sekali tampil  |
+| `GET /sessions/:id`                   | Detail sesi                                            |
+| `GET /sessions/:id/live`              | Gabungan state dashboard: sesi, QR, pairing, broadcast |
+| `GET /sessions/:id/status`            | Status internal + label UI + sales/agent               |
+| `GET /sessions/:id/qr`                | QR sebagai data-URL                                    |
+| `GET /sessions/:id/pairing`           | Kode pairing                                           |
+| `POST /sessions/:id/pairing`          | Minta kode pairing untuk nomor                         |
+| `POST /sessions/:id/cancel`           | Batalkan proses pairing                                |
+| `POST /sessions/:id/login`            | Login ulang setelah `logged_out`                       |
+| `POST /sessions/:id/token`            | Rotasi token sesi (tampil sekali)                      |
+| `POST /sessions/:id/logout`           | Logout sesi                                            |
+| `DELETE /sessions/:id`                | Hapus sesi + auth state (cascade)                      |
+| `POST /sessions/:id/messages`         | Kirim pesan teks — admin key atau token sesi           |
+| `GET /sessions/:id/messages`          | Riwayat pesan keluar per sesi (`limit`, `cursor`)      |
+| `POST /sessions/:id/broadcast`        | Buat dan mulai broadcast                               |
+| `GET /sessions/:id/broadcast/current` | Job broadcast berjalan/terakhir                        |
+| `POST /sessions/:id/broadcast/cancel` | Batalkan broadcast berjalan                            |
+| `GET /messages`                       | Riwayat lintas sesi (`limit`, `sessionId`)             |
+| `DELETE /messages/:id`                | Soft delete satu entri riwayat                         |
+| `POST /messages/:id/retry`            | Kirim ulang pesan berstatus `failed`                   |
+
+### Endpoint Fase 2 (`/v1`)
+
+| Endpoint                              | Fungsi                                                              |
+| ------------------------------------- | ------------------------------------------------------------------- |
+| `GET /v1/sessions/:id/events`         | Stream SSE: status sesi, QR, pesan masuk, status pesan              |
+| `GET /v1/sessions/:id/conversations`  | Daftar room chat sesi, urut `lastMessageAt` terbaru (cursor)        |
+| `GET /v1/conversations/:id/messages`  | Riwayat pesan satu room (cursor)                                    |
+| `POST /v1/conversations/:id/read`     | Tandai room dibaca: reset unread dan status pesan masuk jadi `read` |
+| `POST /v1/messages`                   | Kirim pesan teks (`sessionId`, `to`, `text`, `clientRef`)           |
+| `POST /v1/broadcasts`                 | Broadcast teks, opsional `scheduledAt` (ISO-8601 UTC)               |
+| `GET /v1/broadcasts/:id`              | Status, progres, dan status per penerima                            |
+| `POST /v1/broadcasts/:id/start`       | Mulai broadcast terjadwal atau lanjutkan yang dijeda                |
+| `POST /v1/broadcasts/:id/pause`       | Jeda broadcast; penerima tersisa tetap `pending`                    |
+| `GET /v1/webhooks`                    | Daftar endpoint webhook (tanpa secret)                              |
+| `POST /v1/webhooks`                   | Daftarkan endpoint + event; secret tampil sekali                    |
+| `PATCH /v1/webhooks/:id`              | Ubah URL, event, atau status aktif                                  |
+| `DELETE /v1/webhooks/:id`             | Hapus endpoint beserta log delivery                                 |
+| `POST /v1/webhooks/:id/rotate-secret` | Rotasi secret (tampil sekali)                                       |
+| `GET /v1/webhooks/:id/deliveries`     | Log delivery (`limit`, `cursor`, filter `status`)                   |
 
 `:id` adalah `public_id` sesi (slug 1–32 karakter `[A-Za-z0-9_-]`).
 
-### Checklist non-goal Fase 1
+### Webhook keluar
 
-Fitur berikut sengaja TIDAK ada di Fase 1 dan tidak boleh ikut ter-commit:
+- Event: `message.status`, `message.received`, `session.status`.
+- URL wajib HTTPS; `http://` hanya diterima untuk `localhost`/loopback saat uji lokal. Secret 64 karakter hex dibuat server dan hanya muncul saat create/rotate.
+- Header: `X-Event-Id` (id delivery, stabil antar retry) dan `X-Signature: sha256=<HMAC-SHA256(body, secret endpoint)>`.
+- Timeout 10 detik, maksimal 3 percobaan (awal + 2 retry) dengan jeda 10 lalu 20 detik; setelah itu status `failed`. Balasan non-2xx dihitung gagal; delivery ke endpoint nonaktif langsung `failed`.
+- Penerima sebaiknya idempoten berdasarkan `X-Event-Id`.
 
-- [ ] Pesan masuk, room chat, kontak, opt-out
-- [ ] Webhook keluar (`webhook_endpoints`, `webhook_deliveries`)
-- [ ] Login user, role, JWT dashboard
-- [ ] Media (gambar, dokumen, audio) dan template variabel
-- [ ] Chat grup, channel, status/stories, panggilan
-- [ ] Chatbot / auto-reply
+```json
+{
+  "id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f60",
+  "type": "message.received",
+  "session_id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f61",
+  "data": {
+    "message_id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f62",
+    "conversation_id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f63",
+    "from": "6281234567890@s.whatsapp.net",
+    "type": "image",
+    "body": "Gambar",
+    "occurred_at": "2026-11-17T03:00:00.000Z"
+  }
+}
+```
+
+```json
+{
+  "id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f64",
+  "type": "session.status",
+  "session_id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f61",
+  "data": {
+    "status": "connected",
+    "phone_number": "6281234567890",
+    "occurred_at": "2026-11-17T03:00:00.000Z"
+  }
+}
+```
+
+### SSE
+
+Envelope mengikuti format SSE: `id`, `event`, `data` (JSON). Heartbeat komentar `: ping` dikirim setiap 15 detik; koneksi ditutup bila sesi dihapus.
+
+```bash
+curl -N -H "x-api-key: $API_KEY" http://localhost:8467/v1/sessions/<public_id>/events
+```
+
+```text
+id: 0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f65
+event: message.received
+data: {"message":{"id":"0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f62","conversationId":"0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f63","sessionId":"0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f61","direction":"in","type":"text","body":"Halo","status":"delivered","clientRef":null,"waMessageId":"3EB0...","createdAt":"2026-11-17T03:00:00.000Z"}}
+```
+
+Event yang mungkin: `session.status`, `session.qr`, `message.received`, `message.status`. Bentuk data mengikuti kontrak zod di `packages/shared/src/contracts/event.ts`.
+
+### Checklist non-goal Fase 2
+
+Fitur berikut sengaja TIDAK ada di Fase 2 dan tidak boleh ikut ter-commit:
+
+- [ ] Media (gambar, dokumen, audio, video, sticker) diunduh atau disimpan — hanya label jenis di `messages.type`/`body`
+- [ ] Master kontak/profil customer dan tabel `contacts`
+- [ ] User internal, role, dan JWT dashboard
+- [ ] Template variabel/segmentasi
+- [ ] Import riwayat chat
 - [ ] Adapter Cloud API resmi
-- [ ] Pesan interaktif (tombol, list)
 - [ ] Tenant / `tenant_id` di skema mana pun
+- [ ] Chat grup, channel/status, chatbot, dan pesan interaktif
 
 ## Verifikasi
 

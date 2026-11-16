@@ -4,14 +4,17 @@ import type { Redis } from 'ioredis'
 import {
   BROADCAST_QUEUE,
   SEND_QUEUE,
+  WEBHOOK_QUEUE,
   type BroadcastRunJob,
   type SendMessageJob,
+  type WebhookDispatchJob,
 } from '../../infra/queue.js'
 import type { AppLogger } from '../../infra/logger.js'
 
 export type ProcessorHandlers = {
   sendMessage: (job: Job<SendMessageJob>) => Promise<void>
   broadcastRun: (job: Job<BroadcastRunJob>) => Promise<void>
+  webhookDispatch: (job: Job<WebhookDispatchJob>) => Promise<void>
 }
 
 export type ProcessorRegistry = {
@@ -33,6 +36,11 @@ export function startProcessors(
     handlers.broadcastRun,
     options,
   )
+  const webhookWorker = new Worker<WebhookDispatchJob>(
+    WEBHOOK_QUEUE,
+    handlers.webhookDispatch,
+    options,
+  )
 
   sendWorker.on('failed', (job, error) => {
     logger.error({ jobId: job?.id, err: error }, 'Job kirim pesan gagal')
@@ -40,10 +48,13 @@ export function startProcessors(
   broadcastWorker.on('failed', (job, error) => {
     logger.error({ jobId: job?.id, err: error }, 'Job broadcast gagal')
   })
+  webhookWorker.on('failed', (job, error) => {
+    logger.error({ jobId: job?.id, err: error }, 'Job webhook gagal')
+  })
 
   return {
     async close() {
-      await Promise.all([sendWorker.close(), broadcastWorker.close()])
+      await Promise.all([sendWorker.close(), broadcastWorker.close(), webhookWorker.close()])
     },
   }
 }

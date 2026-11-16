@@ -38,19 +38,31 @@ export const MESSAGE_STATUS_RANK: Record<MessageStatus, number> = {
   failed: 3,
 }
 
-export const BROADCAST_STATUSES = ['pending', 'running', 'done', 'failed', 'cancelled'] as const
+export const BROADCAST_STATUSES = [
+  'draft',
+  'scheduled',
+  'pending',
+  'running',
+  'paused',
+  'done',
+  'failed',
+  'cancelled',
+] as const
 
 export type BroadcastStatus = (typeof BROADCAST_STATUSES)[number]
 
 export const BROADCAST_STATUS_LABELS: Record<BroadcastStatus, string> = {
+  draft: 'Draf',
+  scheduled: 'Terjadwal',
   pending: 'Menunggu',
   running: 'Berjalan',
+  paused: 'Dijeda',
   done: 'Selesai',
   failed: 'Gagal',
   cancelled: 'Dibatalkan',
 }
 
-export const RECIPIENT_STATUSES = ['pending', 'sent', 'failed'] as const
+export const RECIPIENT_STATUSES = ['pending', 'sent', 'failed', 'skipped'] as const
 
 export type RecipientStatus = (typeof RECIPIENT_STATUSES)[number]
 
@@ -58,8 +70,14 @@ export const RECIPIENT_STATUS_LABELS: Record<RecipientStatus, string> = {
   pending: 'Menunggu',
   sent: 'Terkirim',
   failed: 'Gagal',
+  skipped: 'Dilewati',
 }
 
 export const MESSAGE_DIRECTIONS = ['in', 'out'] as const
 
 export type MessageDirection = (typeof MESSAGE_DIRECTIONS)[number]
+
+export const OPT_OUT_SOURCES = ['keyword', 'manual'] as const
+
+export type OptOutSource = (typeof OPT_OUT_SOURCES)[number]
+

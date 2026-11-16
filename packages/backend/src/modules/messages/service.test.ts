@@ -8,9 +8,10 @@ import { createMessagesService } from './service.js'
 function row(overrides: Partial<MessageRow> = {}): MessageRow {
   return {
     id: 'm1',
+    conversationId: null,
     sessionId: 's1',
     waMessageId: null,
-    referenceId: 'ref-1',
+    clientRef: 'ref-1',
     direction: 'out',
     type: 'text',
     body: 'Halo',

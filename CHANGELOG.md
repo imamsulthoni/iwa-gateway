@@ -3,6 +3,36 @@
 Semua perubahan penting pada proyek ini dicatat di sini.
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+Fase 2 (F2-M0 sampai F2-M3): inbox/room chat, SSE, webhook, opt-out, dan broadcast lanjutan. Versi paket masih `0.1.0`; rilis Fase 2 baru ditandai setelah F2-M4 (T9) selesai.
+
+### Added
+
+- Inbox dan room chat per JID: pesan masuk `notify` (teks dan label non-teks seperti `image`/`document`) tersimpan idempoten lewat `(session_id, wa_message_id)`, percakapan di-upsert dengan LID kanonis + PN alternatif, unread count, dan `POST /v1/conversations/:id/read`.
+- SSE `GET /v1/sessions/:id/events` lewat Redis pub/sub dengan envelope `id`/`event`/`data`, heartbeat 15 detik, dan auth `x-api-key` melalui `fetch` streaming.
+- Webhook keluar: CRUD endpoint, secret sekali tampil + rotasi, outbox `webhook_deliveries`, dispatcher `SELECT ... FOR UPDATE SKIP LOCKED`, HMAC `sha256=`, `X-Event-Id` stabil, timeout 10 detik, retry 3 percobaan (jeda 10 lalu 20 detik), dan log delivery.
+- Opt-out global per nomor lewat kata kunci `STOP`/`BERHENTI`/`UNSUBSCRIBE` (case-insensitive); penerima opt-out ditandai `skipped` saat broadcast dan tidak dihitung ke batas harian.
+- Broadcast terjadwal (`scheduledAt`), kendali `start`/`pause` tanpa duplikasi, auto-pause saat rasio gagal melewati `BROADCAST_AUTO_PAUSE_RATIO` setelah minimal 20 penerima, dan alasan jeda di API.
+- UI: halaman inbox, pengaturan webhook, serta jadwal dan kendali broadcast.
+- Metrik operasional di `GET /` (pesan masuk diproses/duplikat/non-teks, koneksi SSE aktif, webhook delivered/failed/retry, outbox lag, opt-out, broadcast paused) dan `status: degraded` saat outbox tertinggal atau dependensi mati.
+- Log JSON opsional ke file lokal lewat `LOG_DIR` (`logs/api.log`, `logs/worker.log`) tanpa mengubah format stdout.
+
+### Changed
+
+- Breaking change: field idempotensi `referenceId` menjadi `clientRef` pada API pesan dan broadcast (kolom `reference_id` di-rename menjadi `client_ref`, data lama tetap terbaca).
+- Skema target 12 tabel: `conversations`, `opt_outs`, `webhook_endpoints`, `webhook_deliveries`; `broadcasts.template` → `text`; status broadcast/recipient diperluas.
+- Endpoint Fase 2 memakai prefiks `/v1`; endpoint Fase 1 tetap tanpa prefiks.
+
+### Security
+
+- Secret webhook tidak pernah dikembalikan pada list/update, hanya saat create/rotate; header `X-Signature` memakai HMAC-SHA256 body.
+- URL webhook wajib HTTPS (loopback hanya untuk uji lokal) dan endpoint `/v1` memakai rate limit per API key.
+
+### Migrasi
+
+- Tiga migrasi Drizzle (`0000`–`0002`) menjalankan rename `client_ref`, kolom `conversations`/`messages.conversation_id`, `opt_outs`, `webhook_*`, dan kolom `wa_sessions.engine`/`auth_format`/`pairing_method`. Jalankan `pnpm db:migrate` setelah backup; Drizzle tidak menyediakan down migration, sehingga rollback dilakukan dengan restore backup.
+
 ## [0.1.0] - 2026-11-15
 
 Fase 1: fondasi, sesi multi-nomor, kirim pesan, broadcast, dashboard.

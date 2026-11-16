@@ -10,6 +10,8 @@ export const PAGE_SIZE_OPTIONS = [20, 50, 100] as const
 
 export const DAILY_SEND_LIMIT_DEFAULT = 200
 
+export const BROADCAST_AUTO_PAUSE_MIN_RECIPIENTS = 20
+
 export function isValidDelayRange(minSeconds: number, maxSeconds: number): boolean {
   return (
     Number.isInteger(minSeconds) &&

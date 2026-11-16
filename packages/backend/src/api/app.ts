@@ -9,19 +9,28 @@ import type { QueueRegistry } from '../infra/queue.js'
 import type { RedisClient } from '../infra/redis.js'
 import type { ApiKeyAuthenticator } from '../modules/auth/api-key.js'
 import type { BroadcastsService } from '../modules/broadcasts/service.js'
+import type { ConversationsService } from '../modules/conversations/service.js'
 import type { MessagesService } from '../modules/messages/service.js'
 import type { WaSessionRow } from '../db/schema.js'
 import type { SessionsService } from '../modules/sessions/service.js'
 import type { StatsService } from '../modules/stats/service.js'
+import type { WebhooksService } from '../modules/webhooks/service.js'
 import { apiKeyMiddleware } from './middleware/api-key.js'
 import { handleError, notFound } from './middleware/error.js'
 import { rateLimitMiddleware, sessionRateLimitMiddleware } from './middleware/rate-limit.js'
 import { createOpenApiApp, openApiDocumentConfig } from './openapi.js'
-import { createBroadcastsRoute } from './routes/broadcasts.js'
+import { createBroadcastsRoute, createBroadcastsV1Route } from './routes/broadcasts.js'
+import { createConversationsRoute } from './routes/conversations.js'
+import { createEventsRoute } from './routes/events.js'
 import { createHealthRoute } from './routes/health.js'
-import { createMessagesRoute, createSessionMessagesRoute } from './routes/messages.js'
+import {
+  createMessagesRoute,
+  createSessionMessagesRoute,
+  createV1MessagesRoute,
+} from './routes/messages.js'
 import { createSessionsRoute } from './routes/sessions.js'
 import { createStatsRoute } from './routes/stats.js'
+import { createWebhooksRoute } from './routes/webhooks.js'
 
 export type AppBindings = {
   Variables: {
@@ -38,8 +47,10 @@ export type AppDependencies = {
   auth: ApiKeyAuthenticator
   sessions: SessionsService
   messages: MessagesService
+  conversations: ConversationsService
   broadcasts: BroadcastsService
   stats: StatsService
+  webhooks: WebhooksService
   queues: QueueRegistry
 }
 
@@ -69,10 +80,7 @@ export function createApp(deps: AppDependencies) {
 
   // Dokumentasi API sengaja publik dan didaftarkan sebelum middleware API key.
   app.get('/openapi.json', (c) => c.json(app.getOpenAPI31Document(openApiDocumentConfig)))
-  app.get(
-    '/docs',
-    Scalar({ url: '/openapi.json', pageTitle: openApiDocumentConfig.info.title }),
-  )
+  app.get('/docs', Scalar({ url: '/openapi.json', pageTitle: openApiDocumentConfig.info.title }))
 
   app.route('/', createHealthRoute({ db: deps.db, redis: deps.redis }))
 
@@ -83,7 +91,13 @@ export function createApp(deps: AppDependencies) {
   const sessionRateLimit = sessionRateLimitMiddleware(deps.redis, deps.env.RATE_LIMIT_PER_MIN)
   app.route(
     '/sessions',
-    createSessionMessagesRoute(deps.sessions, deps.messages, deps.queues, deps.auth, sessionRateLimit),
+    createSessionMessagesRoute(
+      deps.sessions,
+      deps.messages,
+      deps.queues,
+      deps.auth,
+      sessionRateLimit,
+    ),
   )
 
   app.use('/sessions', requireApiKey, rateLimit)
@@ -94,6 +108,17 @@ export function createApp(deps: AppDependencies) {
   app.route('/sessions', createSessionsRoute(deps.sessions, deps.broadcasts, deps.redis))
   app.route('/sessions', createBroadcastsRoute(deps.broadcasts, deps.queues))
   app.route('/messages', createMessagesRoute(deps.messages, deps.queues))
+
+  app.use('/v1', requireApiKey, rateLimit)
+  app.use('/v1/*', requireApiKey, rateLimit)
+  app.route(
+    '/v1',
+    createV1MessagesRoute(deps.messages, deps.conversations, deps.sessions, deps.queues),
+  )
+  app.route('/v1', createConversationsRoute(deps.conversations, deps.sessions))
+  app.route('/v1', createBroadcastsV1Route(deps.broadcasts, deps.sessions, deps.queues))
+  app.route('/v1', createWebhooksRoute(deps.webhooks))
+  app.route('/v1', createEventsRoute(deps.sessions, deps.redis, deps.logger))
 
   app.notFound(notFound)
   app.onError((error, c) => handleError(error, c, deps.logger))

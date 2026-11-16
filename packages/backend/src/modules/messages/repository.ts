@@ -1,12 +1,23 @@
-import { and, desc, eq, gte, inArray, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 
 import type { Database } from '../../db/client.js'
-import { messages, messageStatusEvents, type MessageRow } from '../../db/schema.js'
+import { newId } from '../../db/id.js'
+import { conversations, messages, messageStatusEvents, type MessageRow } from '../../db/schema.js'
 import { isDuplicateKeyError } from '../db-errors.js'
 
 export type MessageCursor = {
   createdAt: Date
   id: string
+}
+
+export type IncomingMessageValues = {
+  waJid: string
+  waJidAlt: string | null
+  waMessageId: string
+  type: string
+  body: string | null
+  raw: unknown
+  waTimestamp: Date | null
 }
 
 export type MessagesRepository = ReturnType<typeof createMessagesRepository>
@@ -17,16 +28,106 @@ export function createMessagesRepository(db: Database) {
     return row ?? null
   }
 
-  async function findByReference(
+  async function findByClientRef(sessionId: string, clientRef: string): Promise<MessageRow | null> {
+    const [row] = await db
+      .select()
+      .from(messages)
+      .where(and(eq(messages.sessionId, sessionId), eq(messages.clientRef, clientRef)))
+      .limit(1)
+    return row ?? null
+  }
+
+  async function findByWaMessageId(
     sessionId: string,
-    referenceId: string,
+    waMessageId: string,
   ): Promise<MessageRow | null> {
     const [row] = await db
       .select()
       .from(messages)
-      .where(and(eq(messages.sessionId, sessionId), eq(messages.referenceId, referenceId)))
+      .where(and(eq(messages.sessionId, sessionId), eq(messages.waMessageId, waMessageId)))
       .limit(1)
     return row ?? null
+  }
+
+  async function insertIncoming(
+    sessionId: string,
+    input: IncomingMessageValues,
+  ): Promise<{ row: MessageRow; duplicate: boolean }> {
+    const existing = await findByWaMessageId(sessionId, input.waMessageId)
+    if (existing) return { row: existing, duplicate: true }
+
+    try {
+      return await db.transaction(async (tx) => {
+        const at = input.waTimestamp ?? new Date()
+        const addresses = [input.waJid, input.waJidAlt].filter((jid): jid is string => Boolean(jid))
+        const [existing] = await tx
+          .select()
+          .from(conversations)
+          .where(
+            and(
+              eq(conversations.sessionId, sessionId),
+              or(
+                inArray(conversations.waJid, addresses),
+                inArray(conversations.waJidAlt, addresses),
+              ),
+            ),
+          )
+          .limit(1)
+
+        // LID menang sebagai JID kanonis; room yang sebelumnya memakai PN
+        // dipindahkan ke LID saat PN dan LID pertama kali terlihat bersama.
+        const waJid = input.waJid.endsWith('@lid') || !existing ? input.waJid : existing.waJid
+        const waJidAlt = input.waJidAlt ?? existing?.waJidAlt ?? null
+
+        await tx
+          .insert(conversations)
+          .values({
+            id: existing?.id ?? newId(),
+            sessionId,
+            waJid,
+            waJidAlt,
+            lastMessageAt: at,
+            unreadCount: 1,
+          })
+          .onDuplicateKeyUpdate({
+            set: {
+              waJid,
+              waJidAlt,
+              lastMessageAt: at,
+              unreadCount: sql`${conversations.unreadCount} + 1`,
+            },
+          })
+
+        const [conversation] = await tx
+          .select()
+          .from(conversations)
+          .where(and(eq(conversations.sessionId, sessionId), eq(conversations.waJid, waJid)))
+          .limit(1)
+        if (!conversation) throw new Error('Percakapan gagal dibuat')
+
+        const id = newId()
+        await tx.insert(messages).values({
+          id,
+          sessionId,
+          conversationId: conversation.id,
+          waMessageId: input.waMessageId,
+          direction: 'in',
+          type: input.type,
+          body: input.body,
+          raw: input.raw,
+          status: 'delivered',
+          waTimestamp: at,
+        })
+        const [row] = await tx.select().from(messages).where(eq(messages.id, id)).limit(1)
+        if (!row) throw new Error('Pesan masuk gagal dibaca setelah insert')
+        return { row, duplicate: false }
+      })
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) throw error
+      const raced = await findByWaMessageId(sessionId, input.waMessageId)
+      if (!raced) throw error
+      return { row: raced, duplicate: true }
+    }
   }
 
   async function insertIdempotent(
@@ -38,8 +139,8 @@ export function createMessagesRepository(db: Database) {
       if (!row) throw new Error('Pesan gagal dibaca setelah insert')
       return { row, duplicate: false }
     } catch (error) {
-      if (!isDuplicateKeyError(error) || !values.referenceId) throw error
-      const existing = await findByReference(values.sessionId, values.referenceId)
+      if (!isDuplicateKeyError(error) || !values.clientRef) throw error
+      const existing = await findByClientRef(values.sessionId, values.clientRef)
       if (!existing) throw error
       return { row: existing, duplicate: true }
     }
@@ -74,17 +175,10 @@ export function createMessagesRepository(db: Database) {
 
   return {
     findById,
-    findByReference,
+    findByClientRef,
     insertIdempotent,
-
-    async findByWaMessageId(sessionId: string, waMessageId: string): Promise<MessageRow | null> {
-      const [row] = await db
-        .select()
-        .from(messages)
-        .where(and(eq(messages.sessionId, sessionId), eq(messages.waMessageId, waMessageId)))
-        .limit(1)
-      return row ?? null
-    },
+    insertIncoming,
+    findByWaMessageId,
 
     async findRawByWaMessageId(sessionId: string, waMessageId: string): Promise<unknown> {
       const [row] = await db
@@ -116,6 +210,32 @@ export function createMessagesRepository(db: Database) {
         ? and(isNull(messages.deletedAt), eq(messages.sessionId, sessionId))
         : and(isNull(messages.deletedAt))
       return listPage(base, limit, cursor)
+    },
+
+    async listByConversation(
+      conversationId: string,
+      limit: number,
+      cursor?: MessageCursor,
+    ): Promise<{ items: MessageRow[]; nextCursor: MessageCursor | null }> {
+      return listPage(
+        and(eq(messages.conversationId, conversationId), isNull(messages.deletedAt)),
+        limit,
+        cursor,
+      )
+    },
+
+    async markConversationRead(conversationId: string): Promise<number> {
+      const [result] = await db
+        .update(messages)
+        .set({ status: 'read' })
+        .where(
+          and(
+            eq(messages.conversationId, conversationId),
+            eq(messages.direction, 'in'),
+            ne(messages.status, 'read'),
+          ),
+        )
+      return result.affectedRows
     },
 
     async updateStatus(

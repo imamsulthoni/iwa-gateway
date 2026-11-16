@@ -8,20 +8,39 @@ export const broadcastRecipientInputSchema = z.object({
   name: z.string().max(255).optional(),
 })
 
-export const createBroadcastSchema = z
-  .object({
-    recipients: z.array(broadcastRecipientInputSchema).min(1).max(1000),
-    text: z.string().min(1).max(4096),
-    minDelay: z.number().int().min(MIN_DELAY_SECONDS).max(MAX_DELAY_SECONDS),
-    maxDelay: z.number().int().min(MIN_DELAY_SECONDS).max(MAX_DELAY_SECONDS),
-    referenceId: z.string().min(1).max(191),
-  })
-  .refine((value) => isValidDelayRange(value.minDelay, value.maxDelay), {
-    message: 'Delay harus 10-600 detik dan max tidak boleh kurang dari min',
-    path: ['maxDelay'],
-  })
+const broadcastInputSchema = z.object({
+  recipients: z.array(broadcastRecipientInputSchema).min(1).max(1000),
+  text: z.string().min(1).max(4096),
+  minDelay: z.number().int().min(MIN_DELAY_SECONDS).max(MAX_DELAY_SECONDS),
+  maxDelay: z.number().int().min(MIN_DELAY_SECONDS).max(MAX_DELAY_SECONDS),
+  clientRef: z.string().min(1).max(191),
+})
+
+const delayRangeRefinement = {
+  message: 'Delay harus 10-600 detik dan max tidak boleh kurang dari min',
+  path: ['maxDelay'],
+}
+
+export const createBroadcastSchema = broadcastInputSchema.refine(
+  (value) => isValidDelayRange(value.minDelay, value.maxDelay),
+  delayRangeRefinement,
+)
 
 export type CreateBroadcastInput = z.infer<typeof createBroadcastSchema>
+
+export const broadcastV1Schema = broadcastInputSchema
+  .extend({
+    sessionId: z
+      .string()
+      .regex(
+        /^[A-Za-z0-9_-]{1,32}$/,
+        'sessionId hanya boleh huruf, angka, _ dan -, maksimal 32 karakter',
+      ),
+    scheduledAt: z.iso.datetime().optional(),
+  })
+  .refine((value) => isValidDelayRange(value.minDelay, value.maxDelay), delayRangeRefinement)
+
+export type BroadcastV1Input = z.infer<typeof broadcastV1Schema>
 
 export const broadcastRecipientSchema = z.object({
   id: z.number(),
@@ -40,10 +59,25 @@ export const broadcastCurrentSchema = z.object({
   done: z.number(),
   sent: z.number(),
   failed: z.number(),
+  skipped: z.number(),
+  optedOut: z.number(),
+  scheduledAt: z.string().nullable(),
+  pauseReason: z.string().nullable(),
   recipients: z.array(broadcastRecipientSchema),
 })
 
 export type BroadcastCurrentDto = z.infer<typeof broadcastCurrentSchema>
+
+export const broadcastV1ResponseSchema = broadcastCurrentSchema.extend({
+  id: z.string(),
+  sessionId: z.string(),
+  text: z.string(),
+  clientRef: z.string().nullable(),
+  startedAt: z.string().nullable(),
+  finishedAt: z.string().nullable(),
+})
+
+export type BroadcastV1ResponseDto = z.infer<typeof broadcastV1ResponseSchema>
 
 export const createBroadcastResponseSchema = z.object({
   broadcastId: z.string(),

@@ -22,7 +22,7 @@ const STATUS_POLL_MS = 3_000
 
 export function KirimTab({ session, onChanged }: KirimTabProps) {
   const [to, setTo] = useState('')
-  const [referenceId, setReferenceId] = useState('')
+  const [clientRef, setClientRef] = useState('')
   const [text, setText] = useState('')
   const [customerId, setCustomerId] = useState('')
   const [customerName, setCustomerName] = useState('')
@@ -67,7 +67,7 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
         `/sessions/${session.id}/messages`,
         {
           to: to.replace(/\D/g, ''),
-          referenceId: referenceId.trim() || `web-${Date.now()}`,
+          clientRef: clientRef.trim() || `web-${Date.now()}`,
           text,
           customerId: customerId.trim() || undefined,
           customerName: customerName.trim() || undefined,
@@ -75,10 +75,10 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
       )
       setResult(response)
       // Duplikat tidak mengirim apa pun: biarkan isian utuh agar operator
-      // bisa memakai referenceId lain tanpa mengetik ulang pesan.
+      // bisa memakai clientRef lain tanpa mengetik ulang pesan.
       if (!response.duplicate) {
         setText('')
-        setReferenceId('')
+        setClientRef('')
       }
       onChanged?.()
     } catch (cause) {
@@ -123,10 +123,10 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
               className="min-w-[220px] flex-1"
             />
             <TextField
-              label="Reference ID"
+              label="Client Ref"
               hint="Idempotensi: kiriman ulang tidak menduplikasi."
-              value={referenceId}
-              onChange={(event) => setReferenceId(event.target.value)}
+              value={clientRef}
+              onChange={(event) => setClientRef(event.target.value)}
               placeholder="msg_8841"
               className="min-w-[220px] flex-1"
             />
@@ -215,7 +215,7 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
               <p className="text-small leading-[1.45] text-ink">{result.message.body ?? '—'}</p>
               <div className="h-3" />
               <Summary label="Ke" value={formatPhone(result.message.to)} />
-              <Summary label="Reference" value={result.message.referenceId ?? '—'} />
+              <Summary label="Client Ref" value={result.message.clientRef ?? '—'} />
               <Summary label="Waktu" value={formatDateTime(result.message.createdAt)} />
               <div className="h-2.5" />
               <p className="text-[10.5px] text-ink-faint">
@@ -236,7 +236,7 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
         <Panel className="gap-2.5 p-[18px]">
           <CardLabel>Catatan</CardLabel>
           <NoteRow>Satu permintaan hanya membuat satu pesan.</NoteRow>
-          <NoteRow>referenceId mencegah pengiriman ganda.</NoteRow>
+          <NoteRow>clientRef mencegah pengiriman ganda.</NoteRow>
           <NoteRow>Balasan pelanggan tidak dicatat service.</NoteRow>
         </Panel>
 
