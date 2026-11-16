@@ -1,4 +1,5 @@
 import type { Context } from 'hono'
+import { HTTPException } from 'hono/http-exception'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { apiErrorBody, type ErrorCode } from '@wa/shared'
 
@@ -34,6 +35,12 @@ export function handleError(error: unknown, c: Context, logger: AppLogger) {
 
   if (error instanceof ValidationError) {
     return errorResponse(c, 422, 'VALIDATION_ERROR', error.message)
+  }
+
+  // Body JSON rusak / content-type tidak didukung dari validator zod-openapi.
+  if (error instanceof HTTPException) {
+    const status = error.status === 400 ? 422 : error.status
+    return errorResponse(c, status, 'VALIDATION_ERROR', error.message)
   }
 
   logger.error({ err: error }, 'Unhandled API error')

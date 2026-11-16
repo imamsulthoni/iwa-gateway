@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Scalar } from '@scalar/hono-api-reference'
 import { cors } from 'hono/cors'
 import { createMiddleware } from 'hono/factory'
 
@@ -16,6 +16,7 @@ import type { StatsService } from '../modules/stats/service.js'
 import { apiKeyMiddleware } from './middleware/api-key.js'
 import { handleError, notFound } from './middleware/error.js'
 import { rateLimitMiddleware, sessionRateLimitMiddleware } from './middleware/rate-limit.js'
+import { createOpenApiApp, openApiDocumentConfig } from './openapi.js'
 import { createBroadcastsRoute } from './routes/broadcasts.js'
 import { createHealthRoute } from './routes/health.js'
 import { createMessagesRoute, createSessionMessagesRoute } from './routes/messages.js'
@@ -59,12 +60,19 @@ function requestLogger(logger: AppLogger) {
 }
 
 export function createApp(deps: AppDependencies) {
-  const app = new Hono<AppBindings>()
+  const app = createOpenApiApp()
   const requireApiKey = apiKeyMiddleware(deps.auth)
   const rateLimit = rateLimitMiddleware(deps.redis, deps.env.RATE_LIMIT_PER_MIN)
 
   app.use('*', cors({ origin: deps.env.CORS_ORIGIN }))
   app.use('*', requestLogger(deps.logger))
+
+  // Dokumentasi API sengaja publik dan didaftarkan sebelum middleware API key.
+  app.get('/openapi.json', (c) => c.json(app.getOpenAPI31Document(openApiDocumentConfig)))
+  app.get(
+    '/docs',
+    Scalar({ url: '/openapi.json', pageTitle: openApiDocumentConfig.info.title }),
+  )
 
   app.route('/', createHealthRoute({ db: deps.db, redis: deps.redis }))
 

@@ -10,4 +10,5 @@ coverage/
 packages/**/.env*
 
 docs/
+enhancement-plan.md
 *.bak

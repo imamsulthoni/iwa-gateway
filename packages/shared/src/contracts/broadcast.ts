@@ -52,3 +52,10 @@ export const createBroadcastResponseSchema = z.object({
 })
 
 export type CreateBroadcastResponseDto = z.infer<typeof createBroadcastResponseSchema>
+
+export const broadcastCancelResponseSchema = z.object({
+  broadcastId: z.string(),
+  status: z.enum(BROADCAST_STATUSES),
+})
+
+export type BroadcastCancelResponseDto = z.infer<typeof broadcastCancelResponseSchema>

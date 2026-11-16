@@ -310,4 +310,56 @@ describe('API Hono', () => {
     const other = await app.request('/stats', { headers: { 'x-api-key': 'key-b' } })
     expect(other.status).toBe(200)
   })
+
+  it('GET /docs menyajikan referensi Scalar sebagai HTML', async () => {
+    const { app } = createTestApp()
+    const response = await app.request('/docs')
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/html')
+    expect(await response.text()).toContain('Scalar')
+  })
+
+  it('GET /openapi.json memuat path dan security scheme dari route', async () => {
+    const { app } = createTestApp()
+    const response = await app.request('/openapi.json')
+
+    expect(response.status).toBe(200)
+    const document = (await response.json()) as {
+      openapi: string
+      paths: Record<string, unknown>
+      components: { securitySchemes: Record<string, { type: string }> }
+    }
+
+    expect(document.openapi).toBe('3.1.0')
+    expect(document.paths).toHaveProperty('/sessions')
+    expect(document.paths).toHaveProperty('/sessions/{id}/live')
+    expect(document.paths).toHaveProperty('/messages')
+    expect(document.paths).toHaveProperty('/stats')
+    expect(document.components.securitySchemes.ApiKey?.type).toBe('apiKey')
+    expect(document.components.securitySchemes.SessionToken?.type).toBe('http')
+  })
+
+  it('GET /sessions tanpa API key tetap 401 dengan format error yang sama', async () => {
+    const { app } = createTestApp()
+    const response = await app.request('/sessions')
+
+    expect(response.status).toBe(401)
+    expect(await response.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: 'API key wajib dikirim' },
+    })
+  })
+
+  it('POST /sessions dengan body tidak valid mengembalikan 422 VALIDATION_ERROR', async () => {
+    const { app } = createTestApp()
+    const response = await app.request('/sessions', {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ label: '' }),
+    })
+
+    expect(response.status).toBe(422)
+    const body = (await response.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('VALIDATION_ERROR')
+  })
 })

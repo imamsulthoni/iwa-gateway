@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 export const ERROR_CODES = [
   'VALIDATION_ERROR',
   'UNAUTHORIZED',
@@ -16,6 +18,13 @@ export type ApiErrorBody = {
     message: string
   }
 }
+
+export const apiErrorSchema = z.object({
+  error: z.object({
+    code: z.enum(ERROR_CODES),
+    message: z.string(),
+  }),
+})
 
 export function apiErrorBody(code: ErrorCode, message: string): ApiErrorBody {
   return { error: { code, message } }
