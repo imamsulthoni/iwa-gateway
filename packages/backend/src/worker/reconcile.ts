@@ -1,4 +1,9 @@
-import { hasAuthState, isAuthRegistered, useDbAuthState } from '../baileys/auth-store.js'
+import {
+  deleteAuthState,
+  hasAuthState,
+  isAuthRegistered,
+  useDbAuthState,
+} from '../baileys/auth-store.js'
 import type { Database } from '../db/client.js'
 import type { Cipher } from '../infra/crypto.js'
 import type { AppLogger } from '../infra/logger.js'
@@ -57,6 +62,16 @@ export async function reconcileSessions({
       }
     } catch {
       await manager.stop(sessionId)
+    }
+  }
+
+  // Auth sesi logged_out yang tertinggal (pub/sub hilang / worker mati) dibersihkan di sini.
+  for (const row of await sessions.listByStatus('logged_out')) {
+    if (!(await hasAuthState(db, row.id))) continue
+    try {
+      await deleteAuthState(db, row.id)
+    } catch (error) {
+      logger.warn({ sessionId: row.id, err: error }, 'Gagal menghapus auth sesi logged_out')
     }
   }
 }
