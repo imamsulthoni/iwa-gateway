@@ -13,6 +13,10 @@ export const healthSchema = z.object({
   name: z.string(),
   version: z.string(),
   status: z.enum(['ok', 'degraded']),
+  checks: z.object({
+    database: z.boolean(),
+    redis: z.boolean(),
+  }),
 })
 
 export type HealthDto = z.infer<typeof healthSchema>
