@@ -2,11 +2,14 @@ import {
   SESSION_STATUS_LABELS,
   createSessionSchema,
   pairingRequestSchema,
+  type BroadcastCurrentDto,
   type PairingResponseDto,
+  type SessionLiveDto,
 } from '@wa/shared'
 import { Hono } from 'hono'
 import type { Redis } from 'ioredis'
 
+import type { BroadcastsService } from '../../modules/broadcasts/service.js'
 import type { SessionsService } from '../../modules/sessions/service.js'
 import { toSessionDto } from '../../modules/sessions/service.js'
 import { publishSessionControl } from '../../infra/session-control.js'
@@ -14,7 +17,21 @@ import type { AppBindings } from '../app.js'
 import { errorResponse } from '../middleware/error.js'
 import { parseOrThrow } from '../validation.js'
 
-export function createSessionsRoute(sessions: SessionsService, redis: Redis) {
+const EMPTY_BROADCAST: BroadcastCurrentDto = {
+  jobId: null,
+  status: null,
+  total: 0,
+  done: 0,
+  sent: 0,
+  failed: 0,
+  recipients: [],
+}
+
+export function createSessionsRoute(
+  sessions: SessionsService,
+  broadcasts: BroadcastsService,
+  redis: Redis,
+) {
   const router = new Hono<AppBindings>()
 
   router.get('/', async (c) => {
@@ -83,6 +100,23 @@ export function createSessionsRoute(sessions: SessionsService, redis: Redis) {
   router.get('/:id/qr', async (c) => {
     const session = await sessions.get(c.req.param('id'))
     return c.json({ qr: session.lastQr, status: session.status })
+  })
+
+  // Satu endpoint untuk semua state yang dipakai dashboard (menggantikan
+  // polling terpisah ke /sessions/:id, /status, /qr, dan /broadcast/current).
+  router.get('/:id/live', async (c) => {
+    const session = await sessions.get(c.req.param('id'))
+    const [broadcast, pairingCode] = await Promise.all([
+      broadcasts.current(session.id),
+      redis.get(`wa:pairing:code:${session.id}`),
+    ])
+    const payload: SessionLiveDto = {
+      session: toSessionDto(session),
+      qr: session.lastQr,
+      pairingCode,
+      broadcast: broadcast ?? EMPTY_BROADCAST,
+    }
+    return c.json(payload)
   })
 
   router.get('/:id/pairing', async (c) => {

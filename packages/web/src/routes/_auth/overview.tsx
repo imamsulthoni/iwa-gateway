@@ -37,7 +37,7 @@ function Metric({ label, value, className }: { label: string; value: string; cla
   )
 }
 
-function useBroadcasts(sessionIds: string[]) {
+function useBroadcasts(sessionIds: string[], enabled: boolean) {
   return usePolling<BroadcastCurrentDto[]>(
     () =>
       Promise.all(
@@ -48,7 +48,7 @@ function useBroadcasts(sessionIds: string[]) {
         ),
       ).then((rows) => rows.filter((row): row is BroadcastCurrentDto => row !== null)),
     15_000,
-    sessionIds.length > 0,
+    enabled && sessionIds.length > 0,
   )
 }
 
@@ -79,7 +79,7 @@ function OverviewPage() {
         .map((item) => item.id),
     [items],
   )
-  const broadcasts = useBroadcasts(connectedIds)
+  const broadcasts = useBroadcasts(connectedIds, running > 0)
   const activeBroadcasts = broadcasts.data?.filter((job) => job.jobId !== null) ?? []
   const sessionById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
 

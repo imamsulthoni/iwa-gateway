@@ -35,6 +35,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     expire: vi.fn(async () => 1),
     ping: vi.fn(async () => 'PONG'),
     publish: vi.fn(async () => 1),
+    get: vi.fn(async () => null),
   } as unknown as RedisClient
 
   const db = {
@@ -208,6 +209,21 @@ describe('API Hono', () => {
 
     expect(response.status).toBe(401)
     expect(queue.add).not.toHaveBeenCalled()
+  })
+
+  it('live menggabungkan session, qr, pairing code, dan broadcast', async () => {
+    const { app } = createTestApp()
+    const response = await app.request(`/sessions/${SESSION_ID}/live`, {
+      headers: { 'x-api-key': 'valid-key' },
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      session: { id: SESSION_ID, status: 'connected' },
+      qr: null,
+      pairingCode: null,
+      broadcast: { jobId: null, total: 0, recipients: [] },
+    })
   })
 
   it('login memulai sesi lewat kanal kontrol worker', async () => {

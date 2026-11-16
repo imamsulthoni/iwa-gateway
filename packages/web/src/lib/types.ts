@@ -13,6 +13,7 @@ export type {
   SendMessageResponseDto,
   SessionDto,
   SessionListDto,
+  SessionLiveDto,
   SessionStatusDto,
   SessionTokenDto,
   StatsDto,

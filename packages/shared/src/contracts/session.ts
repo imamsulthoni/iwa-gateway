@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { SESSION_STATUSES } from '../constants/status.js'
+import { broadcastCurrentSchema } from './broadcast.js'
 
 export const publicIdSchema = z
   .string()
@@ -70,6 +71,15 @@ export const qrResponseSchema = z.object({
 })
 
 export type QrResponseDto = z.infer<typeof qrResponseSchema>
+
+export const sessionLiveSchema = z.object({
+  session: sessionSchema,
+  qr: z.string().nullable(),
+  pairingCode: z.string().nullable(),
+  broadcast: broadcastCurrentSchema,
+})
+
+export type SessionLiveDto = z.infer<typeof sessionLiveSchema>
 
 export const pairingRequestSchema = z.object({
   phoneNumber: phoneNumberSchema,

@@ -7,13 +7,16 @@ import { Button, cn } from '../../design-system'
 import { api } from '../../lib/api'
 import { getDefaultDelay } from '../../lib/delay'
 import { formatDateTime, phoneFromJid } from '../../lib/format'
-import type { BroadcastCurrentDto, MessageListDto, QrResponseDto, PairingResponseDto, SessionDto } from '../../lib/types'
+import type { BroadcastCurrentDto, MessageListDto, SessionDto } from '../../lib/types'
 import { BroadcastRail, CardLabel, FIELD_INPUT, Panel, StatusDot } from './parts'
 
 type KoneksiTabProps = {
   session: SessionDto
   agentId: string | null
   broadcast: BroadcastCurrentDto
+  qr: string | null
+  pairingCode: string | null
+  onRefresh: () => void
   onChanged: () => void
   onDelete: () => void
 }
@@ -22,50 +25,19 @@ export function KoneksiTab({
   session,
   agentId,
   broadcast,
+  qr,
+  pairingCode,
+  onRefresh,
   onChanged,
   onDelete,
 }: KoneksiTabProps) {
-  const [qr, setQr] = useState<string | null>(null)
-  const [code, setCode] = useState<string | null>(null)
   const [phone, setPhone] = useState(session.phoneNumber ?? '')
-  const [pairingRequested, setPairingRequested] = useState(false)
 
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [reloadKey, setReloadKey] = useState(0)
 
   const connected = session.status === 'connected'
   const loggedOut = session.status === 'logged_out'
-  const waiting = !connected && !loggedOut
-
-  useEffect(() => {
-    if (!waiting) return
-    let active = true
-
-    async function load() {
-      try {
-        // Endpoint pairing hanya relevan setelah kode pairing diminta.
-        const [qrResult, pairingResult] = await Promise.all([
-          api.get<QrResponseDto>(`/sessions/${session.id}/qr`),
-          pairingRequested
-            ? api.get<PairingResponseDto>(`/sessions/${session.id}/pairing`)
-            : Promise.resolve(null),
-        ])
-        if (!active) return
-        setQr(qrResult.qr)
-        if (pairingResult) setCode(pairingResult.code)
-      } catch (cause) {
-        if (active) setError(cause instanceof Error ? cause.message : 'Gagal memuat QR')
-      }
-    }
-
-    void load()
-    const timer = setInterval(() => void load(), 3000)
-    return () => {
-      active = false
-      clearInterval(timer)
-    }
-  }, [session.id, waiting, reloadKey, pairingRequested])
 
   const recent = useRecentMessages(session.id, connected)
 
@@ -86,7 +58,6 @@ export function KoneksiTab({
     await run(() =>
       api.post(`/sessions/${session.id}/pairing`, { phoneNumber: phone.replace(/\D/g, '') }),
     )
-    setPairingRequested(true)
   }
 
   async function login() {
@@ -98,9 +69,6 @@ export function KoneksiTab({
     setError(null)
     try {
       await api.post(`/sessions/${session.id}/cancel`)
-      setQr(null)
-      setCode(null)
-      setPairingRequested(false)
       onChanged()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Gagal membatalkan pairing')
@@ -298,7 +266,7 @@ export function KoneksiTab({
                       size="sm"
                       className="h-[30px] px-3 text-[11.5px]"
                       disabled={busy}
-                      onClick={() => setReloadKey((value) => value + 1)}
+                      onClick={onRefresh}
                     >
                       <RefreshCw className="size-3 text-ink-soft" aria-hidden />
                       Muat ulang QR
@@ -427,15 +395,15 @@ export function KoneksiTab({
                 <Hash className="size-[13px] text-ink-faint" aria-hidden />
               </div>
               <div className="h-3" />
-              {code ? (
+              {pairingCode ? (
                 <>
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-data text-2xl font-semibold tracking-[3px] text-ink">
-                      {code}
+                      {pairingCode}
                     </p>
                     <button
                       type="button"
-                      onClick={() => void navigator.clipboard?.writeText(code)}
+                      onClick={() => void navigator.clipboard?.writeText(pairingCode)}
                       aria-label="Salin kode pairing"
                       className="text-ink-soft transition hover:text-ink"
                     >
