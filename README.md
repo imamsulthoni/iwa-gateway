@@ -104,6 +104,8 @@ Keduanya membaca environment container (bukan file `.env`). Worker memegang lock
 
 ## Dokumentasi API
 
+Kontrak lengkap (skema request/response, contoh, kode error): [`API-CONTRACT.md`](./API-CONTRACT.md).
+
 Auth: header `x-api-key` (API key admin) untuk semua endpoint, kecuali dua endpoint pesan per sesi yang juga menerima `Authorization: Bearer <token sesi>`.
 
 - Format error: `{ "error": { "code": "snake_case", "message": "..." } }`
@@ -120,9 +122,11 @@ Auth: header `x-api-key` (API key admin) untuk semua endpoint, kecuali dua endpo
 | `GET /sessions/:id`                   | Detail sesi                                               |
 | `GET /sessions/:id/status`            | Status internal + label UI + sales/agent                  |
 | `GET /sessions/:id/qr`                | QR sebagai data-URL                                       |
+| `GET /sessions/:id/live`              | Gabungan sesi + QR + pairing code + broadcast (dashboard) |
 | `GET /sessions/:id/pairing`           | Kode pairing                                              |
 | `POST /sessions/:id/pairing`          | Minta kode pairing untuk nomor                            |
 | `POST /sessions/:id/login`            | Login ulang setelah `logged_out`                          |
+| `POST /sessions/:id/cancel`           | Batalkan pairing yang sedang berjalan                     |
 | `POST /sessions/:id/token`            | Rotasi token sesi (tampil sekali)                         |
 | `POST /sessions/:id/logout`           | Logout sesi                                               |
 | `DELETE /sessions/:id`                | Hapus sesi + auth state (cascade)                         |
@@ -134,7 +138,7 @@ Auth: header `x-api-key` (API key admin) untuk semua endpoint, kecuali dua endpo
 | `GET /messages`                       | Riwayat lintas sesi (`limit`, `sessionId`)                |
 | `DELETE /messages/:id`                | Soft delete satu entri riwayat                            |
 
-`:id` adalah `public_id` sesi (slug 1–32 karakter `[A-Za-z0-9_-]`).
+`:id` adalah `session.id` (UUID v7) dari response, bukan `publicId`. `publicId` hanya slug 1–32 karakter `[A-Za-z0-9_-]` untuk tampilan.
 
 ### Checklist non-goal Fase 1
 
