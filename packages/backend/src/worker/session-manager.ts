@@ -30,6 +30,12 @@ type OnWhatsAppResult = { exists: boolean; jid: string }
 const ON_WHATSAPP_TTL_MS = 60_000
 const RETRY_COUNTER_TTL_MS = 15 * 60_000
 
+// "628123456789:12@s.whatsapp.net" -> "628123456789"
+function phoneFromCreds(meId: string | undefined): string | undefined {
+  const user = meId?.split('@')[0]?.split(':')[0]
+  return user || undefined
+}
+
 export type SessionManagerDeps = {
   db: Database
   redis: Redis
@@ -147,6 +153,7 @@ export class SessionManager {
         lastQr: null,
         lastConnectedAt: new Date(),
       })
+      await this.syncPhoneNumber(sessionId, handle, session)
       return
     }
 
@@ -174,6 +181,22 @@ export class SessionManager {
     // kena rate limit WhatsApp (429) — tunggu user menekan Scan QR.
     if (registered) {
       this.scheduleReconnect(sessionId)
+    }
+  }
+
+  private async syncPhoneNumber(
+    sessionId: string,
+    handle: SessionHandle,
+    session: WaSessionRow,
+  ): Promise<void> {
+    if (session.phoneNumber) return
+    const phoneNumber = phoneFromCreds(handle.auth.state.creds.me?.id)
+    if (!phoneNumber) return
+    try {
+      await this.deps.sessions.update(sessionId, { phoneNumber })
+    } catch (error) {
+      // Nomor bisa sudah dipakai sesi lain (unique index wa_sessions_phone_uq).
+      this.deps.logger.warn({ sessionId, err: error }, 'Gagal menyimpan nomor sesi')
     }
   }
 
