@@ -154,7 +154,7 @@ function SessionDetailPage() {
             onClick={() => refreshAll()}
           >
             <RefreshCw className="size-[13px] text-ink-soft" aria-hidden />
-            Segarkan
+            Refresh
           </Button>
           <Button
             variant="secondary"

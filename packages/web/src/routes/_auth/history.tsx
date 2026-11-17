@@ -142,7 +142,7 @@ function HistoryPage() {
             onClick={refresh}
           >
             <RefreshCw className="size-[13px] text-ink-soft" aria-hidden />
-            Segarkan
+            Refresh
           </Button>
         </div>
       </div>

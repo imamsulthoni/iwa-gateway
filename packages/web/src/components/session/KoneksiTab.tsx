@@ -91,6 +91,28 @@ export function KoneksiTab({
     </>
   )
 
+  const deleteCard = (
+    <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-[18px]">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-[3px]">
+          <p className="text-[12.5px] font-semibold text-ink">Hapus sesi</p>
+          <p className="text-[11px] leading-[1.45] text-ink-soft">
+            Menghapus sesi akan menghentikan semua pengiriman dan tidak bisa dibatalkan.
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="shrink-0 border-line text-red hover:bg-red-soft"
+          onClick={onDelete}
+        >
+          <Trash2 className="size-[13px]" aria-hidden />
+          Hapus sesi
+        </Button>
+      </div>
+    </div>
+  )
+
   const rail = (
     <div className="flex w-full flex-col gap-4">
       <BroadcastRail broadcast={broadcast} />
@@ -115,26 +137,6 @@ export function KoneksiTab({
           Dipakai sebagai nilai awal form broadcast. Ubah di Pengaturan.
         </p>
       </Link>
-
-      <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-[18px]">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-[3px]">
-            <p className="text-[12.5px] font-semibold text-ink">Hapus sesi</p>
-            <p className="text-[11px] leading-[1.45] text-ink-soft">
-              Menghapus sesi akan menghentikan semua pengiriman dan tidak bisa dibatalkan.
-            </p>
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="shrink-0 border-line text-red hover:bg-red-soft"
-            onClick={onDelete}
-          >
-            <Trash2 className="size-[13px]" aria-hidden />
-            Hapus sesi
-          </Button>
-        </div>
-      </div>
     </div>
   )
 
@@ -453,6 +455,8 @@ export function KoneksiTab({
               <div className="h-px w-full bg-line" />
               <SummaryRow label="Dibuat" value={formatDateTime(session.createdAt)} />
             </Panel>
+
+            {deleteCard}
 
             <div className="flex items-start gap-[9px] rounded-card border border-line bg-surface p-4">
               <ShieldCheck className="mt-px size-3.5 shrink-0 text-ink-faint" aria-hidden />

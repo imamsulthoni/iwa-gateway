@@ -85,7 +85,7 @@ export function RiwayatTab({ session }: RiwayatTabProps) {
               onClick={() => void load()}
             >
               <RefreshCw className="size-3 text-ink-soft" aria-hidden />
-              Segarkan
+              Refresh
             </Button>
           </div>
 

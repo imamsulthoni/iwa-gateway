@@ -196,7 +196,7 @@ function WebhooksPage() {
             onClick={() => endpoints.refresh()}
           >
             <RefreshCw className="size-3.5 text-ink-soft" aria-hidden />
-            Segarkan
+            Refresh
           </Button>
         }
       />
@@ -365,29 +365,27 @@ function WebhooksPage() {
           </div>
           <div className="flex items-center gap-2">
             <Select
-              aria-label="Pilih endpoint"
-              value={selected ?? ''}
-              onChange={(event) => setSelected(event.target.value || null)}
+              label="Pilih endpoint"
               className="w-[220px]"
-            >
-              <option value="">Pilih endpoint</option>
-              {items.map((endpoint) => (
-                <option key={endpoint.id} value={endpoint.id}>
-                  {endpoint.url}
-                </option>
-              ))}
-            </Select>
+              value={selected ?? ''}
+              onChange={(next) => setSelected(next || null)}
+              options={[
+                { value: '', label: 'Pilih endpoint' },
+                ...items.map((endpoint) => ({ value: endpoint.id, label: endpoint.url })),
+              ]}
+            />
             <Select
-              aria-label="Filter status delivery"
-              value={deliveryStatus}
-              onChange={(event) => setDeliveryStatus(event.target.value)}
+              label="Filter status delivery"
               className="w-[140px]"
-            >
-              <option value="all">Semua status</option>
-              <option value="pending">Pending</option>
-              <option value="delivered">Delivered</option>
-              <option value="failed">Failed</option>
-            </Select>
+              value={deliveryStatus}
+              onChange={setDeliveryStatus}
+              options={[
+                { value: 'all', label: 'Semua status' },
+                { value: 'pending', label: 'Pending' },
+                { value: 'delivered', label: 'Delivered' },
+                { value: 'failed', label: 'Failed' },
+              ]}
+            />
           </div>
         </div>
 

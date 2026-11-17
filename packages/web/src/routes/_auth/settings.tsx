@@ -253,7 +253,7 @@ function SettingsPage() {
             className="flex items-center justify-center gap-[7px] rounded-pill border border-line py-[9px] text-[11.5px] font-medium text-ink transition hover:bg-surface-soft"
           >
             <RefreshCw className="size-3 text-ink-soft" aria-hidden />
-            Segarkan info service
+            Refresh info service
           </button>
         </section>
       </div>

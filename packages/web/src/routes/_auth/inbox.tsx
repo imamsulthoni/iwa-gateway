@@ -190,20 +190,19 @@ function InboxPage() {
         actions={
           <>
             <Select
-              aria-label="Pilih sesi"
+              label="Pilih sesi"
+              size="sm"
+              className="w-[190px]"
               value={sessionId ?? ''}
-              onChange={(event) => {
-                setSessionId(event.target.value)
+              onChange={(next) => {
+                setSessionId(next)
                 setConversationId(null)
               }}
-              className="h-[34px] w-[190px] text-small"
-            >
-              {sessions.data?.items.map((item) => (
-                <option key={item.publicId} value={item.publicId}>
-                  {item.label} · {item.status}
-                </option>
-              ))}
-            </Select>
+              options={(sessions.data?.items ?? []).map((item) => ({
+                value: item.publicId,
+                label: `${item.label} · ${item.status}`,
+              }))}
+            />
             <Button
               variant="secondary"
               onClick={() => {
@@ -212,7 +211,7 @@ function InboxPage() {
               }}
             >
               <RefreshCw className="size-3.5" aria-hidden />
-              Segarkan
+              Refresh
             </Button>
           </>
         }

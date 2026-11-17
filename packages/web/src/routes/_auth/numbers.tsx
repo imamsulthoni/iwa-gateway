@@ -1,12 +1,13 @@
 import { SESSION_STATUS_LABELS } from '@wa/shared'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, Info, Plus, RefreshCw, Search } from 'lucide-react'
+import { Info, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { AddSessionDialog } from '../../components/add-session-dialog'
+import { ConfirmDialog } from '../../components/dialogs'
 import { SessionStatusBadge } from '../../components/session-status'
 import { TokenDialog } from '../../components/token-dialog'
-import { Button, cn } from '../../design-system'
+import { Button, Select, cn } from '../../design-system'
 import { api } from '../../lib/api'
 import { formatDateTime, formatPhone, usePolling } from '../../lib/format'
 import type { SessionListDto, SessionTokenDto } from '../../lib/types'
@@ -15,7 +16,7 @@ export const Route = createFileRoute('/_auth/numbers')({
   component: NumbersPage,
 })
 
-const GRID = 'grid grid-cols-[minmax(0,1fr)_130px_130px_120px_170px_74px] items-center'
+const GRID = 'grid grid-cols-[minmax(0,1fr)_130px_130px_120px_170px_112px] items-center'
 const STATUS_OPTIONS = [{ value: 'all', label: 'Semua status' }].concat(
   Object.entries(SESSION_STATUS_LABELS).map(([value, label]) => ({ value, label })),
 )
@@ -27,13 +28,31 @@ function NumbersPage() {
   const [tokenResult, setTokenResult] = useState<SessionTokenDto | null>(null)
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('all')
+  const [deleteTarget, setDeleteTarget] = useState<SessionListDto['items'][number] | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const items = sessions.data?.items ?? []
   const connected = items.filter((item) => item.status === 'connected').length
-  const error = sessions.error
+  const error = sessions.error ?? deleteError
 
   function refresh() {
     sessions.refresh()
+  }
+
+  async function deleteSession() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await api.delete(`/sessions/${deleteTarget.id}`)
+      setDeleteTarget(null)
+      refresh()
+    } catch (cause) {
+      setDeleteError(cause instanceof Error ? cause.message : 'Gagal menghapus sesi')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const filtered = useMemo(() => {
@@ -70,7 +89,7 @@ function NumbersPage() {
             onClick={() => refresh()}
           >
             <RefreshCw className="size-3.5 text-ink-soft" aria-hidden />
-            Segarkan
+            Refresh
           </Button>
           <Button
             className="h-[34px] px-4 text-[12.5px]"
@@ -106,24 +125,13 @@ function NumbersPage() {
                 className="w-full bg-transparent font-data text-[9.5px] tracking-[0.8px] text-ink uppercase outline-none placeholder:text-ink-faint"
               />
             </div>
-            <div className="relative">
-              <select
-                value={status}
-                onChange={(event) => setStatus(event.target.value)}
-                aria-label="Filter status"
-                className="h-[38px] appearance-none rounded-[10px] border border-line bg-transparent pr-8 pl-3 text-[12px] font-medium text-ink outline-none"
-              >
-                {STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                className="pointer-events-none absolute top-1/2 right-3 size-3 -translate-y-1/2 text-ink-soft"
-                aria-hidden
-              />
-            </div>
+            <Select
+              label="Filter status"
+              className="w-[150px]"
+              value={status}
+              onChange={setStatus}
+              options={STATUS_OPTIONS}
+            />
           </div>
           <p className="font-data text-[9.5px] text-ink-faint">polling tiap 10 detik</p>
         </div>
@@ -172,7 +180,7 @@ function NumbersPage() {
               <p className="font-data text-[10.5px] text-ink-soft">
                 {formatDateTime(session.lastConnectedAt)}
               </p>
-              <div className="flex justify-end">
+              <div className="flex items-center justify-end gap-1.5">
                 <Button
                   variant="secondary"
                   size="sm"
@@ -186,6 +194,18 @@ function NumbersPage() {
                 >
                   Buka
                 </Button>
+                {session.status !== 'connected' ? (
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="size-7!"
+                    aria-label={`Hapus sesi ${session.publicId}`}
+                    title="Hapus sesi"
+                    onClick={() => setDeleteTarget(session)}
+                  >
+                    <Trash2 className="size-3" aria-hidden />
+                  </Button>
+                ) : null}
               </div>
             </div>
           </div>
@@ -253,6 +273,16 @@ function NumbersPage() {
           setTokenResult(result)
           refresh()
         }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Hapus sesi"
+        message={`Sesi ${deleteTarget?.publicId ?? ''}, auth state, dan riwayat pesan akan dihapus permanen. Lanjutkan?`}
+        confirmLabel="Hapus"
+        busy={deleting}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => void deleteSession()}
       />
 
       <TokenDialog
