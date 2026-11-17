@@ -62,7 +62,7 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
     setError(null)
     try {
       const response = await api.post<CreateBroadcastResponseDto>('/v1/broadcasts', {
-        sessionId: session.id,
+        sessionId: session.publicId,
         recipients: parsed,
         text,
         minDelay: Number(minDelay),
@@ -325,7 +325,7 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
           </Panel>
         )}
 
-        {created ? (
+        {created && activeBroadcast?.jobId ? (
           <p className="font-data text-[9px] break-all text-ink-faint">
             Job {created.jobId} · {created.status}
           </p>

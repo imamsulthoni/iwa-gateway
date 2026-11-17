@@ -21,6 +21,14 @@ export type RecipientInput = {
 
 export const OPT_OUT_SKIP_REASON = 'opted_out'
 
+// Broadcast final tidak lagi dianggap "berjalan", jadi tidak ditampilkan di
+// dashboard setelah selesai.
+const FINISHED_BROADCAST_STATUSES = new Set<BroadcastRow['status']>([
+  'done',
+  'failed',
+  'cancelled',
+])
+
 export function prepareRecipients(
   recipients: RecipientInput[],
 ): { toJid: string; name: string | null }[] {
@@ -137,6 +145,7 @@ export function createBroadcastsService(repo: BroadcastsRepository, optOuts: Opt
     async current(sessionId: string): Promise<BroadcastCurrentDto | null> {
       const row = await repo.findLatestBySession(sessionId)
       if (!row) return null
+      if (FINISHED_BROADCAST_STATUSES.has(row.status)) return null
       return toCurrent(row, await repo.listRecipients(row.id))
     },
 

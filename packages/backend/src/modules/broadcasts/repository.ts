@@ -91,5 +91,14 @@ export function createBroadcastsRepository(db: Database) {
         .where(eq(broadcasts.status, status))
       return Number(row?.count ?? 0)
     },
+
+    // Broadcast yang dianggap aktif di dashboard: menunggu, berjalan, atau dijeda.
+    async countActive(): Promise<number> {
+      const [row] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(broadcasts)
+        .where(inArray(broadcasts.status, ['pending', 'running', 'paused']))
+      return Number(row?.count ?? 0)
+    },
   }
 }

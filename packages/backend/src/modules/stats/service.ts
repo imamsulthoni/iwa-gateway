@@ -55,7 +55,7 @@ export function createStatsService({ sessions, messages, broadcasts, timezone }:
         await Promise.all([
           sessions.countByStatus('connected'),
           messages.countTotal(),
-          broadcasts.countByStatus('running'),
+          broadcasts.countActive(),
           messages.countTodayAll(since),
         ])
       return { connectedSessions, todayMessages, totalMessages, runningBroadcasts }

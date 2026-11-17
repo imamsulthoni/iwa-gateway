@@ -34,7 +34,7 @@ describe('stats service', () => {
       countTodayAll: async () => 7,
     } as unknown as MessagesRepository
     const broadcasts = {
-      countByStatus: async (status: string) => (status === 'running' ? 3 : 0),
+      countActive: async () => 3,
     } as unknown as BroadcastsRepository
 
     const service = createStatsService({

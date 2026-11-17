@@ -80,7 +80,10 @@ function OverviewPage() {
     [items],
   )
   const broadcasts = useBroadcasts(connectedIds, running > 0)
-  const activeBroadcasts = broadcasts.data?.filter((job) => job.jobId !== null) ?? []
+  // Saat tidak ada broadcast aktif, data poll terakhir tidak dipakai lagi agar
+  // kartu broadcast yang sudah selesai tidak tertinggal di layar.
+  const activeBroadcasts =
+    running > 0 ? (broadcasts.data?.filter((job) => job.jobId !== null) ?? []) : []
   const sessionById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
 
   const error = stats.error ?? sessions.error ?? health.error
@@ -103,7 +106,7 @@ function OverviewPage() {
             <span className="font-data text-[9.5px] text-ink-faint">auto-refresh 15s</span>
             <Button variant="secondary" onClick={refresh}>
               <RefreshCw className="size-3.5 text-ink-soft" aria-hidden />
-              Segarkan
+              Refresh
             </Button>
             <Button onClick={() => void navigate({ to: '/numbers' })}>
               Kelola nomor
@@ -276,7 +279,7 @@ function OverviewPage() {
           <div className="mt-4 flex items-center gap-2">
             <Button variant="secondary" onClick={refresh}>
               <RefreshCw className="size-3.5 text-ink-soft" aria-hidden />
-              Segarkan
+              Refresh
             </Button>
             <p className="font-data text-[9.5px] text-ink-faint">
               live 20s
