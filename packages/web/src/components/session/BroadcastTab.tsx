@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 
 import { Badge, Button } from '../../design-system'
 import { api } from '../../lib/api'
+import { newClientRef } from '../../lib/client-ref'
 import { getDefaultDelay } from '../../lib/delay'
 import { usePolling } from '../../lib/format'
 import type { BroadcastCurrentDto, CreateBroadcastResponseDto, SessionDto } from '../../lib/types'
@@ -67,7 +68,7 @@ export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProp
         text,
         minDelay: Number(minDelay),
         maxDelay: Number(maxDelay),
-        clientRef: clientRef.trim() || `bc-${Date.now()}`,
+        clientRef: clientRef.trim() || newClientRef('bc'),
         scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
       })
       setCreated(response)

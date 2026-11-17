@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 
 import { Badge, Button } from '../../design-system'
 import { api } from '../../lib/api'
+import { newClientRef } from '../../lib/client-ref'
 import { formatDateTime, formatPhone, usePolling } from '../../lib/format'
 import type {
   MessageDto,
@@ -70,7 +71,7 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
         `/sessions/${session.id}/messages`,
         {
           to: to.replace(/\D/g, ''),
-          clientRef: clientRef.trim() || `web-${Date.now()}`,
+          clientRef: clientRef.trim() || newClientRef(),
           text,
           customerId: customerId.trim() || undefined,
           customerName: customerName.trim() || undefined,
