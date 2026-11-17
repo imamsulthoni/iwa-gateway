@@ -64,7 +64,7 @@ function HistoryPage() {
       setLoading(true)
       setError(null)
       try {
-        const query = new URLSearchParams({ limit: '50' })
+        const query = new URLSearchParams({ limit: '50', direction: 'out' })
         if (filterSessionId) query.set('sessionId', filterSessionId)
         const page = await api.get<MessageListDto>(`/messages?${query.toString()}`)
         setRows(page.items)

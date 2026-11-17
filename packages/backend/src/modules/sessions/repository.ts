@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 
 import type { Database } from '../../db/client.js'
 import { waSessions, type WaSessionRow } from '../../db/schema.js'
@@ -70,6 +70,19 @@ export function createSessionsRepository(db: Database) {
 
     async listByStatus(status: WaSessionRow['status']): Promise<WaSessionRow[]> {
       return db.select().from(waSessions).where(eq(waSessions.status, status))
+    },
+
+    /**
+     * Turunkan status sesi yang socket-nya berhenti ke `disconnected`, tanpa
+     * menimpa status terminal seperti `logged_out`. Dipakai saat shutdown /
+     * stop agar API tidak meloloskan pesan untuk sesi tanpa socket.
+     */
+    async markDisconnectedIfLive(id: string): Promise<boolean> {
+      const [result] = await db
+        .update(waSessions)
+        .set({ status: 'disconnected', updatedAt: new Date() })
+        .where(and(eq(waSessions.id, id), inArray(waSessions.status, ['connected', 'connecting'])))
+      return result.affectedRows > 0
     },
   }
 }

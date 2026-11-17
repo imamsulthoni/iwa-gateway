@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { MESSAGE_STATUSES } from '../constants/status.js'
+import { MESSAGE_DIRECTIONS, MESSAGE_STATUSES } from '../constants/status.js'
 
 export const sendMessageSchema = z.object({
   to: z.string().min(8).max(32),
@@ -57,9 +57,11 @@ export type RetryMessageResponseDto = z.infer<typeof retryMessageResponseSchema>
 export const messageQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   cursor: z.string().optional(),
+  direction: z.enum(MESSAGE_DIRECTIONS).optional(),
 })
 
 export const crossSessionMessageQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   sessionId: z.string().optional(),
+  direction: z.enum(MESSAGE_DIRECTIONS).optional(),
 })

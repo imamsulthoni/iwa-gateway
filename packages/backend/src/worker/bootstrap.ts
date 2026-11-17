@@ -2,7 +2,7 @@ import {
   deleteAuthState,
   getAuthPresence,
   hasAuthState,
-  isAuthRegistered,
+  isAuthPaired,
 } from '../baileys/auth-store.js'
 import type { Database } from '../db/client.js'
 import type { Cipher } from '../infra/crypto.js'
@@ -52,7 +52,7 @@ export async function bootstrapSessions({
     }
     // Sesi yang belum pernah pairing tidak di-start otomatis agar tidak
     // menimbulkan reconnect berulang saat worker sering restart (dev mode).
-    if (!(await isAuthRegistered(db, cipher, row.id))) {
+    if (!(await isAuthPaired(db, cipher, row.id))) {
       logger.info(
         { sessionId: row.id, status: row.status },
         'Sesi belum pairing, menunggu login manual',

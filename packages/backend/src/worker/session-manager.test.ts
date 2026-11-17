@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DisconnectReason } from '@whiskeysockets/baileys'
 
 import type { WaSessionRow } from '../db/schema.js'
+import { SendTimeoutError, SessionNotReadyError } from '../modules/errors.js'
 
 const state = vi.hoisted(() => {
   const handlers: Record<string, (arg: unknown) => void> = {}
@@ -70,6 +71,7 @@ function createManager() {
   const sessions = {
     update: vi.fn(async () => undefined),
     findById: vi.fn(async () => SESSION),
+    markDisconnectedIfLive: vi.fn(async () => true),
   }
   const messages = { applyStatusUpdate: vi.fn(async () => null) }
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
@@ -96,8 +98,8 @@ describe('SessionManager', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     state.acquire.mockResolvedValue(state.lock as never)
-    state.auth.state.creds.registered = true
-    state.auth.state.creds.me = undefined
+    state.auth.state.creds.registered = false
+    state.auth.state.creds.me = { id: '628123456789:12@s.whatsapp.net' }
     state.socket.ws.isOpen = false
   })
 
@@ -173,6 +175,7 @@ describe('SessionManager', () => {
 
   it('pairing code diminta dari event qr', async () => {
     state.auth.state.creds.registered = false
+    state.auth.state.creds.me = undefined
     const { manager, sessions } = createManager()
     const redis = {
       get: vi.fn(async () => '628123456789'),
@@ -196,11 +199,11 @@ describe('SessionManager', () => {
       phoneNumber: '628123456789',
       status: 'connecting',
     })
-    state.auth.state.creds.registered = true
   })
 
-  it('pairing tidak diminta saat creds sudah registered', async () => {
-    state.auth.state.creds.registered = true
+  it('pairing tidak diminta saat sesi sudah paired via QR (registered false)', async () => {
+    state.auth.state.creds.registered = false
+    state.auth.state.creds.me = { id: '628123456789:12@s.whatsapp.net' }
     const { manager } = createManager()
     const redis = {
       get: vi.fn(async () => '628123456789'),
@@ -223,6 +226,7 @@ describe('SessionManager', () => {
 
   it('koneksi tutup pada sesi belum pairing: tidak reconnect dan QR dibuang', async () => {
     state.auth.state.creds.registered = false
+    state.auth.state.creds.me = undefined
     const { manager, sessions } = createManager()
     await manager.start(SESSION)
 
@@ -241,6 +245,101 @@ describe('SessionManager', () => {
     expect(
       (manager as unknown as { reconnectAttempts: Map<string, number> }).reconnectAttempts.size,
     ).toBe(0)
+  })
+
+  it('koneksi tutup pada sesi paired via QR (registered false) di-reconnect otomatis', async () => {
+    state.auth.state.creds.registered = false
+    state.auth.state.creds.me = { id: '628123456789:12@s.whatsapp.net' }
+    const { manager, sessions } = createManager()
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: 428 } } },
+    })
+
+    await vi.waitFor(() =>
+      expect(sessions.update).toHaveBeenCalledWith('s1', { status: 'disconnected' }),
+    )
+    expect(manager.has('s1')).toBe(false)
+    expect(
+      (manager as unknown as { reconnectAttempts: Map<string, number> }).reconnectAttempts.size,
+    ).toBe(1)
+  })
+
+  it('stop menandai sesi disconnected sebelum lock dilepas', async () => {
+    const { manager, sessions } = createManager()
+    await manager.start(SESSION)
+
+    await manager.stop('s1')
+
+    expect(sessions.markDisconnectedIfLive).toHaveBeenCalledWith('s1')
+    expect(state.lock.release).toHaveBeenCalled()
+    expect(manager.has('s1')).toBe(false)
+  })
+
+  it('gagal menandai disconnected tidak menggagalkan stop', async () => {
+    const { manager, sessions, logger } = createManager()
+    await manager.start(SESSION)
+    sessions.markDisconnectedIfLive.mockRejectedValueOnce(new Error('db down'))
+
+    await manager.stop('s1')
+
+    expect(logger.warn).toHaveBeenCalled()
+    expect(state.lock.release).toHaveBeenCalled()
+    expect(manager.has('s1')).toBe(false)
+  })
+
+  it('sendText menolak saat socket tertutup dan menandai sesi disconnected', async () => {
+    const { manager, sessions } = createManager()
+    await manager.start(SESSION)
+    state.socket.ws.isOpen = false
+
+    await expect(manager.sendText('s1', '628123456789@s.whatsapp.net', 'halo')).rejects.toBeInstanceOf(
+      SessionNotReadyError,
+    )
+    expect(sessions.markDisconnectedIfLive).toHaveBeenCalledWith('s1')
+    expect(state.socket.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('sendText menolak saat handle tidak ada tanpa mengubah status', async () => {
+    const { manager, sessions } = createManager()
+
+    await expect(manager.sendText('sX', 'abc@s.whatsapp.net', 'halo')).rejects.toBeInstanceOf(
+      SessionNotReadyError,
+    )
+    expect(sessions.markDisconnectedIfLive).not.toHaveBeenCalled()
+  })
+
+  it('sendText mengirim langsung ke JID tujuan', async () => {
+    const { manager } = createManager()
+    await manager.start(SESSION)
+    state.socket.ws.isOpen = true
+    state.socket.sendMessage.mockResolvedValueOnce({ key: { id: 'wa-1' } })
+
+    await expect(
+      manager.sendText('s1', '628123456789@s.whatsapp.net', 'halo'),
+    ).resolves.toEqual({ key: { id: 'wa-1' } })
+    expect(state.socket.sendMessage).toHaveBeenCalledWith('628123456789@s.whatsapp.net', {
+      text: 'halo',
+    })
+  })
+
+  it('sendText timeout saat socket tidak merespons', async () => {
+    vi.useFakeTimers()
+    try {
+      const { manager } = createManager()
+      await manager.start(SESSION)
+      state.socket.ws.isOpen = true
+      state.socket.sendMessage.mockImplementationOnce(() => new Promise(() => undefined))
+
+      const promise = manager.sendText('s1', '628123456789@s.whatsapp.net', 'halo')
+      const assertion = expect(promise).rejects.toBeInstanceOf(SendTimeoutError)
+      await vi.advanceTimersByTimeAsync(20_000)
+      await assertion
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('logout melepas perangkat di WhatsApp dan membersihkan auth', async () => {

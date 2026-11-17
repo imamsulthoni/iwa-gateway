@@ -19,7 +19,7 @@ import { toUserJid } from '../../modules/messages/phone.js'
 import type { MessagesService } from '../../modules/messages/service.js'
 import type { SessionsService } from '../../modules/sessions/service.js'
 import type { QueueRegistry } from '../../infra/queue.js'
-import { enqueue } from '../../infra/queue.js'
+import { enqueue, SEND_JOB_OPTIONS } from '../../infra/queue.js'
 import type { AppBindings } from '../app.js'
 import { idParamSchema, openApiError } from '../openapi.js'
 
@@ -236,6 +236,8 @@ export function createSessionMessagesRoute(
         'send-message',
         { sessionId, messageId: result.message.id },
         result.message.id,
+        0,
+        SEND_JOB_OPTIONS,
       )
     }
 
@@ -244,7 +246,12 @@ export function createSessionMessagesRoute(
 
   router.openapi(listSessionMessagesRoute, async (c) => {
     const query = c.req.valid('query')
-    const page = await messages.listBySession(c.req.param('id'), query.limit, query.cursor)
+    const page = await messages.listBySession(
+      c.req.param('id'),
+      query.limit,
+      query.cursor,
+      query.direction,
+    )
     return c.json(page, 200)
   })
 
@@ -294,6 +301,8 @@ export function createV1MessagesRoute(
         'send-message',
         { sessionId: session.id, messageId: result.message.id },
         result.message.id,
+        0,
+        SEND_JOB_OPTIONS,
       )
     }
 
@@ -308,7 +317,7 @@ export function createMessagesRoute(messages: MessagesService, queues: QueueRegi
 
   router.openapi(listMessagesRoute, async (c) => {
     const query = c.req.valid('query')
-    const page = await messages.listAll(query.limit, query.sessionId)
+    const page = await messages.listAll(query.limit, query.sessionId, undefined, query.direction)
     return c.json(page, 200)
   })
 
@@ -320,6 +329,8 @@ export function createMessagesRoute(messages: MessagesService, queues: QueueRegi
       'send-message',
       { sessionId: message.sessionId, messageId: message.id },
       `${message.id}-retry-${Date.now()}`,
+      0,
+      SEND_JOB_OPTIONS,
     )
     return c.json({ message }, 202)
   })

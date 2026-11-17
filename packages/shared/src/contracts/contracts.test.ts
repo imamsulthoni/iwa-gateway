@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest'
 import { broadcastV1Schema, createBroadcastSchema } from './broadcast.js'
 import { conversationListSchema, conversationSchema, roomMessageSchema } from './conversation.js'
 import { sseEventSchema } from './event.js'
-import { retryMessageResponseSchema, sendMessageSchema } from './message.js'
+import {
+  crossSessionMessageQuerySchema,
+  messageQuerySchema,
+  retryMessageResponseSchema,
+  sendMessageSchema,
+} from './message.js'
 import { createOptOutSchema, optOutSchema } from './opt-out.js'
 import { paginationQuerySchema } from './pagination.js'
 import { createSessionSchema, publicIdSchema } from './session.js'
@@ -65,6 +70,17 @@ describe('kontrak pesan', () => {
     }
     expect(retryMessageResponseSchema.safeParse({ message }).success).toBe(true)
     expect(retryMessageResponseSchema.safeParse({ message: { id: 'm1' } }).success).toBe(false)
+  })
+
+  it('memfilter arah pesan lewat query opsional', () => {
+    expect(messageQuerySchema.parse({}).direction).toBeUndefined()
+    expect(messageQuerySchema.parse({ direction: 'out' }).direction).toBe('out')
+    expect(crossSessionMessageQuerySchema.parse({ limit: '10', direction: 'in' })).toMatchObject({
+      limit: 10,
+      direction: 'in',
+    })
+    expect(messageQuerySchema.safeParse({ direction: 'both' }).success).toBe(false)
+    expect(crossSessionMessageQuerySchema.safeParse({ direction: 'up' }).success).toBe(false)
   })
 })
 

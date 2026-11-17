@@ -5,6 +5,7 @@ import { BufferJSON } from '@whiskeysockets/baileys'
 import type { MessageRow } from '../../db/schema.js'
 import type { SendMessageJob } from '../../infra/queue.js'
 import type { AppLogger } from '../../infra/logger.js'
+import { SendTimeoutError, SessionNotReadyError } from '../../modules/errors.js'
 import type { MessagesService } from '../../modules/messages/service.js'
 import type { SessionManager } from '../session-manager.js'
 import { createSendMessageProcessor } from './send-message.js'
@@ -76,6 +77,36 @@ describe('processor send-message', () => {
 
     await expect(processor(JOB)).rejects.toThrow('socket mati')
     expect(messages.markFailed).toHaveBeenCalledWith('m1', 'socket mati')
+  })
+
+  it('menandai failed saat sesi belum terhubung tanpa retry', async () => {
+    const { messages, manager } = createDeps({
+      sendText: async () => {
+        throw new SessionNotReadyError()
+      },
+    })
+    const processor = createSendMessageProcessor({ manager, messages, logger: LOGGER })
+
+    await expect(processor(JOB)).rejects.toBeInstanceOf(SessionNotReadyError)
+    expect(messages.markFailed).toHaveBeenCalledWith(
+      'm1',
+      'Sesi belum terhubung. Kirim ulang setelah status Terhubung.',
+    )
+  })
+
+  it('menandai failed saat pengiriman timeout tanpa retry', async () => {
+    const { messages, manager } = createDeps({
+      sendText: async () => {
+        throw new SendTimeoutError()
+      },
+    })
+    const processor = createSendMessageProcessor({ manager, messages, logger: LOGGER })
+
+    await expect(processor(JOB)).rejects.toBeInstanceOf(SendTimeoutError)
+    expect(messages.markFailed).toHaveBeenCalledWith(
+      'm1',
+      'Tidak ada respons dari WhatsApp. Kirim ulang.',
+    )
   })
 
   it('melewati pesan yang sudah tidak queued', async () => {

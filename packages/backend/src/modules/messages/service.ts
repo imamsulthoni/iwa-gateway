@@ -1,4 +1,4 @@
-import type { MessageDto, MessageStatus, RoomMessageDto } from '@wa/shared'
+import type { MessageDirection, MessageDto, MessageStatus, RoomMessageDto } from '@wa/shared'
 
 import { newId } from '../../db/id.js'
 import type { MessageRow } from '../../db/schema.js'
@@ -130,16 +130,20 @@ export function createMessagesService(repo: MessagesRepository) {
       sessionId: string,
       limit: number,
       cursor?: string,
+      direction?: MessageDirection,
     ): Promise<{ items: MessageDto[]; nextCursor: string | null }> {
-      return toPage(await repo.listBySession(sessionId, limit, decodeCursor(cursor)))
+      return toPage(
+        await repo.listBySession(sessionId, limit, decodeCursor(cursor), direction),
+      )
     },
 
     async listAll(
       limit: number,
       sessionId?: string,
       cursor?: string,
+      direction?: MessageDirection,
     ): Promise<{ items: MessageDto[]; nextCursor: string | null }> {
-      return toPage(await repo.listAll(limit, sessionId, decodeCursor(cursor)))
+      return toPage(await repo.listAll(limit, sessionId, decodeCursor(cursor), direction))
     },
 
     async markSent(id: string, waMessageId: string | null, raw?: unknown): Promise<void> {

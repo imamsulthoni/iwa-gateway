@@ -36,7 +36,9 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
   const tracked = usePolling<MessageDto | null>(
     async () => {
       if (!result) return null
-      const page = await api.get<MessageListDto>(`/sessions/${session.id}/messages?limit=20`)
+      const page = await api.get<MessageListDto>(
+        `/sessions/${session.id}/messages?limit=20&direction=out`,
+      )
       return page.items.find((item) => item.id === result.message.id) ?? null
     },
     STATUS_POLL_MS,
@@ -46,6 +48,7 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
   const polled = result && tracked.data?.id === result.message.id ? tracked.data : null
   const status = polled?.status ?? result?.message.status
   const polling = status === 'queued'
+  const lastError = polled?.error ?? result?.message.error ?? null
 
   // Pantau status hanya sampai terminal; interval dihentikan saat itu.
   useEffect(() => {
@@ -224,9 +227,12 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
                   : status === 'failed'
                     ? 'Pengiriman gagal. Kirim ulang dari tab Riwayat.'
                     : polling
-                      ? 'Menunggu worker, status diperbarui otomatis...'
+                      ? 'Sedang diproses...'
                       : 'Status akhir sudah diterima.'}
               </p>
+              {status === 'failed' && lastError ? (
+                <p className="pt-1.5 font-data text-[10px] text-danger">{lastError}</p>
+              ) : null}
             </>
           ) : (
             <p className="text-small text-ink-faint">Belum ada pengiriman di tab ini.</p>

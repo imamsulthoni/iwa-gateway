@@ -51,7 +51,7 @@ describeIntegration('bootstrap sesi worker', () => {
       cipher,
       logger: createLogger('silent'),
     })
-    auth.state.creds.registered = true
+    auth.state.creds.me = { id: '628123456789:1@s.whatsapp.net' }
     await auth.saveCreds()
     await auth.state.keys.set({
       session: { s1: Buffer.from('auth-seed') },

@@ -25,3 +25,17 @@ export class ConflictError extends DomainError {
     super(message, 'CONFLICT')
   }
 }
+
+/** Socket sesi belum siap; user perlu mengirim ulang setelah sesi terhubung. */
+export class SessionNotReadyError extends DomainError {
+  constructor() {
+    super('Sesi belum terhubung. Kirim ulang setelah status Terhubung.', 'SESSION_NOT_READY')
+  }
+}
+
+/** Socket tidak merespons; user perlu mengirim ulang. */
+export class SendTimeoutError extends DomainError {
+  constructor() {
+    super('Tidak ada respons dari WhatsApp. Kirim ulang.', 'SEND_TIMEOUT')
+  }
+}

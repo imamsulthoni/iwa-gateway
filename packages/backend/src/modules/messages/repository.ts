@@ -193,23 +193,23 @@ export function createMessagesRepository(db: Database) {
       sessionId: string,
       limit: number,
       cursor?: MessageCursor,
+      direction?: MessageRow['direction'],
     ): Promise<{ items: MessageRow[]; nextCursor: MessageCursor | null }> {
-      return listPage(
-        and(eq(messages.sessionId, sessionId), isNull(messages.deletedAt)),
-        limit,
-        cursor,
-      )
+      const conditions = [eq(messages.sessionId, sessionId), isNull(messages.deletedAt)]
+      if (direction) conditions.push(eq(messages.direction, direction))
+      return listPage(and(...conditions), limit, cursor)
     },
 
     async listAll(
       limit: number,
       sessionId?: string,
       cursor?: MessageCursor,
+      direction?: MessageRow['direction'],
     ): Promise<{ items: MessageRow[]; nextCursor: MessageCursor | null }> {
-      const base = sessionId
-        ? and(isNull(messages.deletedAt), eq(messages.sessionId, sessionId))
-        : and(isNull(messages.deletedAt))
-      return listPage(base, limit, cursor)
+      const conditions = [isNull(messages.deletedAt)]
+      if (sessionId) conditions.push(eq(messages.sessionId, sessionId))
+      if (direction) conditions.push(eq(messages.direction, direction))
+      return listPage(and(...conditions), limit, cursor)
     },
 
     async listByConversation(

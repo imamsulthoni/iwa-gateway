@@ -1,10 +1,13 @@
-import { DisconnectReason, type WASocket } from '@whiskeysockets/baileys'
+import {
+  DisconnectReason,
+  type AuthenticationCreds,
+  type WASocket,
+} from '@whiskeysockets/baileys'
 import type { Redis } from 'ioredis'
 import QRCode from 'qrcode'
 import type { SseEvent, WebhookPayload } from '@wa/shared'
 
 import { useDbAuthState, type DbAuthState } from '../baileys/auth-store.js'
-import { jidDecode } from '../baileys/jid.js'
 import { createGetMessage } from '../baileys/message-retry.js'
 import { createSocket } from '../baileys/socket.js'
 import type { Database } from '../db/client.js'
@@ -19,6 +22,7 @@ import type { MessagesService } from '../modules/messages/service.js'
 import type { OptOutsService } from '../modules/opt-outs/service.js'
 import type { SessionsRepository } from '../modules/sessions/repository.js'
 import type { WebhookOutbox } from '../modules/webhooks/outbox.js'
+import { SendTimeoutError, SessionNotReadyError } from '../modules/errors.js'
 import { parseConnectionUpdate, type ConnectionUpdateInput } from './events/connection.js'
 import { parseMessagesUpdate } from './events/messages-update.js'
 import { handleMessagesUpsert } from './events/messages-upsert.js'
@@ -31,15 +35,38 @@ type SessionHandle = {
   pendingCredsSave: Promise<void>
 }
 
-type OnWhatsAppResult = { exists: boolean; jid: string }
-
-const ON_WHATSAPP_TTL_MS = 60_000
 const RETRY_COUNTER_TTL_MS = 15 * 60_000
+
+// Kirim yang menggantung (socket half-open) tidak boleh menahan job antrean
+// selamanya; lewat batas ini pengiriman gagal dan user bisa kirim ulang.
+const SEND_TIMEOUT_MS = 20_000
+
+function withTimeout<T>(promise: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new SendTimeoutError()), SEND_TIMEOUT_MS)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error: unknown) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
+}
 
 // "628123456789:12@s.whatsapp.net" -> "628123456789"
 function phoneFromCreds(meId: string | undefined): string | undefined {
   const user = meId?.split('@')[0]?.split(':')[0]
   return user || undefined
+}
+
+// Pairing QR tidak men-set creds.registered; kehadiran me.id menandakan
+// perangkat sudah tertaut dan boleh di-start/reconnect otomatis.
+function isPaired(creds: AuthenticationCreds): boolean {
+  return Boolean(creds.registered || creds.me?.id)
 }
 
 export type SessionManagerDeps = {
@@ -59,7 +86,6 @@ export class SessionManager {
   private readonly handles = new Map<string, SessionHandle>()
   private readonly reconnectAttempts = new Map<string, number>()
   private readonly retryCounterCache = createKeyCache(RETRY_COUNTER_TTL_MS)
-  private readonly onWhatsAppCache = createKeyCache(ON_WHATSAPP_TTL_MS)
 
   constructor(private readonly deps: SessionManagerDeps) {}
 
@@ -197,17 +223,17 @@ export class SessionManager {
       return
     }
 
-    const registered = Boolean(handle.auth.state.creds.registered)
+    const paired = isPaired(handle.auth.state.creds)
     await this.stop(sessionId)
     await this.deps.sessions.update(
       sessionId,
       // QR lama sudah tidak valid setelah koneksi tutup; jangan tampilkan lagi.
-      registered ? { status: 'disconnected' } : { status: 'disconnected', lastQr: null },
+      paired ? { status: 'disconnected' } : { status: 'disconnected', lastQr: null },
     )
     await this.publishSessionStatus(sessionId)
     // Sesi yang belum pairing tidak di-reconnect otomatis agar tidak
     // kena rate limit WhatsApp (429) — tunggu user menekan Scan QR.
-    if (registered) {
+    if (paired) {
       this.scheduleReconnect(sessionId)
     }
   }
@@ -254,7 +280,7 @@ export class SessionManager {
 
   private async maybeRequestPairingCode(sessionId: string): Promise<void> {
     const handle = this.handles.get(sessionId)
-    if (!handle || handle.auth.state.creds.registered) return
+    if (!handle || isPaired(handle.auth.state.creds)) return
     const session = await this.deps.sessions.findById(sessionId)
     if (!session) return
     const requestKey = `wa:pairing:request:${sessionId}`
@@ -372,36 +398,28 @@ export class SessionManager {
   async sendText(sessionId: string, toJid: string, text: string) {
     const handle = this.handles.get(sessionId)
     if (!handle) {
-      throw new Error(`Socket sesi ${sessionId} belum aktif`)
+      throw new SessionNotReadyError()
     }
-    const jid = await this.resolveRecipientJid(sessionId, handle, toJid)
-    return handle.socket.sendMessage(jid, { text })
+    // Socket bisa tertutup lebih dulu sebelum event close diproses; jangan
+    // menunggu event agar status sesi tidak menipu.
+    if (!handle.socket.ws?.isOpen) {
+      await this.markDisconnected(sessionId)
+      throw new SessionNotReadyError()
+    }
+    // Langsung kirim ke JID tujuan: query usync (onWhatsApp) bisa menggantung
+    // saat socket half-open dan membuat pesan tertahan "queued" selamanya.
+    return withTimeout(handle.socket.sendMessage(toJid, { text }))
   }
 
-  private async resolveRecipientJid(
-    sessionId: string,
-    handle: SessionHandle,
-    toJid: string,
-  ): Promise<string> {
-    const digits = jidDecode(toJid)?.user
-    if (!digits || !/^\d+$/.test(digits)) return toJid
-
-    const cacheKey = `onwa:${digits}`
-    const cached = this.onWhatsAppCache.get<OnWhatsAppResult>(cacheKey)
-    if (cached) {
-      if (!cached.exists) {
-        throw new Error(`Nomor ${digits} tidak terdaftar di WhatsApp`)
+  private async markDisconnected(sessionId: string): Promise<void> {
+    try {
+      const changed = await this.deps.sessions.markDisconnectedIfLive(sessionId)
+      if (changed) {
+        this.deps.logger.warn({ sessionId }, 'Socket tertutup, sesi ditandai disconnected')
       }
-      return cached.jid
+    } catch (error) {
+      this.deps.logger.warn({ sessionId, err: error }, 'Gagal menandai sesi terputus')
     }
-
-    const results = (await handle.socket.onWhatsApp(digits)) ?? []
-    const result = results[0]
-    this.onWhatsAppCache.set<OnWhatsAppResult>(cacheKey, result ?? { exists: false, jid: toJid })
-    if (!result?.exists) {
-      throw new Error(`Nomor ${digits} tidak terdaftar di WhatsApp`)
-    }
-    return result.jid
   }
 
   async stop(sessionId: string, clearAuth = false): Promise<void> {
@@ -412,7 +430,7 @@ export class SessionManager {
     // Pastikan creds terakhir (mis. hasil pairing) sudah tersimpan sebelum
     // socket baru membaca ulang state dari database.
     await handle.pendingCredsSave
-    if (clearAuth && handle.auth.state.creds.registered && handle.socket.ws?.isOpen) {
+    if (clearAuth && isPaired(handle.auth.state.creds) && handle.socket.ws?.isOpen) {
       try {
         // Lepas perangkat di sisi WhatsApp, bukan hanya menutup socket lokal.
         await handle.socket.logout()
@@ -429,6 +447,10 @@ export class SessionManager {
       await handle.auth.clear()
       await this.clearPairingKeys(sessionId)
     }
+    // Tandai sesi tidak lagi hidup agar API menolak kirim pesan selama socket
+    // tidak ada. Dilakukan sebelum lock dilepas supaya proses lain tidak
+    // sempat men-set status baru lebih dulu.
+    await this.markDisconnected(sessionId)
     await handle.lock.release()
     this.deps.logger.info({ sessionId, clearAuth }, 'Socket sesi dihentikan')
   }

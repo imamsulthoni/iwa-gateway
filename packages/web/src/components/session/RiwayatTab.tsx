@@ -27,7 +27,7 @@ export function RiwayatTab({ session }: RiwayatTabProps) {
     setLoading(true)
     setError(null)
     try {
-      const query = new URLSearchParams({ limit: '20' })
+      const query = new URLSearchParams({ limit: '20', direction: 'out' })
       if (nextCursor) query.set('cursor', nextCursor)
       const page = await api.get<MessageListDto>(
         `/sessions/${session.id}/messages?${query.toString()}`,

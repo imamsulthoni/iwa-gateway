@@ -1,7 +1,7 @@
 import {
   deleteAuthState,
   hasAuthState,
-  isAuthRegistered,
+  isAuthPaired,
   useDbAuthState,
 } from '../baileys/auth-store.js'
 import type { Database } from '../db/client.js'
@@ -46,7 +46,7 @@ export async function reconcileSessions({
     }
     // Sesi dengan auth yang belum pairing tidak di-start ulang otomatis
     // agar tidak memicu rate limit WhatsApp (429) — tunggu login manual.
-    if (await isAuthRegistered(db, cipher, row.id)) {
+    if (await isAuthPaired(db, cipher, row.id)) {
       await manager.start(row)
     }
   }

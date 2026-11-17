@@ -4,14 +4,14 @@ import type { WaSessionRow } from '../db/schema.js'
 
 const state = vi.hoisted(() => ({
   hasAuthState: vi.fn(),
-  isAuthRegistered: vi.fn(),
+  isAuthPaired: vi.fn(),
   useDbAuthState: vi.fn(async () => undefined),
   deleteAuthState: vi.fn(),
 }))
 
 vi.mock('../baileys/auth-store.js', () => ({
   hasAuthState: state.hasAuthState,
-  isAuthRegistered: state.isAuthRegistered,
+  isAuthPaired: state.isAuthPaired,
   useDbAuthState: state.useDbAuthState,
   deleteAuthState: state.deleteAuthState,
 }))
@@ -61,7 +61,7 @@ function createDeps(rows: WaSessionRow[]) {
 describe('reconcileSessions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    state.isAuthRegistered.mockResolvedValue(true)
+    state.isAuthPaired.mockResolvedValue(true)
   })
 
   it('sesi baru created tanpa auth di-start dan auth dibuat', async () => {
@@ -97,18 +97,18 @@ describe('reconcileSessions', () => {
   it('sesi dengan auth yang belum pairing tidak di-start ulang (anti 429)', async () => {
     const { deps, manager } = createDeps([row('qr_pending')])
     state.hasAuthState.mockResolvedValue(true)
-    state.isAuthRegistered.mockResolvedValue(false)
+    state.isAuthPaired.mockResolvedValue(false)
 
     await reconcileSessions(deps)
 
     expect(manager.start).not.toHaveBeenCalled()
-    expect(state.isAuthRegistered).toHaveBeenCalledOnce()
+    expect(state.isAuthPaired).toHaveBeenCalledOnce()
   })
 
-  it('sesi dengan auth yang sudah registered di-start ulang', async () => {
+  it('sesi dengan auth yang sudah pairing di-start ulang', async () => {
     const { deps, manager } = createDeps([row('disconnected')])
     state.hasAuthState.mockResolvedValue(true)
-    state.isAuthRegistered.mockResolvedValue(true)
+    state.isAuthPaired.mockResolvedValue(true)
 
     await reconcileSessions(deps)
 

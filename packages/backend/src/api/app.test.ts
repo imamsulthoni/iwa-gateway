@@ -330,6 +330,45 @@ describe('API Hono', () => {
     expect(queue.add).not.toHaveBeenCalled()
   })
 
+  it('riwayat lintas sesi meneruskan filter arah pesan', async () => {
+    const listAll = vi.fn(async () => ({ items: [], nextCursor: null }))
+    const { app } = createTestApp({
+      messages: { listAll } as unknown as MessagesService,
+    })
+    const response = await app.request('/messages?direction=out', {
+      headers: { 'x-api-key': 'valid-key' },
+    })
+
+    expect(response.status).toBe(200)
+    expect(listAll).toHaveBeenCalledWith(50, undefined, undefined, 'out')
+  })
+
+  it('riwayat sesi meneruskan filter arah pesan', async () => {
+    const listBySession = vi.fn(async () => ({ items: [], nextCursor: null }))
+    const { app } = createTestApp({
+      messages: { listBySession } as unknown as MessagesService,
+    })
+    const response = await app.request(`/sessions/${SESSION_ID}/messages?direction=out`, {
+      headers: { 'x-api-key': 'valid-key' },
+    })
+
+    expect(response.status).toBe(200)
+    expect(listBySession).toHaveBeenCalledWith(SESSION_ID, 20, undefined, 'out')
+  })
+
+  it('arah pesan tidak dikenal ditolak 422', async () => {
+    const listAll = vi.fn()
+    const { app } = createTestApp({
+      messages: { listAll } as unknown as MessagesService,
+    })
+    const response = await app.request('/messages?direction=sideways', {
+      headers: { 'x-api-key': 'valid-key' },
+    })
+
+    expect(response.status).toBe(422)
+    expect(listAll).not.toHaveBeenCalled()
+  })
+
   it('kirim ulang pesan gagal meng-enqueue job dengan id unik', async () => {
     const { app, queue, messages } = createTestApp()
     const response = await app.request('/messages/message-1/retry', {

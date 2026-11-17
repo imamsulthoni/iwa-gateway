@@ -44,8 +44,11 @@ export async function hasAuthState(db: Database, sessionId: string): Promise<boo
 /**
  * Cek apakah sesi sudah pernah pairing (perangkat tertaut). Dipakai worker
  * untuk memutuskan apakah sesi boleh di-start ulang otomatis.
+ *
+ * Pairing via QR tidak men-set `creds.registered` (Baileys memilih login vs
+ * registrasi dari `creds.me`), jadi `me.id` adalah penanda yang andal.
  */
-export async function isAuthRegistered(
+export async function isAuthPaired(
   db: Database,
   cipher: Cipher,
   sessionId: string,
@@ -59,8 +62,9 @@ export async function isAuthRegistered(
   try {
     const creds = JSON.parse(cipher.decrypt(row.creds), BufferJSON.reviver) as {
       registered?: boolean
+      me?: { id?: string }
     }
-    return Boolean(creds.registered)
+    return Boolean(creds.registered || creds.me?.id)
   } catch {
     // Auth rusak: gagal-tutup agar socket tidak di-start berulang-ulang.
     return false

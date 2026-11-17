@@ -10,6 +10,13 @@ export type SendMessageJob = {
   messageId: string
 }
 
+export type EnqueueOptions = {
+  attempts?: number
+}
+
+/** Kirim hanya sekali; pesan gagal dikirim ulang manual oleh user. */
+export const SEND_JOB_OPTIONS: EnqueueOptions = { attempts: 1 }
+
 export type BroadcastRunJob = {
   sessionId: string
   broadcastId: string
@@ -38,11 +45,12 @@ export async function enqueue<T>(
   data: T,
   jobId: string,
   delayMs = 0,
+  options: EnqueueOptions = {},
 ): Promise<void> {
   await queue.add(name as never, data as never, {
     jobId,
     delay: delayMs,
-    attempts: 3,
+    attempts: options.attempts ?? 3,
     backoff: { type: 'exponential', delay: 2000 },
     removeOnComplete: 1000,
     removeOnFail: 5000,

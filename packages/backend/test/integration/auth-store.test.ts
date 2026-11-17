@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { BufferJSON } from '@whiskeysockets/baileys'
 
-import { useDbAuthState } from '../../src/baileys/auth-store.js'
+import { isAuthPaired, useDbAuthState } from '../../src/baileys/auth-store.js'
 import { newId } from '../../src/db/id.js'
 import { waAuthCreds, waAuthKeys, waSessions } from '../../src/db/schema.js'
 import { createCipher } from '../../src/infra/crypto.js'
@@ -85,6 +85,18 @@ describeIntegration('auth store terenkripsi', () => {
 
     expect(await connection.db.select().from(waAuthCreds)).toHaveLength(0)
     expect(await connection.db.select().from(waAuthKeys)).toHaveLength(0)
+  })
+
+  it('isAuthPaired mengenali sesi pairing QR (registered false, me terisi)', async () => {
+    const sessionId = await insertSession()
+    const auth = await useDbAuthState(sessionId, { db: connection.db, cipher, logger })
+
+    expect(await isAuthPaired(connection.db, cipher, sessionId)).toBe(false)
+
+    auth.state.creds.me = { id: '628123456789:1@s.whatsapp.net' }
+    await auth.saveCreds()
+
+    expect(await isAuthPaired(connection.db, cipher, sessionId)).toBe(true)
   })
 
   it('key cache dibuang saat clear sehingga baris baru terbaca', async () => {

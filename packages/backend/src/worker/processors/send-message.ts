@@ -36,9 +36,13 @@ export function createSendMessageProcessor({
         sent ? JSON.stringify(sent, BufferJSON.replacer) : null,
       )
     } catch (error) {
+      // Tanpa retry otomatis: kegagalan langsung final, user memicu kirim ulang.
       const reason = error instanceof Error ? error.message : 'Gagal mengirim pesan'
       await messages.markFailed(message.id, reason)
-      logger.error({ messageId: message.id, err: error }, 'Gagal mengirim pesan')
+      logger.error(
+        { messageId: message.id, sessionId: message.sessionId, err: error },
+        'Gagal mengirim pesan',
+      )
       throw error
     }
   }

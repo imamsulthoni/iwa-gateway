@@ -499,7 +499,7 @@ function useRecentMessages(sessionId: string, connected: boolean) {
     if (!connected) return
     let active = true
     api
-      .get<MessageListDto>(`/sessions/${sessionId}/messages?limit=4`)
+      .get<MessageListDto>(`/sessions/${sessionId}/messages?limit=4&direction=out`)
       .then((page) => {
         if (active) setItems(page.items)
       })

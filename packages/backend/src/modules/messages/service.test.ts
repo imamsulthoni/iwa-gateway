@@ -76,3 +76,20 @@ describe('kirim ulang pesan gagal', () => {
     await expect(service.retry('m1')).rejects.toBeInstanceOf(ConflictError)
   })
 })
+
+describe('filter arah riwayat', () => {
+  it('meneruskan direction ke repository', async () => {
+    const listAll = vi.fn(async () => ({ items: [], nextCursor: null }))
+    const listBySession = vi.fn(async () => ({ items: [], nextCursor: null }))
+    const service = createMessagesService({
+      listAll,
+      listBySession,
+    } as unknown as MessagesRepository)
+
+    await service.listAll(10, 's1', undefined, 'out')
+    expect(listAll).toHaveBeenCalledWith(10, 's1', undefined, 'out')
+
+    await service.listBySession('s1', 10, undefined, 'in')
+    expect(listBySession).toHaveBeenCalledWith('s1', 10, undefined, 'in')
+  })
+})

@@ -61,6 +61,12 @@ function createMemoryRepository(): SessionsRepository {
     async listByStatus(status) {
       return [...rows.values()].filter((row) => row.status === status)
     },
+    async markDisconnectedIfLive(id) {
+      const row = rows.get(id)
+      if (!row || (row.status !== 'connected' && row.status !== 'connecting')) return false
+      rows.set(id, { ...row, status: 'disconnected', updatedAt: new Date() })
+      return true
+    },
   }
 
   return repo
