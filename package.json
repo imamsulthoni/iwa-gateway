@@ -10,6 +10,9 @@
   "scripts": {
     "dev": "pnpm -r --parallel --filter @wa/backend --filter @wa/web dev",
     "build": "pnpm -r build",
+    "start:api": "node packages/backend/dist/api.js",
+    "start:worker": "node packages/backend/dist/worker.js",
+    "start:web": "pnpm --filter @wa/web preview",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
