@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { Badge, Banner, Button, PageHeader, Select, Textarea, cn } from '../../design-system'
 import { api } from '../../lib/api'
+import { newClientRef } from '../../lib/client-ref'
 import { useSessionEvents } from '../../lib/events'
 import { formatPhone, usePolling } from '../../lib/format'
 import type {
@@ -169,7 +170,7 @@ function InboxPage() {
         sessionId,
         to: waAddress,
         text,
-        clientRef: globalThis.crypto.randomUUID(),
+        clientRef: newClientRef(),
       })
       setDraft('')
       await loadLatest(selectedRoom.id)
