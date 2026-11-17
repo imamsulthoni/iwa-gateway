@@ -55,7 +55,9 @@ const app = createApp({
     broadcasts: broadcastsRepo,
     timezone: env.APP_TIMEZONE,
   }),
-  webhooks: createWebhooksService(webhooksRepo),
+  webhooks: createWebhooksService(webhooksRepo, {
+    allowPrivateHttp: env.WEBHOOK_ALLOW_HTTP_PRIVATE,
+  }),
   queues,
 })
 

@@ -14,7 +14,10 @@ const ENDPOINT: WebhookEndpointRow = {
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
 }
 
-function createService(overrides: Partial<Record<keyof WebhooksRepository, unknown>> = {}) {
+function createService(
+  overrides: Partial<Record<keyof WebhooksRepository, unknown>> = {},
+  options: { allowPrivateHttp?: boolean } = {},
+) {
   const repo = {
     findById: vi.fn(async () => ENDPOINT),
     list: vi.fn(async () => [ENDPOINT]),
@@ -26,7 +29,7 @@ function createService(overrides: Partial<Record<keyof WebhooksRepository, unkno
     listDeliveries: vi.fn(async () => ({ items: [], nextCursor: null })),
     ...overrides,
   } as unknown as WebhooksRepository
-  return { service: createWebhooksService(repo), repo }
+  return { service: createWebhooksService(repo, options), repo }
 }
 
 describe('webhooks service', () => {
@@ -71,6 +74,36 @@ describe('webhooks service', () => {
     await expect(
       service.create({ url: 'http://127.0.0.1:9999/hook', events: ['message.status'] }),
     ).resolves.toMatchObject({ url: 'http://127.0.0.1:9999/hook' })
+  })
+
+  it('menolak HTTP IP privat saat flag mati', async () => {
+    const { service } = createService()
+    await expect(
+      service.create({ url: 'http://192.168.20.27:8416/hook', events: ['message.status'] }),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('mengizinkan HTTP IP privat hanya saat flag hidup', async () => {
+    const { service } = createService({}, { allowPrivateHttp: true })
+    await expect(
+      service.create({ url: 'http://192.168.20.27:8416/hook', events: ['message.status'] }),
+    ).resolves.toMatchObject({ url: 'http://192.168.20.27:8416/hook' })
+    await expect(
+      service.create({ url: 'http://10.1.2.3/hook', events: ['message.status'] }),
+    ).resolves.toMatchObject({ url: 'http://10.1.2.3/hook' })
+    await expect(
+      service.create({ url: 'http://172.20.5.4/hook', events: ['message.status'] }),
+    ).resolves.toMatchObject({ url: 'http://172.20.5.4/hook' })
+    await expect(
+      service.create({ url: 'http://172.32.5.4/hook', events: ['message.status'] }),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('tetap menolak HTTP host publik saat flag hidup', async () => {
+    const { service } = createService({}, { allowPrivateHttp: true })
+    await expect(
+      service.create({ url: 'http://example.com/hook', events: ['message.status'] }),
+    ).rejects.toBeInstanceOf(ValidationError)
   })
 
   it('merotasi secret menjadi nilai baru', async () => {

@@ -20,10 +20,13 @@ function createSecret(): string {
   return randomBytes(32).toString('hex')
 }
 
-function validateUrl(value: string): string {
+const PRIVATE_IPV4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/
+
+function validateUrl(value: string, allowPrivateHttp: boolean): string {
   const url = new URL(value)
   const loopback = ['localhost', '127.0.0.1', '::1'].includes(url.hostname)
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
+  const httpAllowed = loopback || (allowPrivateHttp && PRIVATE_IPV4.test(url.hostname))
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && httpAllowed)) {
     throw new ValidationError('URL webhook wajib HTTPS')
   }
   return url.toString()
@@ -82,7 +85,12 @@ function decodeCursor(value?: string): DeliveryCursor | undefined {
   }
 }
 
-export function createWebhooksService(repo: WebhooksRepository) {
+export function createWebhooksService(
+  repo: WebhooksRepository,
+  options: { allowPrivateHttp?: boolean } = {},
+) {
+  const { allowPrivateHttp = false } = options
+
   async function get(id: string): Promise<WebhookEndpointRow> {
     const row = await repo.findById(id)
     if (!row) throw new NotFoundError('Endpoint webhook tidak ditemukan')
@@ -101,7 +109,7 @@ export function createWebhooksService(repo: WebhooksRepository) {
     async create(input: CreateWebhookEndpointInput): Promise<WebhookEndpointCreatedDto> {
       const row: WebhookEndpointRow = {
         id: newId(),
-        url: validateUrl(input.url),
+        url: validateUrl(input.url, allowPrivateHttp),
         secret: createSecret(),
         events: validateEvents(input.events),
         active: input.active ?? true,
@@ -115,7 +123,7 @@ export function createWebhooksService(repo: WebhooksRepository) {
       const current = await get(id)
       const row: WebhookEndpointRow = {
         ...current,
-        url: input.url === undefined ? current.url : validateUrl(input.url),
+        url: input.url === undefined ? current.url : validateUrl(input.url, allowPrivateHttp),
         events: input.events === undefined ? current.events : validateEvents(input.events),
         active: input.active ?? current.active,
       }

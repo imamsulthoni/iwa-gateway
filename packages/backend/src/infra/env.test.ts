@@ -41,4 +41,11 @@ describe('validasi env', () => {
   it('menolak LOG_LEVEL tidak dikenal', () => {
     expect(() => validateEnv({ ...VALID, LOG_LEVEL: 'verbose' })).toThrow(EnvValidationError)
   })
+
+  it('membaca WEBHOOK_ALLOW_HTTP_PRIVATE sebagai boolean', () => {
+    expect(validateEnv(VALID).WEBHOOK_ALLOW_HTTP_PRIVATE).toBe(false)
+    expect(
+      validateEnv({ ...VALID, WEBHOOK_ALLOW_HTTP_PRIVATE: 'true' }).WEBHOOK_ALLOW_HTTP_PRIVATE,
+    ).toBe(true)
+  })
 })

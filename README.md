@@ -60,6 +60,7 @@ Hanya ada satu file env: `.env` di root. Jangan membuat env di dalam `packages/`
 | `SESSION_LOCK_TTL_MS`        | `30000`                                    | worker                         |
 | `RATE_LIMIT_PER_MIN`         | `240`                                      | api                            |
 | `BROADCAST_AUTO_PAUSE_RATIO` | `0.2`                                      | worker (auto-pause broadcast)  |
+| `WEBHOOK_ALLOW_HTTP_PRIVATE` | `false`                                    | api (webhook ke IP privat)     |
 | `LOG_DIR`                    | `logs` (opsional)                          | api, worker (log JSON ke file) |
 | `VITE_API_BASE_URL`          | `http://localhost:8467`                    | web                            |
 
@@ -202,7 +203,7 @@ Auth: header `x-api-key` (API key admin) untuk semua endpoint, kecuali dua endpo
 ### Webhook keluar
 
 - Event: `message.status`, `message.received`, `session.status`.
-- URL wajib HTTPS; `http://` hanya diterima untuk `localhost`/loopback saat uji lokal. Secret 64 karakter hex dibuat server dan hanya muncul saat create/rotate.
+- URL wajib HTTPS; `http://` hanya diterima untuk `localhost`/loopback, atau ke IP privat (10/8, 172.16/12, 192.168/16) bila `WEBHOOK_ALLOW_HTTP_PRIVATE=true`. Secret 64 karakter hex dibuat server dan hanya muncul saat create/rotate.
 - Header: `X-Event-Id` (id delivery, stabil antar retry) dan `X-Signature: sha256=<HMAC-SHA256(body, secret endpoint)>`.
 - Timeout 10 detik, maksimal 3 percobaan (awal + 2 retry) dengan jeda 10 lalu 20 detik; setelah itu status `failed`. Balasan non-2xx dihitung gagal; delivery ke endpoint nonaktif langsung `failed`.
 - Penerima sebaiknya idempoten berdasarkan `X-Event-Id`.

@@ -123,6 +123,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
       SESSION_LOCK_TTL_MS: 30000,
       RATE_LIMIT_PER_MIN: 60,
       BROADCAST_AUTO_PAUSE_RATIO: 0.2,
+      WEBHOOK_ALLOW_HTTP_PRIVATE: false,
     },
     logger: createLogger('silent'),
     redis,
