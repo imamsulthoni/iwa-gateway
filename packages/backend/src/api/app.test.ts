@@ -130,6 +130,14 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
   } as unknown as QueueRegistry
 
   const conversations = {
+    get: vi.fn(async (id: string) => ({
+      id,
+      sessionId: SESSION_ID,
+      waJid: '628123456789@s.whatsapp.net',
+      waJidAlt: null,
+      lastMessageAt: null,
+      unreadCount: 0,
+    })),
     findBySessionAndAddress: vi.fn(async () => null),
     listRooms: vi.fn(async () => ({ items: [], nextCursor: null })),
     listMessages: vi.fn(async () => ({ items: [], nextCursor: null })),
@@ -869,6 +877,98 @@ describe('API Hono', () => {
       expect.objectContaining({ sessionId: SESSION_ID, clientRef: 'inbox-1' }),
     )
     expect(queue.add).toHaveBeenCalledOnce()
+  })
+
+  it('sales hanya bisa membuka inbox sesi miliknya', async () => {
+    const headers = { authorization: `Bearer ${USER_TOKEN}` }
+    const own = await createTestApp().app.request(`/v1/sessions/${SESSION.publicId}/conversations`, {
+      headers,
+    })
+    expect(own.status).toBe(200)
+
+    const otherSession = { ...SESSION, ownerUserId: 'user-2' }
+    const other = createTestApp({
+      sessions: {
+        get: vi.fn(async () => otherSession),
+        getByPublicId: vi.fn(async () => otherSession),
+      } as unknown as SessionsService,
+    }).app
+    const denied = await other.request(`/v1/sessions/${SESSION.publicId}/conversations`, {
+      headers,
+    })
+    expect(denied.status).toBe(403)
+  })
+
+  it('sales ditolak 403 di room chat milik sesi lain', async () => {
+    const otherSession = { ...SESSION, ownerUserId: 'user-2' }
+    const conversation = {
+      id: 'c1',
+      sessionId: 'sesi-lain',
+      waJid: '628123456789@s.whatsapp.net',
+      waJidAlt: null,
+      lastMessageAt: null,
+      unreadCount: 0,
+    }
+    const { app } = createTestApp({
+      conversations: {
+        get: vi.fn(async () => conversation),
+      } as unknown as AppDependencies['conversations'],
+      sessions: {
+        get: vi.fn(async () => otherSession),
+        getByPublicId: vi.fn(async () => otherSession),
+      } as unknown as SessionsService,
+    })
+    const headers = { authorization: `Bearer ${USER_TOKEN}` }
+
+    const messages = await app.request('/v1/conversations/c1/messages', { headers })
+    expect(messages.status).toBe(403)
+
+    const read = await app.request('/v1/conversations/c1/read', { method: 'POST', headers })
+    expect(read.status).toBe(403)
+  })
+
+  it('sales hanya bisa mengirim pesan /v1 untuk sesinya sendiri', async () => {
+    const headers = {
+      authorization: `Bearer ${USER_TOKEN}`,
+      'content-type': 'application/json',
+    }
+    const body = JSON.stringify({
+      sessionId: SESSION.publicId,
+      to: '628123456789',
+      text: 'Halo',
+      clientRef: 's1',
+    })
+
+    const own = createTestApp()
+    const sent = await own.app.request('/v1/messages', { method: 'POST', headers, body })
+    expect(sent.status).toBe(202)
+    expect(own.messages.createOutgoing).toHaveBeenCalledOnce()
+
+    const otherSession = { ...SESSION, ownerUserId: 'user-2' }
+    const other = createTestApp({
+      sessions: {
+        get: vi.fn(async () => otherSession),
+        getByPublicId: vi.fn(async () => otherSession),
+      } as unknown as SessionsService,
+    })
+    const denied = await other.app.request('/v1/messages', { method: 'POST', headers, body })
+    expect(denied.status).toBe(403)
+    expect(other.messages.createOutgoing).not.toHaveBeenCalled()
+  })
+
+  it('SSE menolak sales di sesi milik sales lain', async () => {
+    const otherSession = { ...SESSION, ownerUserId: 'user-2' }
+    const { app } = createTestApp({
+      sessions: {
+        get: vi.fn(async () => otherSession),
+        getByPublicId: vi.fn(async () => otherSession),
+      } as unknown as SessionsService,
+    })
+    const response = await app.request(`/v1/sessions/${SESSION.publicId}/events`, {
+      headers: { authorization: `Bearer ${USER_TOKEN}` },
+    })
+
+    expect(response.status).toBe(403)
   })
 
   it('SSE menolak request tanpa API key', async () => {
