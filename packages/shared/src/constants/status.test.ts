@@ -9,6 +9,7 @@ import {
   RECIPIENT_STATUSES,
   SESSION_STATUS_LABELS,
   SESSION_STATUSES,
+  USER_ROLES,
 } from './status.js'
 
 describe('label status', () => {
@@ -34,5 +35,9 @@ describe('label status', () => {
     for (const status of RECIPIENT_STATUSES) {
       expect(RECIPIENT_STATUS_LABELS[status]).toBeTruthy()
     }
+  })
+
+  it('role user hanya admin dan sales', () => {
+    expect(USER_ROLES).toEqual(['admin', 'sales'])
   })
 })

@@ -5,6 +5,7 @@ import {
   OPT_OUT_SOURCES,
   RECIPIENT_STATUSES,
   SESSION_STATUSES,
+  USER_ROLES,
   type WebhookEventType,
   type WebhookPayload,
 } from '@wa/shared'
@@ -40,6 +41,23 @@ export const apiKeys = mysqlTable(
     createdAt: createdAt(),
   },
   (table) => [uniqueIndex('api_keys_key_hash_uq').on(table.keyHash)],
+)
+
+export const users = mysqlTable(
+  'users',
+  {
+    id: char('id', { length: 36 }).primaryKey(),
+    name: varchar('name', { length: 255 }).notNull(),
+    phoneNumber: varchar('phone_number', { length: 32 }).notNull(),
+    role: mysqlEnum('role', [...USER_ROLES]).notNull().default('sales'),
+    pinHash: varchar('pin_hash', { length: 255 }).notNull(),
+    active: boolean('active').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: datetime('updated_at', { fsp: 3 })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP(3)`),
+  },
+  (table) => [uniqueIndex('users_phone_number_uq').on(table.phoneNumber)],
 )
 
 export const waSessions = mysqlTable(
@@ -268,6 +286,7 @@ export const webhookDeliveries = mysqlTable(
 )
 
 export type ApiKeyRow = typeof apiKeys.$inferSelect
+export type UserRow = typeof users.$inferSelect
 export type WaSessionRow = typeof waSessions.$inferSelect
 export type WaAuthCredsRow = typeof waAuthCreds.$inferSelect
 export type WaAuthKeyRow = typeof waAuthKeys.$inferSelect
