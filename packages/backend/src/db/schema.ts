@@ -77,6 +77,14 @@ export const userSessions = mysqlTable(
   ],
 )
 
+export const appSettings = mysqlTable('app_settings', {
+  key: varchar('key', { length: 64 }).primaryKey(),
+  value: varchar('value', { length: 255 }).notNull(),
+  updatedAt: datetime('updated_at', { fsp: 3 })
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP(3)`),
+})
+
 export const waSessions = mysqlTable(
   'wa_sessions',
   {
@@ -305,6 +313,7 @@ export const webhookDeliveries = mysqlTable(
 export type ApiKeyRow = typeof apiKeys.$inferSelect
 export type UserRow = typeof users.$inferSelect
 export type UserSessionRow = typeof userSessions.$inferSelect
+export type AppSettingRow = typeof appSettings.$inferSelect
 export type WaSessionRow = typeof waSessions.$inferSelect
 export type WaAuthCredsRow = typeof waAuthCreds.$inferSelect
 export type WaAuthKeyRow = typeof waAuthKeys.$inferSelect
