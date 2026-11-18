@@ -67,6 +67,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     ping: vi.fn(async () => 'PONG'),
     publish: vi.fn(async () => 1),
     get: vi.fn(async () => null),
+    set: vi.fn(async () => 'OK'),
     hmget: vi.fn(async () => []),
   } as unknown as RedisClient
 
@@ -84,6 +85,10 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
       return SESSION
     }),
     list: vi.fn(async () => [SESSION]),
+    create: vi.fn(async () => ({ session: SESSION, token: TOKEN })),
+    remove: vi.fn(async () => undefined),
+    rotateToken: vi.fn(async () => ({ session: SESSION, token: TOKEN })),
+    setPhoneNumber: vi.fn(async () => SESSION),
     updateStatus: vi.fn(async (_id: string, status: WaSessionRow['status'], patch = {}) => ({
       ...SESSION,
       status,
@@ -92,6 +97,9 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
   } as unknown as SessionsService
 
   const messages = {
+    listAll: vi.fn(async () => ({ items: [], nextCursor: null })),
+    listBySession: vi.fn(async () => ({ items: [], nextCursor: null })),
+    remove: vi.fn(async () => undefined),
     findByClientRef: vi.fn(async () => null),
     createOutgoing: vi.fn(async () => ({
       message: {
@@ -103,6 +111,8 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
         status: 'queued' as const,
         waMessageId: null,
         error: null,
+        customerName: null,
+        salesName: null,
         createdAt: new Date().toISOString(),
         deletedAt: null,
       },
@@ -760,6 +770,117 @@ describe('API Hono', () => {
       headers: { 'x-api-key': 'valid-key' },
     })
     expect(await legacyResponse.json()).toMatchObject({ salesName: null })
+  })
+
+  it('matriks endpoint admin menolak sales dan tamu', async () => {
+    const { app } = createTestApp()
+    const broadcastBody = JSON.stringify({
+      recipients: [{ to: '628123456789' }],
+      text: 'Halo',
+      minDelay: 10,
+      maxDelay: 20,
+      clientRef: 'm1',
+    })
+    const endpoints: { method: string; path: string; body?: string }[] = [
+      { method: 'POST', path: '/sessions', body: JSON.stringify({ label: 'Baru' }) },
+      { method: 'DELETE', path: `/sessions/${SESSION_ID}` },
+      { method: 'POST', path: `/sessions/${SESSION_ID}/token` },
+      { method: 'POST', path: `/sessions/${SESSION_ID}/login` },
+      { method: 'POST', path: `/sessions/${SESSION_ID}/cancel` },
+      { method: 'POST', path: `/sessions/${SESSION_ID}/logout` },
+      {
+        method: 'POST',
+        path: `/sessions/${SESSION_ID}/pairing`,
+        body: JSON.stringify({ phoneNumber: '628123456789' }),
+      },
+      { method: 'POST', path: `/sessions/${SESSION_ID}/broadcast`, body: broadcastBody },
+      { method: 'GET', path: '/messages' },
+      { method: 'DELETE', path: '/messages/m1' },
+      { method: 'POST', path: '/messages/m1/retry' },
+      { method: 'GET', path: '/stats' },
+      { method: 'GET', path: '/v1/broadcasts/b1' },
+      { method: 'GET', path: '/v1/webhooks' },
+    ]
+
+    for (const endpoint of endpoints) {
+      const sales = await app.request(endpoint.path, {
+        method: endpoint.method,
+        headers: { authorization: `Bearer ${USER_TOKEN}`, 'content-type': 'application/json' },
+        body: endpoint.body,
+      })
+      expect(sales.status, `${endpoint.method} ${endpoint.path} sales`).toBe(403)
+
+      const guest = await app.request(endpoint.path, {
+        method: endpoint.method,
+        headers: { 'content-type': 'application/json' },
+        body: endpoint.body,
+      })
+      expect(guest.status, `${endpoint.method} ${endpoint.path} tamu`).toBe(401)
+    }
+  })
+
+  it('endpoint scoped menolak tamu dengan 401', async () => {
+    const { app } = createTestApp()
+
+    for (const path of [
+      `/sessions/${SESSION_ID}`,
+      `/sessions/${SESSION_ID}/status`,
+      `/sessions/${SESSION_ID}/qr`,
+      `/sessions/${SESSION_ID}/live`,
+      `/sessions/${SESSION_ID}/pairing`,
+      `/v1/sessions/${SESSION.publicId}/conversations`,
+      '/v1/conversations/c1/messages',
+      `/v1/sessions/${SESSION.publicId}/events`,
+    ]) {
+      const response = await app.request(path)
+      expect(response.status, path).toBe(401)
+    }
+  })
+
+  it('admin tetap bisa memakai endpoint tulis sesi dan riwayat', async () => {
+    const { app } = createTestApp()
+    const headers = { 'x-api-key': 'valid-key', 'content-type': 'application/json' }
+
+    const create = await app.request('/sessions', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ label: 'Baru' }),
+    })
+    expect(create.status).toBe(201)
+
+    expect(
+      (await app.request(`/sessions/${SESSION_ID}/token`, { method: 'POST', headers })).status,
+    ).toBe(200)
+    expect(
+      (await app.request(`/sessions/${SESSION_ID}/logout`, { method: 'POST', headers })).status,
+    ).toBe(200)
+    expect(
+      (
+        await app.request(`/sessions/${SESSION_ID}/pairing`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ phoneNumber: '628123456789' }),
+        })
+      ).status,
+    ).toBe(202)
+    expect(
+      (await app.request(`/sessions/${SESSION_ID}`, { method: 'DELETE', headers })).status,
+    ).toBe(204)
+    expect((await app.request('/messages', { headers })).status).toBe(200)
+    expect((await app.request('/messages/m1', { method: 'DELETE', headers })).status).toBe(204)
+  })
+
+  it('response sesi tidak memuat token atau hash sensitif', async () => {
+    const { app } = createTestApp()
+
+    for (const path of ['/sessions', `/sessions/${SESSION_ID}`]) {
+      const response = await app.request(path, { headers: { 'x-api-key': 'valid-key' } })
+      expect(response.status).toBe(200)
+      const text = JSON.stringify(await response.json())
+      expect(text).not.toContain(SESSION.tokenHash ?? '')
+      expect(text).not.toContain('tokenHash')
+      expect(text).not.toContain('pinHash')
+    }
   })
 
   it('GET /docs menyajikan referensi Scalar sebagai HTML', async () => {
