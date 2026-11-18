@@ -1,3 +1,4 @@
+import { CONSUMER_ENDPOINTS } from '@wa/shared'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { WaSessionRow } from '../db/schema.js'
@@ -11,6 +12,7 @@ import type { MessagesService } from '../modules/messages/service.js'
 import type { SessionsService } from '../modules/sessions/service.js'
 import type { SettingsService } from '../modules/settings/service.js'
 import { createApp, type AppDependencies } from './app.js'
+import { openApiDocumentConfig } from './openapi.js'
 
 const TOKEN = 'token-sesi'
 const USER_TOKEN = 'token-user'
@@ -1120,6 +1122,27 @@ describe('API Hono', () => {
     expect(document.components.securitySchemes.UserToken?.type).toBe('http')
     expect(document.info.description).toContain('X-Signature: sha256=')
     expect(document.info.description).toContain('message.received')
+  })
+
+  describe('katalog endpoint consumer', () => {
+    it('setiap entri CONSUMER_ENDPOINTS ada di dokumen OpenAPI', () => {
+      const { app } = createTestApp()
+      const document = app.getOpenAPI31Document(openApiDocumentConfig)
+      const paths = document.paths ?? {}
+
+      for (const endpoint of CONSUMER_ENDPOINTS) {
+        const item = paths[endpoint.path]
+        expect(item, `${endpoint.method} ${endpoint.path} tidak ada di OpenAPI`).toBeDefined()
+        expect(Object.keys(item ?? {})).toContain(endpoint.method.toLowerCase())
+      }
+    })
+
+    it('tidak memasukkan endpoint dashboard internal ke katalog', () => {
+      const keys = CONSUMER_ENDPOINTS.map((endpoint) => `${endpoint.method} ${endpoint.path}`)
+
+      expect(keys).not.toContain('POST /auth/login')
+      expect(keys.filter((key) => / (\/auth|\/settings|\/stats)(\/|$)/.test(key))).toEqual([])
+    })
   })
 
   it('GET /sessions tanpa kredensial tetap 401 dengan format error yang sama', async () => {

@@ -1,5 +1,6 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
+  BookOpen,
   History,
   LayoutDashboard,
   Lock,
@@ -33,6 +34,7 @@ const GROUPS = [
     items: [
       { to: '/webhooks', label: 'Webhook', icon: Webhook },
       { to: '/settings', label: 'Pengaturan', icon: Settings },
+      { to: '/docs', label: 'Panduan API', icon: BookOpen },
     ],
   },
 ] as const
