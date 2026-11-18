@@ -1,6 +1,6 @@
 # WA Bot Service
 
-Monorepo layanan WhatsApp berbasis Baileys: API Hono, worker BullMQ, MySQL 8, Redis 7, dan dashboard React 19 + TanStack Router. **Fase 1** — kelola nomor (QR/pairing code), kirim pesan teks, broadcast teks dengan jeda acak dan batas harian, riwayat pesan keluar, dan statistik. **Fase 2** — inbox/room chat per JID (teks dan label non-teks), SSE real-time, webhook keluar dengan HMAC + retry, opt-out global per nomor, dan broadcast terjadwal dengan pause/resume. Tanpa media, master kontak, user/role/JWT, template, import riwayat, Cloud API, atau multi-tenant.
+Monorepo layanan WhatsApp berbasis Baileys: API Hono, worker BullMQ, MySQL 8, Redis 7, dan dashboard React 19 + TanStack Router. Mencakup pengelolaan nomor (QR/pairing code), pengiriman pesan teks, broadcast teks dengan jeda acak, batas harian, penjadwalan, serta pause/resume, inbox room chat per JID dengan SSE real-time, webhook keluar (HMAC + retry), opt-out global per nomor, riwayat pesan, dan statistik.
 
 ## Prasyarat
 
@@ -138,7 +138,7 @@ logs/*.log {
 
 ## Dokumentasi API
 
-Referensi interaktif: `GET /openapi.json` (OpenAPI 3.1) dan `GET /docs` (Scalar).
+Referensi interaktif: `GET /openapi.json` (OpenAPI 3.1) dan `GET /docs` (Scalar). Versi markdown untuk reviewer/integrator: [`API-CONTRACT.md`](./API-CONTRACT.md).
 
 Auth: header `x-api-key` (API key admin) untuk semua endpoint, kecuali dua endpoint pesan per sesi yang juga menerima `Authorization: Bearer <token sesi>`.
 
@@ -150,55 +150,52 @@ Auth: header `x-api-key` (API key admin) untuk semua endpoint, kecuali dua endpo
 - Rate limit per API key dan per sesi → `429` + `Retry-After`
 - SSE memakai `fetch` streaming + header `x-api-key`, bukan `EventSource`
 
-### Endpoint Fase 1
+### Endpoint
 
-| Endpoint                              | Fungsi                                                 |
-| ------------------------------------- | ------------------------------------------------------ |
-| `GET /`                               | Nama, versi, status dependensi (database, redis)       |
-| `GET /stats`                          | Sesi terhubung, pesan hari ini, total pesan, broadcast |
-| `GET /sessions`                       | Daftar sesi                                            |
-| `POST /sessions`                      | Buat sesi (mode `qr`/`pairing`) + token sekali tampil  |
-| `GET /sessions/:id`                   | Detail sesi                                            |
-| `GET /sessions/:id/live`              | Gabungan state dashboard: sesi, QR, pairing, broadcast |
-| `GET /sessions/:id/status`            | Status internal + label UI + sales/agent               |
-| `GET /sessions/:id/qr`                | QR sebagai data-URL                                    |
-| `GET /sessions/:id/pairing`           | Kode pairing                                           |
-| `POST /sessions/:id/pairing`          | Minta kode pairing untuk nomor                         |
-| `POST /sessions/:id/cancel`           | Batalkan proses pairing                                |
-| `POST /sessions/:id/login`            | Login ulang setelah `logged_out`                       |
-| `POST /sessions/:id/token`            | Rotasi token sesi (tampil sekali)                      |
-| `POST /sessions/:id/logout`           | Logout sesi                                            |
-| `DELETE /sessions/:id`                | Hapus sesi + auth state (cascade)                      |
-| `POST /sessions/:id/messages`         | Kirim pesan teks — admin key atau token sesi           |
-| `GET /sessions/:id/messages`          | Riwayat pesan keluar per sesi (`limit`, `cursor`)      |
-| `POST /sessions/:id/broadcast`        | Buat dan mulai broadcast                               |
-| `GET /sessions/:id/broadcast/current` | Job broadcast berjalan/terakhir                        |
-| `POST /sessions/:id/broadcast/cancel` | Batalkan broadcast berjalan                            |
-| `GET /messages`                       | Riwayat lintas sesi (`limit`, `sessionId`)             |
-| `DELETE /messages/:id`                | Soft delete satu entri riwayat                         |
-| `POST /messages/:id/retry`            | Kirim ulang pesan berstatus `failed`                   |
+| Method   | Endpoint                          | Fungsi                                                              |
+| -------- | --------------------------------- | ------------------------------------------------------------------- |
+| `GET`    | `/`                               | Nama, versi, status dependensi, dan metrik                          |
+| `GET`    | `/openapi.json`                   | Dokumen OpenAPI 3.1                                                 |
+| `GET`    | `/docs`                           | Dokumentasi interaktif (Scalar)                                     |
+| `GET`    | `/stats`                          | Sesi terhubung, pesan hari ini, total pesan, broadcast              |
+| `GET`    | `/sessions`                       | Daftar sesi                                                         |
+| `POST`   | `/sessions`                       | Buat sesi (mode `qr`/`pairing`) + token sekali tampil               |
+| `GET`    | `/sessions/:id`                   | Detail sesi                                                         |
+| `DELETE` | `/sessions/:id`                   | Hapus sesi + auth state (cascade)                                   |
+| `GET`    | `/sessions/:id/status`            | Status ringkas sesi + label UI                                      |
+| `GET`    | `/sessions/:id/live`              | Gabungan state dashboard: sesi, QR, pairing, broadcast              |
+| `GET`    | `/sessions/:id/qr`                | QR sebagai data-URL                                                 |
+| `GET`    | `/sessions/:id/pairing`           | Kode pairing terakhir                                               |
+| `POST`   | `/sessions/:id/pairing`           | Minta kode pairing untuk nomor                                      |
+| `POST`   | `/sessions/:id/cancel`            | Batalkan proses pairing                                             |
+| `POST`   | `/sessions/:id/login`             | Login ulang setelah `logged_out`                                    |
+| `POST`   | `/sessions/:id/logout`            | Logout sesi dan hapus auth tersimpan                                |
+| `POST`   | `/sessions/:id/token`             | Rotasi token sesi (tampil sekali)                                   |
+| `POST`   | `/sessions/:id/messages`          | Kirim pesan teks — API key atau token sesi                          |
+| `GET`    | `/sessions/:id/messages`          | Riwayat pesan per sesi — API key atau token sesi                    |
+| `POST`   | `/sessions/:id/broadcast`         | Buat dan mulai broadcast                                            |
+| `GET`    | `/sessions/:id/broadcast/current` | Job broadcast berjalan/terakhir                                     |
+| `POST`   | `/sessions/:id/broadcast/cancel`  | Batalkan broadcast berjalan                                         |
+| `GET`    | `/messages`                       | Riwayat lintas sesi (`limit`, `sessionId`)                          |
+| `DELETE` | `/messages/:id`                   | Soft delete satu entri riwayat                                      |
+| `POST`   | `/messages/:id/retry`             | Kirim ulang pesan berstatus `failed`                                |
+| `GET`    | `/v1/sessions/:id/events`         | Stream SSE: status sesi, QR, pesan masuk, status pesan              |
+| `GET`    | `/v1/sessions/:id/conversations`  | Daftar room chat sesi, urut `lastMessageAt` terbaru (cursor)        |
+| `GET`    | `/v1/conversations/:id/messages`  | Riwayat pesan satu room (cursor)                                    |
+| `POST`   | `/v1/conversations/:id/read`      | Tandai room dibaca: reset unread dan status pesan masuk jadi `read` |
+| `POST`   | `/v1/messages`                    | Kirim pesan teks (`sessionId`, `to`, `text`, `clientRef`)           |
+| `POST`   | `/v1/broadcasts`                  | Broadcast teks, opsional `scheduledAt` (ISO-8601 UTC)               |
+| `GET`    | `/v1/broadcasts/:id`              | Status, progres, dan status per penerima                            |
+| `POST`   | `/v1/broadcasts/:id/start`        | Mulai broadcast terjadwal atau lanjutkan yang dijeda                |
+| `POST`   | `/v1/broadcasts/:id/pause`        | Jeda broadcast; penerima tersisa tetap `pending`                    |
+| `GET`    | `/v1/webhooks`                    | Daftar endpoint webhook (tanpa secret)                              |
+| `POST`   | `/v1/webhooks`                    | Daftarkan endpoint + event; secret tampil sekali                    |
+| `PATCH`  | `/v1/webhooks/:id`                | Ubah URL, event, atau status aktif                                  |
+| `DELETE` | `/v1/webhooks/:id`                | Hapus endpoint beserta log delivery                                 |
+| `POST`   | `/v1/webhooks/:id/rotate-secret`  | Rotasi secret (tampil sekali)                                       |
+| `GET`    | `/v1/webhooks/:id/deliveries`     | Log delivery (`limit`, `cursor`, filter `status`)                   |
 
-### Endpoint Fase 2 (`/v1`)
-
-| Endpoint                              | Fungsi                                                              |
-| ------------------------------------- | ------------------------------------------------------------------- |
-| `GET /v1/sessions/:id/events`         | Stream SSE: status sesi, QR, pesan masuk, status pesan              |
-| `GET /v1/sessions/:id/conversations`  | Daftar room chat sesi, urut `lastMessageAt` terbaru (cursor)        |
-| `GET /v1/conversations/:id/messages`  | Riwayat pesan satu room (cursor)                                    |
-| `POST /v1/conversations/:id/read`     | Tandai room dibaca: reset unread dan status pesan masuk jadi `read` |
-| `POST /v1/messages`                   | Kirim pesan teks (`sessionId`, `to`, `text`, `clientRef`)           |
-| `POST /v1/broadcasts`                 | Broadcast teks, opsional `scheduledAt` (ISO-8601 UTC)               |
-| `GET /v1/broadcasts/:id`              | Status, progres, dan status per penerima                            |
-| `POST /v1/broadcasts/:id/start`       | Mulai broadcast terjadwal atau lanjutkan yang dijeda                |
-| `POST /v1/broadcasts/:id/pause`       | Jeda broadcast; penerima tersisa tetap `pending`                    |
-| `GET /v1/webhooks`                    | Daftar endpoint webhook (tanpa secret)                              |
-| `POST /v1/webhooks`                   | Daftarkan endpoint + event; secret tampil sekali                    |
-| `PATCH /v1/webhooks/:id`              | Ubah URL, event, atau status aktif                                  |
-| `DELETE /v1/webhooks/:id`             | Hapus endpoint beserta log delivery                                 |
-| `POST /v1/webhooks/:id/rotate-secret` | Rotasi secret (tampil sekali)                                       |
-| `GET /v1/webhooks/:id/deliveries`     | Log delivery (`limit`, `cursor`, filter `status`)                   |
-
-`:id` adalah `public_id` sesi (slug 1–32 karakter `[A-Za-z0-9_-]`).
+`:id` sesi adalah `public_id` (slug 1–32 karakter `[A-Za-z0-9_-]`); `:id` conversation, broadcast, dan webhook adalah UUID.
 
 ### Webhook keluar
 
@@ -252,19 +249,6 @@ data: {"message":{"id":"0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f62","conversationId":"
 ```
 
 Event yang mungkin: `session.status`, `session.qr`, `message.received`, `message.status`. Bentuk data mengikuti kontrak zod di `packages/shared/src/contracts/event.ts`.
-
-### Checklist non-goal Fase 2
-
-Fitur berikut sengaja TIDAK ada di Fase 2 dan tidak boleh ikut ter-commit:
-
-- [ ] Media (gambar, dokumen, audio, video, sticker) diunduh atau disimpan — hanya label jenis di `messages.type`/`body`
-- [ ] Master kontak/profil customer dan tabel `contacts`
-- [ ] User internal, role, dan JWT dashboard
-- [ ] Template variabel/segmentasi
-- [ ] Import riwayat chat
-- [ ] Adapter Cloud API resmi
-- [ ] Tenant / `tenant_id` di skema mana pun
-- [ ] Chat grup, channel/status, chatbot, dan pesan interaktif
 
 ## Verifikasi
 
