@@ -60,6 +60,23 @@ export const users = mysqlTable(
   (table) => [uniqueIndex('users_phone_number_uq').on(table.phoneNumber)],
 )
 
+export const userSessions = mysqlTable(
+  'user_sessions',
+  {
+    id: char('id', { length: 36 }).primaryKey(),
+    userId: char('user_id', { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: char('token_hash', { length: 64 }).notNull(),
+    expiresAt: datetime('expires_at', { fsp: 3 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('user_sessions_token_hash_uq').on(table.tokenHash),
+    index('user_sessions_user_expires_idx').on(table.userId, table.expiresAt),
+  ],
+)
+
 export const waSessions = mysqlTable(
   'wa_sessions',
   {
@@ -287,6 +304,7 @@ export const webhookDeliveries = mysqlTable(
 
 export type ApiKeyRow = typeof apiKeys.$inferSelect
 export type UserRow = typeof users.$inferSelect
+export type UserSessionRow = typeof userSessions.$inferSelect
 export type WaSessionRow = typeof waSessions.$inferSelect
 export type WaAuthCredsRow = typeof waAuthCreds.$inferSelect
 export type WaAuthKeyRow = typeof waAuthKeys.$inferSelect
