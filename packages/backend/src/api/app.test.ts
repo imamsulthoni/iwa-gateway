@@ -242,7 +242,7 @@ describe('API Hono', () => {
     const unauthorized = await app.request('/stats')
     expect(unauthorized.status).toBe(401)
     expect(await unauthorized.json()).toEqual({
-      error: { code: 'UNAUTHORIZED', message: 'API key wajib dikirim' },
+      error: { code: 'UNAUTHORIZED', message: 'API key atau token login wajib dikirim' },
     })
 
     const invalid = await app.request('/stats', { headers: { 'x-api-key': 'salah' } })
@@ -592,13 +592,66 @@ describe('API Hono', () => {
     expect(document.info.description).toContain('message.received')
   })
 
-  it('GET /sessions tanpa API key tetap 401 dengan format error yang sama', async () => {
+  it('GET /sessions tanpa kredensial tetap 401 dengan format error yang sama', async () => {
     const { app } = createTestApp()
     const response = await app.request('/sessions')
 
     expect(response.status).toBe(401)
     expect(await response.json()).toEqual({
-      error: { code: 'UNAUTHORIZED', message: 'API key wajib dikirim' },
+      error: { code: 'UNAUTHORIZED', message: 'API key atau token login wajib dikirim' },
+    })
+  })
+
+  it('GET /sessions menerima API key admin dan token login sales', async () => {
+    const { app } = createTestApp()
+
+    const admin = await app.request('/sessions', { headers: { 'x-api-key': 'valid-key' } })
+    expect(admin.status).toBe(200)
+
+    const sales = await app.request('/sessions', {
+      headers: { authorization: `Bearer ${USER_TOKEN}` },
+    })
+    expect(sales.status).toBe(200)
+  })
+
+  it('token login sales yang kedaluwarsa atau dicabut ditolak 401', async () => {
+    const { app } = createTestApp({
+      userAuth: {
+        authenticate: async () => null,
+      } as unknown as AuthService,
+    })
+    const response = await app.request('/sessions', {
+      headers: { authorization: `Bearer ${USER_TOKEN}` },
+    })
+
+    expect(response.status).toBe(401)
+    expect(await response.json()).toMatchObject({ error: { code: 'UNAUTHORIZED' } })
+  })
+
+  it('API key yang dicabut ditolak 401', async () => {
+    const { app } = createTestApp({
+      auth: { findActive: async () => null },
+    })
+    const response = await app.request('/sessions', { headers: { 'x-api-key': 'dicabut' } })
+
+    expect(response.status).toBe(401)
+    expect(await response.json()).toMatchObject({ error: { code: 'UNAUTHORIZED' } })
+  })
+
+  it('/sessions/:id/messages tetap hanya menerima API key atau token sesi', async () => {
+    const { app } = createTestApp()
+    const response = await app.request(`/sessions/${SESSION_ID}/messages`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${USER_TOKEN}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ to: '628123456789', clientRef: 'ref-1', text: 'Halo' }),
+    })
+
+    expect(response.status).toBe(401)
+    expect(await response.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: 'Token sesi tidak valid' },
     })
   })
 

@@ -16,7 +16,8 @@ import type { WaSessionRow } from '../db/schema.js'
 import type { SessionsService } from '../modules/sessions/service.js'
 import type { StatsService } from '../modules/stats/service.js'
 import type { WebhooksService } from '../modules/webhooks/service.js'
-import { apiKeyMiddleware } from './middleware/api-key.js'
+import type { Actor } from './middleware/auth.js'
+import { anyAuthMiddleware, requireAdminMiddleware } from './middleware/auth.js'
 import { handleError, notFound } from './middleware/error.js'
 import {
   loginRateLimitMiddleware,
@@ -42,6 +43,7 @@ export type AppBindings = {
   Variables: {
     apiKeyId: string
     session: WaSessionRow
+    actor?: Actor
   }
 }
 
@@ -79,7 +81,8 @@ function requestLogger(logger: AppLogger) {
 
 export function createApp(deps: AppDependencies) {
   const app = createOpenApiApp()
-  const requireApiKey = apiKeyMiddleware(deps.auth)
+  const anyAuth = anyAuthMiddleware({ apiKey: deps.auth, auth: deps.userAuth })
+  const requireAdmin = requireAdminMiddleware()
   const rateLimit = rateLimitMiddleware(deps.redis, deps.env.RATE_LIMIT_PER_MIN)
 
   app.use('*', cors({ origin: deps.env.CORS_ORIGIN }))
@@ -95,7 +98,7 @@ export function createApp(deps: AppDependencies) {
   app.use('/auth/login', loginRateLimitMiddleware(deps.redis))
   app.route('/auth', createAuthRoute({ apiKey: deps.auth, auth: deps.userAuth }))
 
-  app.use('/stats', requireApiKey, rateLimit)
+  app.use('/stats', anyAuth, requireAdmin, rateLimit)
   app.route('/', createStatsRoute(deps.stats))
 
   // Endpoint pesan per sesi memakai Bearer token sesi, bukan API key.
@@ -111,17 +114,27 @@ export function createApp(deps: AppDependencies) {
     ),
   )
 
-  app.use('/sessions', requireApiKey, rateLimit)
-  app.use('/sessions/*', requireApiKey, rateLimit)
-  app.use('/messages', requireApiKey, rateLimit)
-  app.use('/messages/*', requireApiKey, rateLimit)
+  app.use('/sessions', anyAuth, rateLimit)
+  app.use('/sessions/*', anyAuth, rateLimit)
+  app.use('/messages', anyAuth, requireAdmin, rateLimit)
+  app.use('/messages/*', anyAuth, requireAdmin, rateLimit)
 
   app.route('/sessions', createSessionsRoute(deps.sessions, deps.broadcasts, deps.redis))
   app.route('/sessions', createBroadcastsRoute(deps.broadcasts, deps.queues))
   app.route('/messages', createMessagesRoute(deps.messages, deps.queues))
 
-  app.use('/v1', requireApiKey, rateLimit)
-  app.use('/v1/*', requireApiKey, rateLimit)
+  // Inbox dan kirim pesan menerima admin maupun sales; broadcast dan webhook
+  // tetap khusus admin.
+  app.use('/v1/broadcasts', anyAuth, requireAdmin, rateLimit)
+  app.use('/v1/broadcasts/*', anyAuth, requireAdmin, rateLimit)
+  app.use('/v1/webhooks', anyAuth, requireAdmin, rateLimit)
+  app.use('/v1/webhooks/*', anyAuth, requireAdmin, rateLimit)
+  app.use('/v1/sessions/:id/conversations', anyAuth, rateLimit)
+  app.use('/v1/conversations/:id/messages', anyAuth, rateLimit)
+  app.use('/v1/conversations/:id/read', anyAuth, rateLimit)
+  app.use('/v1/sessions/:id/events', anyAuth, rateLimit)
+  app.use('/v1/messages', anyAuth, rateLimit)
+
   app.route(
     '/v1',
     createV1MessagesRoute(deps.messages, deps.conversations, deps.sessions, deps.queues),
