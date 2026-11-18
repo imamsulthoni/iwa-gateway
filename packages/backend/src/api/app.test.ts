@@ -712,6 +712,24 @@ describe('API Hono', () => {
     }
   })
 
+  it('detail sesi mengisi salesName dan null untuk sesi lama', async () => {
+    const owned = createTestApp({
+      sessions: {
+        get: vi.fn(async () => ({ ...SESSION, salesName: 'Sales A' })),
+      } as unknown as SessionsService,
+    })
+    const ownedResponse = await owned.app.request(`/sessions/${SESSION_ID}`, {
+      headers: { 'x-api-key': 'valid-key' },
+    })
+    expect(await ownedResponse.json()).toMatchObject({ salesName: 'Sales A' })
+
+    const legacy = createTestApp()
+    const legacyResponse = await legacy.app.request(`/sessions/${SESSION_ID}`, {
+      headers: { 'x-api-key': 'valid-key' },
+    })
+    expect(await legacyResponse.json()).toMatchObject({ salesName: null })
+  })
+
   it('GET /docs menyajikan referensi Scalar sebagai HTML', async () => {
     const { app } = createTestApp()
     const response = await app.request('/docs')

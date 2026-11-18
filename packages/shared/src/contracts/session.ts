@@ -36,6 +36,7 @@ export const sessionSchema = z.object({
   lastConnectedAt: z.string().nullable(),
   salesId: z.string().nullable(),
   agentId: z.string().nullable(),
+  salesName: z.string().nullable(),
   createdAt: z.string(),
 })
 

@@ -8,7 +8,7 @@ import { isDuplicateKeyError } from '../db-errors.js'
 import { NotFoundError } from '../errors.js'
 import { generateSessionToken, hashSessionToken } from '../auth/session-token.js'
 import { DuplicatePhoneError, DuplicatePublicIdError, InvalidPublicIdError } from './errors.js'
-import type { SessionsRepository } from './repository.js'
+import type { SessionsRepository, SessionWithOwner } from './repository.js'
 
 export type CreateSessionValues = {
   label: string
@@ -25,7 +25,7 @@ function generatePublicId(): string {
   return randomBytes(6).toString('hex')
 }
 
-export function toSessionDto(row: WaSessionRow): SessionDto {
+export function toSessionDto(row: WaSessionRow & { salesName?: string | null }): SessionDto {
   return {
     id: row.id,
     publicId: row.publicId,
@@ -35,12 +35,13 @@ export function toSessionDto(row: WaSessionRow): SessionDto {
     lastConnectedAt: row.lastConnectedAt?.toISOString() ?? null,
     salesId: row.salesId,
     agentId: row.agentId,
+    salesName: row.salesName ?? null,
     createdAt: row.createdAt.toISOString(),
   }
 }
 
 export function createSessionsService(repo: SessionsRepository) {
-  async function get(id: string): Promise<WaSessionRow> {
+  async function get(id: string): Promise<SessionWithOwner> {
     const row = await repo.findById(id)
     if (!row) {
       throw new NotFoundError('Sesi tidak ditemukan')
@@ -51,7 +52,7 @@ export function createSessionsService(repo: SessionsRepository) {
   return {
     get,
 
-    async getByPublicId(publicId: string): Promise<WaSessionRow> {
+    async getByPublicId(publicId: string): Promise<SessionWithOwner> {
       const row = await repo.findByPublicId(publicId)
       if (!row) {
         throw new NotFoundError('Sesi tidak ditemukan')
@@ -59,11 +60,13 @@ export function createSessionsService(repo: SessionsRepository) {
       return row
     },
 
-    async list(limit = 50, ownerUserId?: string): Promise<WaSessionRow[]> {
+    async list(limit = 50, ownerUserId?: string): Promise<SessionWithOwner[]> {
       return repo.list(limit, ownerUserId)
     },
 
-    async create(values: CreateSessionValues): Promise<{ session: WaSessionRow; token: string }> {
+    async create(
+      values: CreateSessionValues,
+    ): Promise<{ session: SessionWithOwner; token: string }> {
       const publicId = values.publicId ?? generatePublicId()
       if (!publicIdSchema.safeParse(publicId).success) {
         throw new InvalidPublicIdError()
@@ -91,7 +94,7 @@ export function createSessionsService(repo: SessionsRepository) {
       return { session: await get(id), token }
     },
 
-    async rotateToken(id: string): Promise<{ session: WaSessionRow; token: string }> {
+    async rotateToken(id: string): Promise<{ session: SessionWithOwner; token: string }> {
       await get(id)
       const token = generateSessionToken()
       await repo.update(id, {
@@ -105,13 +108,13 @@ export function createSessionsService(repo: SessionsRepository) {
       id: string,
       status: WaSessionRow['status'],
       patch: { lastQr?: null } = {},
-    ): Promise<WaSessionRow> {
+    ): Promise<SessionWithOwner> {
       await get(id)
       await repo.update(id, { status, ...patch })
       return get(id)
     },
 
-    async setPhoneNumber(id: string, phoneNumber: string): Promise<WaSessionRow> {
+    async setPhoneNumber(id: string, phoneNumber: string): Promise<SessionWithOwner> {
       await get(id)
       try {
         await repo.update(id, { phoneNumber })

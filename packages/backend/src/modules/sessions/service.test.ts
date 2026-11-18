@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import type { WaSessionRow } from '../../db/schema.js'
 import { ConflictError, NotFoundError } from '../errors.js'
 import { hashSessionToken, verifySessionToken } from '../auth/session-token.js'
-import type { SessionsRepository } from './repository.js'
-import { createSessionsService } from './service.js'
+import type { SessionsRepository, SessionWithOwner } from './repository.js'
+import { createSessionsService, toSessionDto } from './service.js'
 
 function createMemoryRepository(): SessionsRepository {
-  const rows = new Map<string, WaSessionRow>()
+  const rows = new Map<string, SessionWithOwner>()
 
   const repo: SessionsRepository = {
     async insert(values) {
@@ -26,6 +25,7 @@ function createMemoryRepository(): SessionsRepository {
         salesId: values.salesId ?? null,
         agentId: values.agentId ?? null,
         ownerUserId: values.ownerUserId ?? null,
+        salesName: null,
         dailySendLimit: values.dailySendLimit ?? 200,
         authFormat: 'v7',
         pairingMethod: 'qr',
@@ -123,6 +123,19 @@ describe('sessions service', () => {
     expect((await service.list(50, 'user-1')).map((row) => row.publicId)).toEqual(['a'])
     expect((await service.list(50, 'user-2')).map((row) => row.publicId)).toEqual(['b'])
     expect(await service.list(50)).toHaveLength(2)
+  })
+
+  it('memetakan salesName dan fallback null untuk sesi lama', async () => {
+    const repo = createMemoryRepository()
+    await repo.insert({ id: '1', publicId: 'a', label: 'A', ownerUserId: 'user-1' })
+    const row = await repo.findById('1')
+    expect(row).not.toBeNull()
+
+    expect(toSessionDto({ ...row!, salesName: 'Sales A' }).salesName).toBe('Sales A')
+    expect(toSessionDto(row!).salesName).toBeNull()
+
+    const { salesName: _ignored, ...legacy } = row!
+    expect(toSessionDto(legacy).salesName).toBeNull()
   })
 
   it('mengubah status dan menghapus sesi', async () => {

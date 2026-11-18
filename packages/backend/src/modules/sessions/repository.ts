@@ -1,27 +1,32 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm'
 
 import type { Database } from '../../db/client.js'
-import { waSessions, type WaSessionRow } from '../../db/schema.js'
+import { users, waSessions, type WaSessionRow } from '../../db/schema.js'
+
+export type SessionWithOwner = WaSessionRow & { salesName: string | null }
 
 export type SessionsRepository = ReturnType<typeof createSessionsRepository>
 
 export function createSessionsRepository(db: Database) {
+  function selectWithOwner() {
+    return db
+      .select({ ...getTableColumns(waSessions), salesName: users.name })
+      .from(waSessions)
+      .leftJoin(users, eq(waSessions.ownerUserId, users.id))
+  }
+
   return {
     async insert(values: typeof waSessions.$inferInsert): Promise<void> {
       await db.insert(waSessions).values(values)
     },
 
-    async findById(id: string): Promise<WaSessionRow | null> {
-      const [row] = await db.select().from(waSessions).where(eq(waSessions.id, id)).limit(1)
+    async findById(id: string): Promise<SessionWithOwner | null> {
+      const [row] = await selectWithOwner().where(eq(waSessions.id, id)).limit(1)
       return row ?? null
     },
 
-    async findByPublicId(publicId: string): Promise<WaSessionRow | null> {
-      const [row] = await db
-        .select()
-        .from(waSessions)
-        .where(eq(waSessions.publicId, publicId))
-        .limit(1)
+    async findByPublicId(publicId: string): Promise<SessionWithOwner | null> {
+      const [row] = await selectWithOwner().where(eq(waSessions.publicId, publicId)).limit(1)
       return row ?? null
     },
 
@@ -34,10 +39,10 @@ export function createSessionsRepository(db: Database) {
       return row ?? null
     },
 
-    async list(limit = 50, ownerUserId?: string): Promise<WaSessionRow[]> {
+    async list(limit = 50, ownerUserId?: string): Promise<SessionWithOwner[]> {
       const query = ownerUserId
-        ? db.select().from(waSessions).where(eq(waSessions.ownerUserId, ownerUserId))
-        : db.select().from(waSessions)
+        ? selectWithOwner().where(eq(waSessions.ownerUserId, ownerUserId))
+        : selectWithOwner()
       return query.orderBy(desc(waSessions.createdAt)).limit(limit)
     },
 
