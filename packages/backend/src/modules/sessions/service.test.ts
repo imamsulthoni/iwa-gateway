@@ -140,8 +140,15 @@ function createMemoryRepository(): MemoryRepository {
 
 function createService(
   repo = createMemoryRepository(),
-  settings: { maxSales: number; salesCount: number } = { maxSales: 10, salesCount: 0 },
+  overrides: { maxSales?: number; salesCount?: number } = {},
 ) {
+  const settings = {
+    maxSales: 10,
+    salesCount: 0,
+    defaultMinDelay: 10,
+    defaultMaxDelay: 30,
+    ...overrides,
+  }
   return createSessionsService(repo, { getSettings: async () => settings })
 }
 
@@ -337,7 +344,11 @@ describe('sessions service', () => {
     ).rejects.toBeInstanceOf(ConflictError)
 
     const full = createService(createMemoryRepository(), { maxSales: 1, salesCount: 1 })
-    const legacy = await full.create({ label: 'Lama', publicId: 'lama', phoneNumber: '628987654321' })
+    const legacy = await full.create({
+      label: 'Lama',
+      publicId: 'lama',
+      phoneNumber: '628987654321',
+    })
     await expect(
       full.attachSales(legacy.session.id, { salesName: 'Rani', pin: '654321' }),
     ).rejects.toBeInstanceOf(SalesLimitReachedError)

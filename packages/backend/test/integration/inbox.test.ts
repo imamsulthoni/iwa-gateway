@@ -200,7 +200,12 @@ describeIntegration('integrasi inbox', () => {
       auth: createApiKeyAuthenticator(connection.db),
       userAuth: {} as unknown as AppDependencies['userAuth'],
       sessions: createSessionsService(sessionsRepo(), {
-        getSettings: async () => ({ maxSales: 10, salesCount: 0 }),
+        getSettings: async () => ({
+          maxSales: 10,
+          salesCount: 0,
+          defaultMinDelay: 10,
+          defaultMaxDelay: 30,
+        }),
       }),
       messages: messagesService(),
       conversations: conversationsService(),
@@ -214,8 +219,18 @@ describeIntegration('integrasi inbox', () => {
         }),
       } as unknown as AppDependencies['stats'],
       settings: {
-        getSettings: async () => ({ maxSales: 10, salesCount: 0 }),
-        updateSettings: async ({ maxSales }) => ({ maxSales, salesCount: 0 }),
+        getSettings: async () => ({
+          maxSales: 10,
+          salesCount: 0,
+          defaultMinDelay: 10,
+          defaultMaxDelay: 30,
+        }),
+        updateSettings: async (values) => ({
+          maxSales: values.maxSales ?? 10,
+          salesCount: 0,
+          defaultMinDelay: values.defaultMinDelay ?? 10,
+          defaultMaxDelay: values.defaultMaxDelay ?? 30,
+        }),
       },
       webhooks: {} as unknown as AppDependencies['webhooks'],
       queues: { send: { add: vi.fn() }, broadcast: { add: vi.fn() } } as never,

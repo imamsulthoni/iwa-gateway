@@ -48,11 +48,12 @@ export function anyAuthMiddleware(deps: { apiKey: ApiKeyAuthenticator; auth: Aut
 }
 
 /**
- * Endpoint mesin per sesi: API key atau Bearer token sesi. Token login sales
- * sengaja tidak diterima di jalur ini.
+ * Endpoint per sesi: API key, Bearer token sesi, atau Bearer token login sales.
+ * Handler wajib memanggil `ensureSessionAccess` saat actor adalah sales.
  */
 export function apiKeyOrSessionTokenMiddleware(deps: {
   apiKey: ApiKeyAuthenticator
+  auth: AuthService
   sessions: SessionsService
 }) {
   return createMiddleware<AppBindings>(async (c, next) => {
@@ -70,7 +71,7 @@ export function apiKeyOrSessionTokenMiddleware(deps: {
 
     const token = bearerToken(c.req.header('authorization'))
     if (!token) {
-      return c.json(apiErrorBody('UNAUTHORIZED', 'API key atau token sesi wajib dikirim'), 401)
+      return c.json(apiErrorBody('UNAUTHORIZED', 'API key atau token wajib dikirim'), 401)
     }
     const sessionId = c.req.param('id')
     if (!sessionId) {
@@ -78,16 +79,23 @@ export function apiKeyOrSessionTokenMiddleware(deps: {
     }
     try {
       const session = await deps.sessions.get(sessionId)
-      if (!session.tokenHash || !verifySessionToken(token, session.tokenHash)) {
-        return c.json(apiErrorBody('UNAUTHORIZED', 'Token sesi tidak valid'), 401)
+      if (session.tokenHash && verifySessionToken(token, session.tokenHash)) {
+        c.set('session', session)
+        await next()
+        return
       }
-      c.set('session', session)
     } catch (error) {
       if (error instanceof NotFoundError) {
         return c.json(apiErrorBody('NOT_FOUND', error.message), 404)
       }
       throw error
     }
+
+    const user = await deps.auth.authenticate(token)
+    if (!user) {
+      return c.json(apiErrorBody('UNAUTHORIZED', 'Token tidak valid'), 401)
+    }
+    c.set('actor', { mode: 'sales', user })
     await next()
   })
 }

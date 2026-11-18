@@ -4,14 +4,14 @@
 
 ## Ringkasan
 
-| Item            | Nilai                                                                                              |
-| --------------- | -------------------------------------------------------------------------------------------------- |
-| Base URL (dev)  | `http://localhost:8467`                                                                            |
-| Versi API       | `0.1.0`                                                                                            |
+| Item            | Nilai                                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Base URL (dev)  | `http://localhost:8467`                                                                                                |
+| Versi API       | `0.1.0`                                                                                                                |
 | Autentikasi     | `x-api-key` (admin) atau `Authorization: Bearer <token login sales>`; endpoint mesin per sesi juga menerima token sesi |
-| Konten          | `application/json` (UTF-8); SSE pada `GET /v1/sessions/{id}/events`                                |
-| Format waktu    | ISO-8601 UTC (`2026-11-17T03:00:00.000Z`); "hari ini" memakai `APP_TIMEZONE`                       |
-| Jumlah endpoint | 44 operasi pada 34 path                                                                            |
+| Konten          | `application/json` (UTF-8); SSE pada `GET /v1/sessions/{id}/events`                                                    |
+| Format waktu    | ISO-8601 UTC (`2026-11-17T03:00:00.000Z`); "hari ini" memakai `APP_TIMEZONE`                                           |
+| Jumlah endpoint | 44 operasi pada 34 path                                                                                                |
 
 ## Konvensi
 
@@ -21,11 +21,11 @@
 - **Sales** login lewat `POST /auth/login` (nomor WhatsApp + PIN) lalu mengirim
   `Authorization: Bearer <token login>`; token berlaku 7 hari dan dicabut oleh `POST /auth/logout`.
 - Sales hanya boleh membaca sesi, koneksi, dan inbox miliknya. Endpoint admin (create/delete sesi,
-  token, pairing, broadcast, riwayat lintas sesi, webhook, stats, settings) membalas `403 FORBIDDEN`.
+  token, pairing, reset PIN, riwayat lintas sesi, webhook, stats, settings) membalas `403 FORBIDDEN`.
 - `GET /sessions` untuk sales otomatis difilter ke sesinya; akses ke sesi milik sales lain juga `403`
-  (bukan `404`), termasuk inbox, SSE, dan kirim balasan.
-- `POST /sessions/{id}/messages` dan `GET /sessions/{id}/messages` tetap menerima **salah satu**:
-  `x-api-key` atau `Authorization: Bearer <token sesi>`. Token login sales tidak diterima di path ini.
+  (bukan `404`), termasuk inbox, SSE, kirim balasan, riwayat pesan, dan broadcast.
+- `GET /sessions/{id}/messages` dan `POST /sessions/{id}/messages` menerima **salah satu**:
+  `x-api-key`, `Authorization: Bearer <token login sales>`, atau `Authorization: Bearer <token sesi>`.
 - Login dibatasi 5 percobaan / 5 menit per IP dan per nomor → `429` + `Retry-After: 300`.
 - Header hilang atau tidak valid → `401` dengan `code: UNAUTHORIZED`.
 
@@ -83,48 +83,48 @@ Kuota dihitung per API key dan per sesi dalam jendela 60 detik (`RATE_LIMIT_PER_
 
 ### Auth
 
-| Method | Path           | Auth                     | Ringkasan                                   |
-| ------ | -------------- | ------------------------ | ------------------------------------------- |
-| `POST` | `/auth/login`  | publik + rate limit ketat | Login sales (nomor WhatsApp + PIN)         |
-| `GET`  | `/auth/me`     | `x-api-key` / `Bearer`   | Identitas aktor (`admin` atau `sales`)      |
-| `POST` | `/auth/logout` | `x-api-key` / `Bearer`   | Cabut token login sales (idempoten)         |
+| Method | Path           | Auth                      | Ringkasan                              |
+| ------ | -------------- | ------------------------- | -------------------------------------- |
+| `POST` | `/auth/login`  | publik + rate limit ketat | Login sales (nomor WhatsApp + PIN)     |
+| `GET`  | `/auth/me`     | `x-api-key` / `Bearer`    | Identitas aktor (`admin` atau `sales`) |
+| `POST` | `/auth/logout` | `x-api-key` / `Bearer`    | Cabut token login sales (idempoten)    |
 
 ### Settings
 
-| Method  | Path        | Auth        | Ringkasan                              |
-| ------- | ----------- | ----------- | -------------------------------------- |
-| `GET`   | `/settings` | `x-api-key` | `maxSales` dan jumlah sales aktif      |
-| `PATCH` | `/settings` | `x-api-key` | Ubah batas jumlah sales (1–100)        |
+| Method  | Path        | Auth        | Ringkasan                                     |
+| ------- | ----------- | ----------- | --------------------------------------------- |
+| `GET`   | `/settings` | `x-api-key` | `maxSales`, jumlah sales aktif, default delay |
+| `PATCH` | `/settings` | `x-api-key` | Ubah batas sales dan default delay broadcast  |
 
 ### Sessions
 
-| Method   | Path                               | Auth                        | Ringkasan                                |
-| -------- | ---------------------------------- | --------------------------- | ---------------------------------------- |
-| `GET`    | `/sessions`                        | `x-api-key` / `Bearer`      | Daftar sesi (sales: hanya miliknya)      |
-| `POST`   | `/sessions`                        | `x-api-key`                 | Buat sesi baru + akun sales opsional     |
-| `GET`    | `/sessions/{id}`                   | `x-api-key` / `Bearer`      | Detail satu sesi (scoped untuk sales)    |
-| `DELETE` | `/sessions/{id}`                   | `x-api-key`                 | Hapus sesi + akun sales pemiliknya       |
-| `PATCH`  | `/sessions/{id}/sales`             | `x-api-key`                 | Tautkan akun sales ke sesi lama          |
-| `POST`   | `/sessions/{id}/sales/pin`         | `x-api-key`                 | Reset PIN sales + cabut token lama       |
-| `POST`   | `/sessions/{id}/broadcast`         | `x-api-key`                 | Mulai broadcast untuk sesi               |
-| `POST`   | `/sessions/{id}/broadcast/cancel`  | `x-api-key`                 | Batalkan broadcast aktif                 |
-| `GET`    | `/sessions/{id}/broadcast/current` | `x-api-key`                 | Broadcast yang sedang berjalan pada sesi |
-| `POST`   | `/sessions/{id}/cancel`            | `x-api-key`                 | Batalkan proses pairing                  |
-| `GET`    | `/sessions/{id}/live`              | `x-api-key` / `Bearer`      | Gabungan state dashboard sesi            |
-| `POST`   | `/sessions/{id}/login`             | `x-api-key`                 | Mulai koneksi WhatsApp untuk sesi        |
-| `POST`   | `/sessions/{id}/logout`            | `x-api-key`                 | Logout sesi dan hapus auth tersimpan     |
-| `GET`    | `/sessions/{id}/pairing`           | `x-api-key` / `Bearer`      | Pairing code terakhir sesi               |
-| `POST`   | `/sessions/{id}/pairing`           | `x-api-key`                 | Minta pairing code untuk nomor tertentu  |
-| `GET`    | `/sessions/{id}/qr`                | `x-api-key` / `Bearer`      | QR terakhir sesi                         |
-| `GET`    | `/sessions/{id}/status`            | `x-api-key` / `Bearer`      | Status ringkas sesi                      |
-| `POST`   | `/sessions/{id}/token`             | `x-api-key`                 | Rotasi token sesi                        |
+| Method   | Path                               | Auth                   | Ringkasan                                |
+| -------- | ---------------------------------- | ---------------------- | ---------------------------------------- |
+| `GET`    | `/sessions`                        | `x-api-key` / `Bearer` | Daftar sesi (sales: hanya miliknya)      |
+| `POST`   | `/sessions`                        | `x-api-key`            | Buat sesi baru + akun sales opsional     |
+| `GET`    | `/sessions/{id}`                   | `x-api-key` / `Bearer` | Detail satu sesi (scoped untuk sales)    |
+| `DELETE` | `/sessions/{id}`                   | `x-api-key`            | Hapus sesi + akun sales pemiliknya       |
+| `PATCH`  | `/sessions/{id}/sales`             | `x-api-key`            | Tautkan akun sales ke sesi lama          |
+| `POST`   | `/sessions/{id}/sales/pin`         | `x-api-key`            | Reset PIN sales + cabut token lama       |
+| `POST`   | `/sessions/{id}/broadcast`         | `x-api-key` / `Bearer` | Mulai broadcast untuk sesi               |
+| `POST`   | `/sessions/{id}/broadcast/cancel`  | `x-api-key` / `Bearer` | Batalkan broadcast aktif                 |
+| `GET`    | `/sessions/{id}/broadcast/current` | `x-api-key` / `Bearer` | Broadcast yang sedang berjalan pada sesi |
+| `POST`   | `/sessions/{id}/cancel`            | `x-api-key` / `Bearer` | Batalkan proses pairing (scoped sales)   |
+| `GET`    | `/sessions/{id}/live`              | `x-api-key` / `Bearer` | Gabungan state dashboard sesi            |
+| `POST`   | `/sessions/{id}/login`             | `x-api-key` / `Bearer` | Mulai koneksi WhatsApp (scoped sales)    |
+| `POST`   | `/sessions/{id}/logout`            | `x-api-key`            | Logout sesi dan hapus auth tersimpan     |
+| `GET`    | `/sessions/{id}/pairing`           | `x-api-key` / `Bearer` | Pairing code terakhir sesi               |
+| `POST`   | `/sessions/{id}/pairing`           | `x-api-key` / `Bearer` | Dinonaktifkan (pairing hanya lewat QR)   |
+| `GET`    | `/sessions/{id}/qr`                | `x-api-key` / `Bearer` | QR terakhir sesi                         |
+| `GET`    | `/sessions/{id}/status`            | `x-api-key` / `Bearer` | Status ringkas sesi                      |
+| `POST`   | `/sessions/{id}/token`             | `x-api-key`            | Rotasi token sesi                        |
 
 ### Messages (sesi)
 
-| Method | Path                      | Auth                                                      | Ringkasan                    |
-| ------ | ------------------------- | --------------------------------------------------------- | ---------------------------- |
-| `GET`  | `/sessions/{id}/messages` | `x-api-key` **atau** `Authorization: Bearer <token sesi>` | Riwayat pesan sebuah sesi    |
-| `POST` | `/sessions/{id}/messages` | `x-api-key` **atau** `Authorization: Bearer <token sesi>` | Kirim pesan dari sebuah sesi |
+| Method | Path                      | Auth                                             | Ringkasan                    |
+| ------ | ------------------------- | ------------------------------------------------ | ---------------------------- |
+| `GET`  | `/sessions/{id}/messages` | `x-api-key`, `Bearer` sales, **atau** token sesi | Riwayat pesan sebuah sesi    |
+| `POST` | `/sessions/{id}/messages` | `x-api-key`, `Bearer` sales, **atau** token sesi | Kirim pesan dari sebuah sesi |
 
 ### Messages
 
@@ -151,12 +151,12 @@ Kuota dihitung per API key dan per sesi dalam jendela 60 detik (`RATE_LIMIT_PER_
 
 ### Broadcasts
 
-| Method | Path                        | Auth        | Ringkasan                               |
-| ------ | --------------------------- | ----------- | --------------------------------------- |
-| `POST` | `/v1/broadcasts`            | `x-api-key` | Buat broadcast teks, opsional terjadwal |
-| `GET`  | `/v1/broadcasts/{id}`       | `x-api-key` | Status dan progres broadcast            |
-| `POST` | `/v1/broadcasts/{id}/pause` | `x-api-key` | Jeda broadcast berjalan                 |
-| `POST` | `/v1/broadcasts/{id}/start` | `x-api-key` | Mulai atau lanjutkan broadcast          |
+| Method | Path                        | Auth                   | Ringkasan                               |
+| ------ | --------------------------- | ---------------------- | --------------------------------------- |
+| `POST` | `/v1/broadcasts`            | `x-api-key` / `Bearer` | Buat broadcast teks, opsional terjadwal |
+| `GET`  | `/v1/broadcasts/{id}`       | `x-api-key` / `Bearer` | Status dan progres broadcast            |
+| `POST` | `/v1/broadcasts/{id}/pause` | `x-api-key` / `Bearer` | Jeda broadcast berjalan                 |
+| `POST` | `/v1/broadcasts/{id}/start` | `x-api-key` / `Bearer` | Mulai atau lanjutkan broadcast          |
 
 ### Webhooks
 
@@ -182,7 +182,7 @@ Auth: publik (rate limit 5 percobaan / 5 menit per IP dan per nomor)
 ```ts
 {
   phoneNumber: string // 8–15 digit, tanpa spasi/tanda baca
-  pin: string         // 4–8 digit angka
+  pin: string // 4–8 digit angka
 }
 ```
 
@@ -190,8 +190,8 @@ Auth: publik (rate limit 5 percobaan / 5 menit per IP dan per nomor)
 
 ```ts
 {
-  token: string       // opaque, disimpan sebagai hash, berlaku 7 hari
-  expiresAt: string   // ISO-8601
+  token: string // opaque, disimpan sebagai hash, berlaku 7 hari
+  expiresAt: string // ISO-8601
   user: {
     id: string
     name: string
@@ -225,27 +225,36 @@ Auth: `x-api-key` atau `Bearer`
 
 ### Settings
 
-#### `GET /settings` — Batas jumlah sales
+#### `GET /settings` — Batas sales dan default delay broadcast
 
 Auth: `x-api-key` (admin)
 
 **Respons `200`**
 
 ```ts
-{ maxSales: number, salesCount: number }
+{
+  maxSales: number // 1..100
+  salesCount: number
+  defaultMinDelay: number // detik, 10..600
+  defaultMaxDelay: number // detik, 10..600
+}
 ```
 
-#### `PATCH /settings` — Ubah batas jumlah sales
+#### `PATCH /settings` — Ubah batas sales dan default delay broadcast
 
 Auth: `x-api-key` (admin)
 
-**Body**
+**Body** — minimal satu field; `defaultMinDelay` dan `defaultMaxDelay` wajib dikirim bersama.
 
 ```ts
-{ maxSales: number } // 1..100
+{
+  maxSales?: number // 1..100
+  defaultMinDelay?: number // 10..600
+  defaultMaxDelay?: number // 10..600, >= defaultMinDelay
+}
 ```
 
-**Respons `200`** — `{ maxSales, salesCount }`; `422 VALIDATION_ERROR` bila di luar 1..100.
+**Respons `200`** — objek yang sama dengan `GET /settings`; `422 VALIDATION_ERROR` bila nilai di luar rentang atau urutan delay tidak valid.
 
 ### Health
 
@@ -571,7 +580,7 @@ Auth: `x-api-key`
 
 #### `POST /sessions/{id}/cancel` — Batalkan proses pairing
 
-Auth: `x-api-key`
+Auth: `x-api-key` / `Bearer` (scoped untuk sales)
 
 **Path parameter**
 
@@ -608,7 +617,7 @@ Auth: `x-api-key`
 
 #### `GET /sessions/{id}/live` — Gabungan state dashboard sesi
 
-Auth: `x-api-key`
+Auth: `x-api-key` / `Bearer` (scoped untuk sales)
 
 **Path parameter**
 
@@ -634,6 +643,10 @@ Auth: `x-api-key`
   }
   qr: string | null
   pairingCode: string | null
+  defaultDelay: {
+    min: number
+    max: number
+  }
   broadcast: {
     jobId: string | null
     status: 'draft' |
@@ -675,7 +688,7 @@ Auth: `x-api-key`
 
 #### `POST /sessions/{id}/login` — Mulai koneksi WhatsApp untuk sesi
 
-Auth: `x-api-key`
+Auth: `x-api-key` / `Bearer` (scoped untuk sales)
 
 **Path parameter**
 
@@ -770,32 +783,13 @@ Auth: `x-api-key`
 
 **Respons `500`** — Kesalahan internal · `{ error: { code, message } }` (lihat [Format error](#format-error))
 
-#### `POST /sessions/{id}/pairing` — Minta pairing code untuk nomor tertentu
+#### `POST /sessions/{id}/pairing` — Pairing dengan kode (dinonaktifkan)
 
-Auth: `x-api-key`
+Auth: `x-api-key` / `Bearer`
 
-**Path parameter**
+Pairing dengan kode dinonaktifkan sementara; hanya pairing lewat QR yang didukung.
 
-| Nama | Tipe           | Wajib | Default | Keterangan  |
-| ---- | -------------- | ----- | ------- | ----------- |
-| `id` | string (min 1) | ya    | —       | ID resource |
-
-**Body**
-
-```ts
-{
-  phoneNumber: string (pattern ^\d{8,15}$)
-}
-```
-
-**Respons `202`** — Permintaan pairing diterima; code diisi worker secara asinkron
-
-```ts
-{
-  code: string | null
-  status: 'created' | 'qr_pending' | 'connecting' | 'connected' | 'disconnected' | 'logged_out'
-}
-```
+**Respons `409`** — Pairing dengan kode dinonaktifkan; gunakan QR · `{ error: { code: 'CONFLICT', message } }`
 
 **Respons `401`** — API key tidak dikirim atau tidak valid · `{ error: { code, message } }` (lihat [Format error](#format-error))
 
@@ -928,7 +922,9 @@ Auth: `x-api-key` (admin)
 **Body**
 
 ```ts
-{ pin: string } // 4–8 digit
+{
+  pin: string
+} // 4–8 digit
 ```
 
 **Respons `200`** — `SessionDto`; PIN lama tidak berlaku dan seluruh token login sales dicabut.

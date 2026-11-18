@@ -1,4 +1,5 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@wa/shared'
 import { ArrowLeft, KeyRound, LogOut, RefreshCw } from 'lucide-react'
 import { useRef, useState } from 'react'
 
@@ -46,7 +47,7 @@ function SessionDetailPage() {
   const { sessionId } = Route.useParams()
   const navigate = useNavigate()
   const admin = isAdmin()
-  const tabs = admin ? TABS : TABS.filter((item) => item.id === 'koneksi' || item.id === 'riwayat')
+  const tabs = TABS
   const [tab, setTab] = useState<TabId>('koneksi')
   const [tokenResult, setTokenResult] = useState<SessionTokenDto | null>(null)
   const [confirm, setConfirm] = useState<'logout' | 'delete' | null>(null)
@@ -120,6 +121,10 @@ function SessionDetailPage() {
   }
 
   const broadcastCount = broadcastCurrent.jobId ? 1 : 0
+  const defaultDelay = live.data?.defaultDelay ?? {
+    min: DEFAULT_MIN_DELAY_SECONDS,
+    max: DEFAULT_MAX_DELAY_SECONDS,
+  }
   const meta = [data.label, data.salesName, formatPhone(data.phoneNumber)]
     .filter((value) => Boolean(value))
     .join('  ·  ')
@@ -226,10 +231,10 @@ function SessionDetailPage() {
         <KoneksiTab
           session={data}
           salesName={data.salesName}
-          readOnly={!admin}
+          canManage={admin}
           broadcast={broadcastCurrent}
+          defaultDelay={defaultDelay}
           qr={live.data?.qr ?? null}
-          pairingCode={live.data?.pairingCode ?? null}
           onRefresh={refreshAll}
           onChanged={refreshAll}
           onDelete={() => setConfirm('delete')}
@@ -237,7 +242,12 @@ function SessionDetailPage() {
       ) : null}
       {tab === 'kirim' ? <KirimTab session={data} onChanged={refreshAll} /> : null}
       {tab === 'broadcast' ? (
-        <BroadcastTab session={data} broadcast={broadcastCurrent} onRefresh={refreshAll} />
+        <BroadcastTab
+          session={data}
+          broadcast={broadcastCurrent}
+          defaultDelay={defaultDelay}
+          onRefresh={refreshAll}
+        />
       ) : null}
       {tab === 'riwayat' ? <RiwayatTab session={data} /> : null}
 

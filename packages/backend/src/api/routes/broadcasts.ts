@@ -15,15 +15,17 @@ import type { BroadcastsService } from '../../modules/broadcasts/service.js'
 import { ValidationError } from '../../modules/errors.js'
 import type { SessionsService } from '../../modules/sessions/service.js'
 import type { AppBindings } from '../app.js'
-import { requireAdmin } from '../middleware/auth.js'
+import { ensureSessionAccess } from '../middleware/auth.js'
 import { idParamSchema, openApiError } from '../openapi.js'
+
+const adminOrSalesSecurity: Record<string, string[]>[] = [{ ApiKey: [] }, { UserToken: [] }]
 
 const startBroadcastRoute = createRoute({
   method: 'post',
   path: '/{id}/broadcast',
   tags: ['Sessions'],
   summary: 'Mulai broadcast untuk sesi',
-  security: [{ ApiKey: [] }],
+  security: adminOrSalesSecurity,
   request: {
     params: idParamSchema,
     body: {
@@ -49,7 +51,7 @@ const currentBroadcastRoute = createRoute({
   path: '/{id}/broadcast/current',
   tags: ['Sessions'],
   summary: 'Broadcast yang sedang berjalan pada sesi',
-  security: [{ ApiKey: [] }],
+  security: adminOrSalesSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -67,7 +69,7 @@ const cancelBroadcastRoute = createRoute({
   path: '/{id}/broadcast/cancel',
   tags: ['Sessions'],
   summary: 'Batalkan broadcast aktif',
-  security: [{ ApiKey: [] }],
+  security: adminOrSalesSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -81,12 +83,16 @@ const cancelBroadcastRoute = createRoute({
   },
 })
 
-export function createBroadcastsRoute(broadcasts: BroadcastsService, queues: QueueRegistry) {
+export function createBroadcastsRoute(
+  broadcasts: BroadcastsService,
+  sessions: SessionsService,
+  queues: QueueRegistry,
+) {
   const router = new OpenAPIHono<AppBindings>()
 
   router.openapi(startBroadcastRoute, async (c) => {
-    requireAdmin(c)
     const sessionId = c.req.param('id')
+    ensureSessionAccess(c, await sessions.get(sessionId))
     const input = c.req.valid('json')
     const { broadcast, duplicate } = await broadcasts.create(sessionId, input)
     if (!duplicate) {
@@ -101,8 +107,9 @@ export function createBroadcastsRoute(broadcasts: BroadcastsService, queues: Que
   })
 
   router.openapi(currentBroadcastRoute, async (c) => {
-    requireAdmin(c)
-    const current = await broadcasts.current(c.req.param('id'))
+    const sessionId = c.req.param('id')
+    ensureSessionAccess(c, await sessions.get(sessionId))
+    const current = await broadcasts.current(sessionId)
     if (!current) {
       return c.json(
         {
@@ -125,8 +132,9 @@ export function createBroadcastsRoute(broadcasts: BroadcastsService, queues: Que
   })
 
   router.openapi(cancelBroadcastRoute, async (c) => {
-    requireAdmin(c)
-    const broadcast = await broadcasts.cancel(c.req.param('id'))
+    const sessionId = c.req.param('id')
+    ensureSessionAccess(c, await sessions.get(sessionId))
+    const broadcast = await broadcasts.cancel(sessionId)
     return c.json({ broadcastId: broadcast.id, status: broadcast.status }, 200)
   })
 
@@ -138,7 +146,7 @@ const createBroadcastV1Route = createRoute({
   path: '/broadcasts',
   tags: ['Broadcasts'],
   summary: 'Buat broadcast teks, opsional terjadwal',
-  security: [{ ApiKey: [] }],
+  security: adminOrSalesSecurity,
   request: {
     body: {
       content: { 'application/json': { schema: broadcastV1Schema } },
@@ -167,7 +175,7 @@ const getBroadcastV1Route = createRoute({
   path: '/broadcasts/{id}',
   tags: ['Broadcasts'],
   summary: 'Status dan progres broadcast',
-  security: [{ ApiKey: [] }],
+  security: adminOrSalesSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -186,7 +194,7 @@ const startBroadcastV1Route = createRoute({
   path: '/broadcasts/{id}/start',
   tags: ['Broadcasts'],
   summary: 'Mulai atau lanjutkan broadcast',
-  security: [{ ApiKey: [] }],
+  security: adminOrSalesSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -206,7 +214,7 @@ const pauseBroadcastV1Route = createRoute({
   path: '/broadcasts/{id}/pause',
   tags: ['Broadcasts'],
   summary: 'Jeda broadcast berjalan',
-  security: [{ ApiKey: [] }],
+  security: adminOrSalesSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -231,6 +239,7 @@ export function createBroadcastsV1Route(
   router.openapi(createBroadcastV1Route, async (c) => {
     const input = c.req.valid('json')
     const session = await sessions.getByPublicId(input.sessionId)
+    ensureSessionAccess(c, session)
     const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : null
     if (scheduledAt && scheduledAt.getTime() <= Date.now()) {
       throw new ValidationError('Waktu jadwal harus di masa depan')
@@ -253,11 +262,15 @@ export function createBroadcastsV1Route(
   })
 
   router.openapi(getBroadcastV1Route, async (c) => {
-    return c.json(await broadcasts.detail(c.req.param('id')), 200)
+    const detail = await broadcasts.detail(c.req.param('id'))
+    ensureSessionAccess(c, await sessions.get(detail.sessionId))
+    return c.json(detail, 200)
   })
 
   router.openapi(startBroadcastV1Route, async (c) => {
-    const broadcast = await broadcasts.start(c.req.param('id'))
+    const id = c.req.param('id')
+    ensureSessionAccess(c, await sessions.get((await broadcasts.get(id)).sessionId))
+    const broadcast = await broadcasts.start(id)
     await enqueue(
       queues.broadcast,
       'broadcast-run',
@@ -268,7 +281,9 @@ export function createBroadcastsV1Route(
   })
 
   router.openapi(pauseBroadcastV1Route, async (c) => {
-    const broadcast = await broadcasts.pause(c.req.param('id'))
+    const id = c.req.param('id')
+    ensureSessionAccess(c, await sessions.get((await broadcasts.get(id)).sessionId))
+    const broadcast = await broadcasts.pause(id)
     return c.json({ broadcastId: broadcast.id, status: broadcast.status }, 200)
   })
 

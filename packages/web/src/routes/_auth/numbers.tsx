@@ -78,7 +78,7 @@ function NumbersPage() {
             Nomor / Sessions
           </p>
           <h1 className="text-heading text-ink">Nomor WhatsApp</h1>
-          <p className="text-body text-ink-soft">Kelola sesi, QR, dan kode pairing.</p>
+          <p className="text-body text-ink-soft">Kelola sesi dan QR WhatsApp.</p>
         </div>
 
         <div className="flex items-center gap-2.5">
@@ -94,10 +94,7 @@ function NumbersPage() {
             Refresh
           </Button>
           {admin ? (
-            <Button
-              className="h-[34px] px-4 text-[12.5px]"
-              onClick={() => setCreateOpen(true)}
-            >
+            <Button className="h-[34px] px-4 text-[12.5px]" onClick={() => setCreateOpen(true)}>
               <Plus className="size-3.5" aria-hidden />
               Tambah nomor
             </Button>
@@ -151,9 +148,7 @@ function NumbersPage() {
         </div>
         <div className="h-px w-full bg-line" />
 
-        {error ? (
-          <p className="px-[22px] py-6 text-small text-red">{error}</p>
-        ) : null}
+        {error ? <p className="px-[22px] py-6 text-small text-red">{error}</p> : null}
 
         {!error && filtered.length === 0 ? (
           <p className="px-[22px] py-10 text-center text-small text-ink-faint">
@@ -235,7 +230,7 @@ function NumbersPage() {
           <div className="flex gap-5">
             {[
               ['01', 'Buat sesi', 'Tentukan Session ID, nama sales, dan PIN.'],
-              ['02', 'Hubungkan', 'Scan QR atau masukkan kode pairing.'],
+              ['02', 'Hubungkan', 'Scan QR dari tab Koneksi.'],
               ['03', 'Siap kirim', 'Kirim pesan tunggal atau broadcast.'],
             ].map(([num, title, desc], index) => (
               <div key={num} className="flex flex-1 gap-5">

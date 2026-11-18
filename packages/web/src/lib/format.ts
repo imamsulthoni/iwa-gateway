@@ -67,8 +67,8 @@ export function usePolling<T>(
   }, [])
 
   useEffect(() => {
-    refresh()
-  }, [refresh])
+    if (enabled) refresh()
+  }, [enabled, refresh])
 
   useEffect(() => {
     if (!enabled) return

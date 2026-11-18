@@ -21,7 +21,6 @@ import { Fragment, useEffect, useState } from 'react'
 import { Badge, Button, cn } from '../../design-system'
 import { api } from '../../lib/api'
 import { isAdmin } from '../../lib/auth'
-import { getDefaultDelay, saveDefaultDelay } from '../../lib/delay'
 import { getEnv } from '../../lib/env'
 import { formatDateTime, usePolling } from '../../lib/format'
 import type { HealthDto, SettingsDto } from '../../lib/types'
@@ -58,7 +57,10 @@ const PRIVACY = [
 
 function SettingsPage() {
   const health = usePolling<HealthDto>(() => api.get<HealthDto>('/'), 30_000, true)
-  const [delay, setDelay] = useState(() => getDefaultDelay())
+  const [delay, setDelay] = useState({
+    min: DEFAULT_MIN_DELAY_SECONDS,
+    max: DEFAULT_MAX_DELAY_SECONDS,
+  })
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
   const [updatedAt, setUpdatedAt] = useState(() => new Date())
   const [settings, setSettings] = useState<SettingsDto | null>(null)
@@ -68,6 +70,7 @@ function SettingsPage() {
     text: string
   } | null>(null)
   const [savingSales, setSavingSales] = useState(false)
+  const [savingDelay, setSavingDelay] = useState(false)
 
   useEffect(() => {
     void api
@@ -75,11 +78,12 @@ function SettingsPage() {
       .then((value) => {
         setSettings(value)
         setMaxSales(String(value.maxSales))
+        setDelay({ min: value.defaultMinDelay, max: value.defaultMaxDelay })
       })
       .catch((cause: unknown) =>
         setSalesNotice({
           tone: 'danger',
-          text: cause instanceof Error ? cause.message : 'Gagal memuat batas sales',
+          text: cause instanceof Error ? cause.message : 'Gagal memuat pengaturan',
         }),
       )
   }, [])
@@ -116,6 +120,27 @@ function SettingsPage() {
     endpoint = '—'
   }
 
+  async function persistDelay(next: { min: number; max: number }) {
+    setSavingDelay(true)
+    setNotice(null)
+    try {
+      const result = await api.patch<SettingsDto>('/settings', {
+        defaultMinDelay: next.min,
+        defaultMaxDelay: next.max,
+      })
+      setSettings(result)
+      setDelay({ min: result.defaultMinDelay, max: result.defaultMaxDelay })
+      setNotice({ tone: 'success', text: 'Default delay tersimpan di server.' })
+    } catch (cause) {
+      setNotice({
+        tone: 'danger',
+        text: cause instanceof Error ? cause.message : 'Gagal menyimpan default delay',
+      })
+    } finally {
+      setSavingDelay(false)
+    }
+  }
+
   function save() {
     if (!isValidDelayRange(delay.min, delay.max)) {
       setNotice({
@@ -124,15 +149,13 @@ function SettingsPage() {
       })
       return
     }
-    saveDefaultDelay(delay)
-    setNotice({ tone: 'success', text: 'Pengaturan tersimpan di perangkat ini.' })
+    void persistDelay(delay)
   }
 
   function reset() {
     const next = { min: DEFAULT_MIN_DELAY_SECONDS, max: DEFAULT_MAX_DELAY_SECONDS }
     setDelay(next)
-    saveDefaultDelay(next)
-    setNotice({ tone: 'success', text: 'Pengaturan dikembalikan ke default.' })
+    void persistDelay(next)
   }
 
   function refreshInfo() {
@@ -150,7 +173,7 @@ function SettingsPage() {
           <h1 className="text-heading text-ink">Pengaturan</h1>
           <p className="text-body text-ink-soft">Preferensi dashboard dan informasi layanan.</p>
         </div>
-        <p className="font-data text-[9.5px] text-ink-faint">preferensi disimpan di browser ini</p>
+        <p className="font-data text-[9.5px] text-ink-faint">pengaturan disimpan di server</p>
       </div>
 
       <div className="h-6" />
@@ -167,7 +190,7 @@ function SettingsPage() {
               </p>
             </div>
             <span className="h-fit rounded-pill bg-surface-soft px-[9px] py-1 font-data text-[8.5px] tracking-[0.8px] text-ink-soft">
-              LOKAL
+              SERVER
             </span>
           </div>
 
@@ -244,12 +267,17 @@ function SettingsPage() {
           <div className="h-5" />
 
           <div className="flex items-center gap-2">
-            <Button className="h-[34px] px-[18px] text-[12.5px]" onClick={save}>
-              Simpan pengaturan
+            <Button
+              className="h-[34px] px-[18px] text-[12.5px]"
+              disabled={savingDelay || !isValidDelayRange(delay.min, delay.max)}
+              onClick={save}
+            >
+              {savingDelay ? 'Menyimpan...' : 'Simpan pengaturan'}
             </Button>
             <Button
               variant="secondary"
               className="h-[34px] px-3.5 text-[12px] text-ink-soft"
+              disabled={savingDelay}
               onClick={reset}
             >
               Kembalikan default

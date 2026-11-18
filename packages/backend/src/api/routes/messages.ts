@@ -12,6 +12,7 @@ import {
 import type { MiddlewareHandler } from 'hono'
 
 import type { ApiKeyAuthenticator } from '../../modules/auth/api-key.js'
+import type { AuthService } from '../../modules/auth/service.js'
 import type { ConversationsService } from '../../modules/conversations/service.js'
 import { toUserJid } from '../../modules/messages/phone.js'
 import type { MessagesService } from '../../modules/messages/service.js'
@@ -22,7 +23,11 @@ import type { AppBindings } from '../app.js'
 import { apiKeyOrSessionTokenMiddleware, ensureSessionAccess } from '../middleware/auth.js'
 import { idParamSchema, openApiError } from '../openapi.js'
 
-const anyAuthSecurity: Record<string, string[]>[] = [{ ApiKey: [] }, { SessionToken: [] }]
+const sessionMessageSecurity: Record<string, string[]>[] = [
+  { ApiKey: [] },
+  { SessionToken: [] },
+  { UserToken: [] },
+]
 const adminOrSalesSecurity: Record<string, string[]>[] = [{ ApiKey: [] }, { UserToken: [] }]
 
 const sendMessageRoute = createRoute({
@@ -30,7 +35,7 @@ const sendMessageRoute = createRoute({
   path: '/{id}/messages',
   tags: ['Messages (sesi)'],
   summary: 'Kirim pesan dari sebuah sesi',
-  security: anyAuthSecurity,
+  security: sessionMessageSecurity,
   request: {
     params: idParamSchema,
     body: {
@@ -89,7 +94,7 @@ const listSessionMessagesRoute = createRoute({
   path: '/{id}/messages',
   tags: ['Messages (sesi)'],
   summary: 'Riwayat pesan sebuah sesi',
-  security: anyAuthSecurity,
+  security: sessionMessageSecurity,
   request: { params: idParamSchema, query: messageQuerySchema },
   responses: {
     200: {
@@ -165,20 +170,22 @@ export function createSessionMessagesRoute(
   messages: MessagesService,
   queues: QueueRegistry,
   auth: ApiKeyAuthenticator,
+  userAuth: AuthService,
   rateLimit: MiddlewareHandler<AppBindings>,
 ) {
   const router = new OpenAPIHono<AppBindings>()
 
   router.use(
     '/:id/messages',
-    apiKeyOrSessionTokenMiddleware({ apiKey: auth, sessions }),
+    apiKeyOrSessionTokenMiddleware({ apiKey: auth, auth: userAuth, sessions }),
     rateLimit,
   )
 
   router.openapi(sendMessageRoute, async (c) => {
     const sessionId = c.req.param('id')
     const input = c.req.valid('json')
-    const session = await sessions.get(sessionId)
+    const session = c.get('session') ?? (await sessions.get(sessionId))
+    if (c.get('actor')) ensureSessionAccess(c, session)
 
     // Sesi yang belum terhubung tidak boleh menerima pesan baru. Replay
     // idempoten (clientRef sama) tetap mengembalikan pesan lama.
@@ -214,12 +221,10 @@ export function createSessionMessagesRoute(
 
   router.openapi(listSessionMessagesRoute, async (c) => {
     const query = c.req.valid('query')
-    const page = await messages.listBySession(
-      c.req.param('id'),
-      query.limit,
-      query.cursor,
-      query.direction,
-    )
+    const sessionId = c.req.param('id')
+    const session = c.get('session') ?? (await sessions.get(sessionId))
+    if (c.get('actor')) ensureSessionAccess(c, session)
+    const page = await messages.listBySession(sessionId, query.limit, query.cursor, query.direction)
     return c.json(page, 200)
   })
 

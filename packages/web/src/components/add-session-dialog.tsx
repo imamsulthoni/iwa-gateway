@@ -16,12 +16,9 @@ type AddSessionDialogProps = {
   onCreated: (result: SessionTokenDto) => void
 }
 
-type Mode = 'qr' | 'pairing'
-
 export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogProps) {
   const [publicId, setPublicId] = useState('')
   const [salesName, setSalesName] = useState('')
-  const [mode, setMode] = useState<Mode>('qr')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [pin, setPin] = useState('')
   const [reveal, setReveal] = useState(false)
@@ -44,7 +41,6 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
   function reset() {
     setPublicId('')
     setSalesName('')
-    setMode('qr')
     setPhoneNumber('')
     setPin('')
     setReveal(false)
@@ -59,7 +55,7 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
       const result = await api.post<SessionTokenDto>('/sessions', {
         label: publicId.trim(),
         publicId: publicId.trim(),
-        mode,
+        mode: 'qr',
         phoneNumber: phone,
         salesName: salesName.trim(),
         pin,
@@ -77,7 +73,7 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
     <Modal
       open={open}
       title="Tambah nomor baru"
-      description="Buat sesi baru bersama akun sales, lalu hubungkan perangkat lewat QR atau kode pairing."
+      description="Buat sesi baru bersama akun sales, lalu hubungkan perangkat lewat QR WhatsApp."
       onClose={close}
       footer={
         <>
@@ -155,24 +151,6 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
           <span className="text-note text-ink-faint">Hanya angka, 4–8 digit.</span>
         </label>
 
-        <div className="flex flex-col gap-2">
-          <span className={LABEL}>Metode login</span>
-          <div className="flex gap-2.5">
-            <MethodCard
-              title="Scan QR"
-              description="Tampilkan QR di halaman sesi."
-              active={mode === 'qr'}
-              onClick={() => setMode('qr')}
-            />
-            <MethodCard
-              title="Kode pairing"
-              description="Masukkan nomor WhatsApp tujuan."
-              active={mode === 'pairing'}
-              onClick={() => setMode('pairing')}
-            />
-          </div>
-        </div>
-
         {error ? (
           <p className="rounded-[9px] bg-red-soft px-3 py-2 text-note text-red">{error}</p>
         ) : null}
@@ -180,49 +158,10 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
         <div className="flex items-start gap-[7px] rounded-[9px] bg-bg px-[11px] py-[9px]">
           <Info className="mt-px size-3 shrink-0 text-ink-faint" aria-hidden />
           <p className="text-[10.5px] text-ink-soft">
-            QR dan kode pairing muncul di tab Koneksi setelah sesi dibuat.
+            QR muncul di tab Koneksi setelah sesi dibuat.
           </p>
         </div>
       </div>
     </Modal>
-  )
-}
-
-function MethodCard({
-  title,
-  description,
-  active,
-  onClick,
-}: {
-  title: string
-  description: string
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'flex flex-1 flex-col gap-1 rounded-[10px] border px-3.5 py-3 text-left transition',
-        active
-          ? 'border-ink bg-surface'
-          : 'border-line bg-bg text-ink-soft hover:border-line-strong',
-      )}
-    >
-      <span className="flex items-center justify-between gap-2">
-        <span className="text-[12.5px] font-semibold text-ink">{title}</span>
-        <span
-          className={cn(
-            'flex size-3 items-center justify-center rounded-pill border',
-            active ? 'border-ink bg-ink' : 'border-line-strong bg-surface',
-          )}
-        >
-          {active ? <span className="size-1 rounded-pill bg-white" /> : null}
-        </span>
-      </span>
-      <span className="text-[10.5px] leading-[1.45] text-ink-soft">{description}</span>
-    </button>
   )
 }

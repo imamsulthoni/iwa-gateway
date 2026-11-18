@@ -102,6 +102,7 @@ export const sessionLiveSchema = z.object({
   qr: z.string().nullable(),
   pairingCode: z.string().nullable(),
   broadcast: broadcastCurrentSchema,
+  defaultDelay: z.object({ min: z.number().int(), max: z.number().int() }),
 })
 
 export type SessionLiveDto = z.infer<typeof sessionLiveSchema>

@@ -174,11 +174,24 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
   } as unknown as AuthService
 
   const settings = {
-    getSettings: vi.fn(async () => ({ maxSales: 10, salesCount: 2 })),
-    updateSettings: vi.fn(async (values: { maxSales: number }) => ({
-      maxSales: values.maxSales,
+    getSettings: vi.fn(async () => ({
+      maxSales: 10,
       salesCount: 2,
+      defaultMinDelay: 10,
+      defaultMaxDelay: 30,
     })),
+    updateSettings: vi.fn(
+      async (values: {
+        maxSales?: number
+        defaultMinDelay?: number
+        defaultMaxDelay?: number
+      }) => ({
+        maxSales: values.maxSales ?? 10,
+        salesCount: 2,
+        defaultMinDelay: values.defaultMinDelay ?? 10,
+        defaultMaxDelay: values.defaultMaxDelay ?? 30,
+      }),
+    ),
   } as unknown as SettingsService
 
   const deps: AppDependencies = {
@@ -213,7 +226,16 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     ...overrides,
   }
 
-  return { app: createApp(deps), queue, messages, conversations, redis, sessions, userAuth, settings }
+  return {
+    app: createApp(deps),
+    queue,
+    messages,
+    conversations,
+    redis,
+    sessions,
+    userAuth,
+    settings,
+  }
 }
 
 function attemptLogin(app: ReturnType<typeof createApp>, phoneNumber: string, ip: string) {
@@ -531,6 +553,7 @@ describe('API Hono', () => {
       qr: null,
       pairingCode: null,
       broadcast: { jobId: null, total: 0, recipients: [] },
+      defaultDelay: { min: 10, max: 30 },
     })
   })
 
@@ -666,13 +689,6 @@ describe('API Hono', () => {
   it('sales ditolak 403 di seluruh endpoint admin sesi', async () => {
     const { app } = createTestApp()
     const headers = { authorization: `Bearer ${USER_TOKEN}`, 'content-type': 'application/json' }
-    const broadcastBody = JSON.stringify({
-      recipients: [{ to: '628123456789' }],
-      text: 'Halo',
-      minDelay: 10,
-      maxDelay: 20,
-      clientRef: 'b1',
-    })
 
     const requests = [
       app.request('/sessions', {
@@ -682,19 +698,7 @@ describe('API Hono', () => {
       }),
       app.request(`/sessions/${SESSION_ID}`, { method: 'DELETE', headers }),
       app.request(`/sessions/${SESSION_ID}/token`, { method: 'POST', headers }),
-      app.request(`/sessions/${SESSION_ID}/login`, { method: 'POST', headers }),
-      app.request(`/sessions/${SESSION_ID}/cancel`, { method: 'POST', headers }),
       app.request(`/sessions/${SESSION_ID}/logout`, { method: 'POST', headers }),
-      app.request(`/sessions/${SESSION_ID}/pairing`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ phoneNumber: '628123456789' }),
-      }),
-      app.request(`/sessions/${SESSION_ID}/broadcast`, {
-        method: 'POST',
-        headers,
-        body: broadcastBody,
-      }),
     ]
 
     for (const response of await Promise.all(requests)) {
@@ -716,6 +720,43 @@ describe('API Hono', () => {
     ]) {
       const response = await app.request(path, { headers })
       expect(response.status).toBe(200)
+    }
+  })
+
+  it('sales bisa memulai dan membatalkan pairing sesi miliknya', async () => {
+    const pairingSession = { ...SESSION, status: 'qr_pending' as const, lastQr: 'data:image/png' }
+    const { app } = createTestApp({
+      sessions: {
+        get: vi.fn(async () => pairingSession),
+        updateStatus: vi.fn(async (_id: string, status: WaSessionRow['status'], patch = {}) => ({
+          ...pairingSession,
+          status,
+          ...patch,
+        })),
+      } as unknown as SessionsService,
+    })
+    const headers = { authorization: `Bearer ${USER_TOKEN}` }
+
+    expect(
+      (await app.request(`/sessions/${SESSION_ID}/login`, { method: 'POST', headers })).status,
+    ).toBe(200)
+    expect(
+      (await app.request(`/sessions/${SESSION_ID}/cancel`, { method: 'POST', headers })).status,
+    ).toBe(200)
+  })
+
+  it('pairing dengan kode dinonaktifkan untuk admin maupun sales', async () => {
+    const { app } = createTestApp()
+    const authHeaders = [{ 'x-api-key': 'valid-key' }, { authorization: `Bearer ${USER_TOKEN}` }]
+
+    for (const auth of authHeaders) {
+      const response = await app.request(`/sessions/${SESSION_ID}/pairing`, {
+        method: 'POST',
+        headers: { ...auth, 'content-type': 'application/json' },
+        body: JSON.stringify({ phoneNumber: '628123456789' }),
+      })
+      expect(response.status).toBe(409)
+      expect(await response.json()).toMatchObject({ error: { code: 'CONFLICT' } })
     }
   })
 
@@ -741,6 +782,11 @@ describe('API Hono', () => {
       const body = (await response.json()) as { error: { message: string } }
       expect(body.error.message).not.toContain(otherSession.publicId)
       expect(body.error.message).not.toContain('user-2')
+    }
+
+    for (const path of [`/sessions/${SESSION_ID}/login`, `/sessions/${SESSION_ID}/cancel`]) {
+      const response = await app.request(path, { method: 'POST', headers })
+      expect(response.status, path).toBe(403)
     }
   })
 
@@ -786,25 +832,11 @@ describe('API Hono', () => {
 
   it('matriks endpoint admin menolak sales dan tamu', async () => {
     const { app } = createTestApp()
-    const broadcastBody = JSON.stringify({
-      recipients: [{ to: '628123456789' }],
-      text: 'Halo',
-      minDelay: 10,
-      maxDelay: 20,
-      clientRef: 'm1',
-    })
     const endpoints: { method: string; path: string; body?: string }[] = [
       { method: 'POST', path: '/sessions', body: JSON.stringify({ label: 'Baru' }) },
       { method: 'DELETE', path: `/sessions/${SESSION_ID}` },
       { method: 'POST', path: `/sessions/${SESSION_ID}/token` },
-      { method: 'POST', path: `/sessions/${SESSION_ID}/login` },
-      { method: 'POST', path: `/sessions/${SESSION_ID}/cancel` },
       { method: 'POST', path: `/sessions/${SESSION_ID}/logout` },
-      {
-        method: 'POST',
-        path: `/sessions/${SESSION_ID}/pairing`,
-        body: JSON.stringify({ phoneNumber: '628123456789' }),
-      },
       {
         method: 'PATCH',
         path: `/sessions/${SESSION_ID}/sales`,
@@ -815,14 +847,12 @@ describe('API Hono', () => {
         path: `/sessions/${SESSION_ID}/sales/pin`,
         body: JSON.stringify({ pin: '654321' }),
       },
-      { method: 'POST', path: `/sessions/${SESSION_ID}/broadcast`, body: broadcastBody },
       { method: 'GET', path: '/messages' },
       { method: 'DELETE', path: '/messages/m1' },
       { method: 'POST', path: '/messages/m1/retry' },
       { method: 'GET', path: '/stats' },
       { method: 'GET', path: '/settings' },
       { method: 'PATCH', path: '/settings', body: JSON.stringify({ maxSales: 5 }) },
-      { method: 'GET', path: '/v1/broadcasts/b1' },
       { method: 'GET', path: '/v1/webhooks' },
     ]
 
@@ -886,7 +916,7 @@ describe('API Hono', () => {
           body: JSON.stringify({ phoneNumber: '628123456789' }),
         })
       ).status,
-    ).toBe(202)
+    ).toBe(409)
     expect(
       (await app.request(`/sessions/${SESSION_ID}`, { method: 'DELETE', headers })).status,
     ).toBe(204)
@@ -907,15 +937,20 @@ describe('API Hono', () => {
     }
   })
 
-  it('GET /settings mengembalikan maxSales dan salesCount untuk admin', async () => {
+  it('GET /settings mengembalikan maxSales, salesCount, dan default delay untuk admin', async () => {
     const { app } = createTestApp()
     const response = await app.request('/settings', { headers: { 'x-api-key': 'valid-key' } })
 
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ maxSales: 10, salesCount: 2 })
+    expect(await response.json()).toEqual({
+      maxSales: 10,
+      salesCount: 2,
+      defaultMinDelay: 10,
+      defaultMaxDelay: 30,
+    })
   })
 
-  it('PATCH /settings menyimpan maxSales dan menolak nilai di luar 1..100', async () => {
+  it('PATCH /settings menyimpan maxSales dan default delay, menolak nilai tidak valid', async () => {
     const { app, settings } = createTestApp()
     const headers = { 'x-api-key': 'valid-key', 'content-type': 'application/json' }
 
@@ -925,8 +960,25 @@ describe('API Hono', () => {
       body: JSON.stringify({ maxSales: 25 }),
     })
     expect(ok.status).toBe(200)
-    expect(await ok.json()).toEqual({ maxSales: 25, salesCount: 2 })
+    expect(await ok.json()).toEqual({
+      maxSales: 25,
+      salesCount: 2,
+      defaultMinDelay: 10,
+      defaultMaxDelay: 30,
+    })
     expect(settings.updateSettings).toHaveBeenCalledWith({ maxSales: 25 })
+
+    const delay = await app.request('/settings', {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ defaultMinDelay: 15, defaultMaxDelay: 45 }),
+    })
+    expect(delay.status).toBe(200)
+    expect(await delay.json()).toMatchObject({ defaultMinDelay: 15, defaultMaxDelay: 45 })
+    expect(settings.updateSettings).toHaveBeenCalledWith({
+      defaultMinDelay: 15,
+      defaultMaxDelay: 45,
+    })
 
     for (const maxSales of [0, 101]) {
       const invalid = await app.request('/settings', {
@@ -936,6 +988,13 @@ describe('API Hono', () => {
       })
       expect(invalid.status).toBe(422)
     }
+
+    const invalidRange = await app.request('/settings', {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ defaultMinDelay: 60, defaultMaxDelay: 30 }),
+    })
+    expect(invalidRange.status).toBe(422)
   })
 
   it('POST /sessions meneruskan salesName + PIN dan tidak membocorkan PIN', async () => {
@@ -1121,21 +1180,137 @@ describe('API Hono', () => {
     expect(await response.json()).toMatchObject({ error: { code: 'UNAUTHORIZED' } })
   })
 
-  it('/sessions/:id/messages tetap hanya menerima API key atau token sesi', async () => {
-    const { app } = createTestApp()
-    const response = await app.request(`/sessions/${SESSION_ID}/messages`, {
+  it('sales bisa membaca dan mengirim pesan sesi miliknya', async () => {
+    const { app, messages } = createTestApp()
+    const headers = { authorization: `Bearer ${USER_TOKEN}`, 'content-type': 'application/json' }
+
+    const list = await app.request(`/sessions/${SESSION_ID}/messages?direction=out`, { headers })
+    expect(list.status).toBe(200)
+    expect(messages.listBySession).toHaveBeenCalledWith(SESSION_ID, 20, undefined, 'out')
+
+    const sent = await app.request(`/sessions/${SESSION_ID}/messages`, {
       method: 'POST',
-      headers: {
-        authorization: `Bearer ${USER_TOKEN}`,
-        'content-type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({ to: '628123456789', clientRef: 'ref-1', text: 'Halo' }),
     })
+    expect(sent.status).toBe(202)
+  })
 
-    expect(response.status).toBe(401)
-    expect(await response.json()).toEqual({
-      error: { code: 'UNAUTHORIZED', message: 'Token sesi tidak valid' },
+  it('sales ditolak 403 saat membuka pesan sesi milik sales lain', async () => {
+    const otherSession = { ...SESSION, ownerUserId: 'user-2' }
+    const listBySession = vi.fn(async () => ({ items: [], nextCursor: null }))
+    const createOutgoing = vi.fn()
+    const { app } = createTestApp({
+      sessions: {
+        get: vi.fn(async () => otherSession),
+      } as unknown as SessionsService,
+      messages: { listBySession, createOutgoing } as unknown as MessagesService,
     })
+    const headers = { authorization: `Bearer ${USER_TOKEN}`, 'content-type': 'application/json' }
+
+    const list = await app.request(`/sessions/${SESSION_ID}/messages`, { headers })
+    expect(list.status).toBe(403)
+
+    const sent = await app.request(`/sessions/${SESSION_ID}/messages`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ to: '628123456789', clientRef: 'ref-1', text: 'Halo' }),
+    })
+    expect(sent.status).toBe(403)
+    expect(listBySession).not.toHaveBeenCalled()
+    expect(createOutgoing).not.toHaveBeenCalled()
+  })
+
+  it('sales bisa memakai broadcast sesi miliknya', async () => {
+    const broadcast = { id: 'b1', sessionId: SESSION_ID, status: 'pending' as const }
+    const broadcasts = {
+      create: vi.fn(async () => ({ broadcast, duplicate: false })),
+      current: vi.fn(async () => null),
+      detail: vi.fn(async () => ({ sessionId: SESSION_ID })),
+      get: vi.fn(async () => broadcast),
+      start: vi.fn(async () => broadcast),
+      pause: vi.fn(async () => broadcast),
+      cancel: vi.fn(async () => broadcast),
+    } as unknown as AppDependencies['broadcasts']
+    const { app } = createTestApp({ broadcasts })
+    const headers = { authorization: `Bearer ${USER_TOKEN}`, 'content-type': 'application/json' }
+    const body = JSON.stringify({
+      sessionId: SESSION.publicId,
+      recipients: [{ to: '628123456789' }],
+      text: 'Halo',
+      minDelay: 10,
+      maxDelay: 20,
+      clientRef: 'b1',
+    })
+
+    expect((await app.request('/v1/broadcasts', { method: 'POST', headers, body })).status).toBe(
+      202,
+    )
+    expect(
+      (await app.request(`/sessions/${SESSION_ID}/broadcast/current`, { headers })).status,
+    ).toBe(200)
+    expect((await app.request('/v1/broadcasts/b1', { headers })).status).toBe(200)
+    expect((await app.request('/v1/broadcasts/b1/start', { method: 'POST', headers })).status).toBe(
+      200,
+    )
+    expect((await app.request('/v1/broadcasts/b1/pause', { method: 'POST', headers })).status).toBe(
+      200,
+    )
+    expect(
+      (await app.request(`/sessions/${SESSION_ID}/broadcast/cancel`, { method: 'POST', headers }))
+        .status,
+    ).toBe(200)
+  })
+
+  it('sales ditolak 403 saat memakai broadcast sesi milik sales lain', async () => {
+    const otherSession = { ...SESSION, ownerUserId: 'user-2' }
+    const broadcasts = {
+      create: vi.fn(),
+      current: vi.fn(),
+      detail: vi.fn(async () => ({ sessionId: SESSION_ID })),
+      get: vi.fn(async () => ({ id: 'b1', sessionId: SESSION_ID })),
+      start: vi.fn(),
+      pause: vi.fn(),
+      cancel: vi.fn(),
+    } as unknown as AppDependencies['broadcasts']
+    const { app } = createTestApp({
+      broadcasts,
+      sessions: {
+        get: vi.fn(async () => otherSession),
+        getByPublicId: vi.fn(async () => otherSession),
+      } as unknown as SessionsService,
+    })
+    const headers = { authorization: `Bearer ${USER_TOKEN}`, 'content-type': 'application/json' }
+    const body = JSON.stringify({
+      sessionId: SESSION.publicId,
+      recipients: [{ to: '628123456789' }],
+      text: 'Halo',
+      minDelay: 10,
+      maxDelay: 20,
+      clientRef: 'b1',
+    })
+
+    expect((await app.request('/v1/broadcasts', { method: 'POST', headers, body })).status).toBe(
+      403,
+    )
+    expect((await app.request('/v1/broadcasts/b1', { headers })).status).toBe(403)
+    expect((await app.request('/v1/broadcasts/b1/start', { method: 'POST', headers })).status).toBe(
+      403,
+    )
+    expect((await app.request('/v1/broadcasts/b1/pause', { method: 'POST', headers })).status).toBe(
+      403,
+    )
+    expect(
+      (await app.request(`/sessions/${SESSION_ID}/broadcast/current`, { headers })).status,
+    ).toBe(403)
+    expect(
+      (await app.request(`/sessions/${SESSION_ID}/broadcast/cancel`, { method: 'POST', headers }))
+        .status,
+    ).toBe(403)
+    expect(broadcasts.create).not.toHaveBeenCalled()
+    expect(broadcasts.start).not.toHaveBeenCalled()
+    expect(broadcasts.pause).not.toHaveBeenCalled()
+    expect(broadcasts.cancel).not.toHaveBeenCalled()
   })
 
   it('POST /sessions dengan body tidak valid mengembalikan 422 VALIDATION_ERROR', async () => {
@@ -1193,9 +1368,12 @@ describe('API Hono', () => {
 
   it('sales hanya bisa membuka inbox sesi miliknya', async () => {
     const headers = { authorization: `Bearer ${USER_TOKEN}` }
-    const own = await createTestApp().app.request(`/v1/sessions/${SESSION.publicId}/conversations`, {
-      headers,
-    })
+    const own = await createTestApp().app.request(
+      `/v1/sessions/${SESSION.publicId}/conversations`,
+      {
+        headers,
+      },
+    )
     expect(own.status).toBe(200)
 
     const otherSession = { ...SESSION, ownerUserId: 'user-2' }
@@ -1415,7 +1593,11 @@ describe('API Hono', () => {
     const { app } = createTestApp({ redis })
 
     for (let i = 0; i < 5; i += 1) {
-      const response = await attemptLogin(app, `6281234567${String(i).padStart(2, '0')}`, '10.1.0.1')
+      const response = await attemptLogin(
+        app,
+        `6281234567${String(i).padStart(2, '0')}`,
+        '10.1.0.1',
+      )
       expect(response.status).toBe(401)
     }
 

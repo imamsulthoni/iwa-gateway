@@ -48,7 +48,12 @@ describeIntegration('integrasi broadcast lanjutan', () => {
 
   function sessionsService() {
     return createSessionsService(sessionsRepo(), {
-      getSettings: async () => ({ maxSales: 10, salesCount: 0 }),
+      getSettings: async () => ({
+        maxSales: 10,
+        salesCount: 0,
+        defaultMinDelay: 10,
+        defaultMaxDelay: 30,
+      }),
     })
   }
 

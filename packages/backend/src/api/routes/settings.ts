@@ -11,11 +11,11 @@ const getSettingsRoute = createRoute({
   method: 'get',
   path: '/settings',
   tags: ['Settings'],
-  summary: 'Batas jumlah sales dan jumlah sales aktif',
+  summary: 'Batas jumlah sales dan default delay broadcast',
   security: apiKeySecurity,
   responses: {
     200: {
-      description: 'maxSales dan salesCount',
+      description: 'maxSales, salesCount, dan rentang default delay',
       content: { 'application/json': { schema: settingsSchema } },
     },
     401: openApiError('API key tidak dikirim atau tidak valid'),
@@ -29,7 +29,7 @@ const updateSettingsRoute = createRoute({
   method: 'patch',
   path: '/settings',
   tags: ['Settings'],
-  summary: 'Ubah batas jumlah sales',
+  summary: 'Ubah batas jumlah sales dan default delay broadcast',
   security: apiKeySecurity,
   request: {
     body: {
@@ -44,7 +44,7 @@ const updateSettingsRoute = createRoute({
     },
     401: openApiError('API key tidak dikirim atau tidak valid'),
     403: openApiError('Akses khusus admin'),
-    422: openApiError('maxSales harus 1 sampai 100'),
+    422: openApiError('maxSales 1..100 atau rentang delay tidak valid'),
     429: openApiError('Rate limit terlampaui'),
     500: openApiError('Kesalahan internal'),
   },

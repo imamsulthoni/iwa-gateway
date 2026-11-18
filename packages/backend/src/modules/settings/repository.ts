@@ -4,6 +4,8 @@ import type { Database } from '../../db/client.js'
 import { appSettings, users } from '../../db/schema.js'
 
 export const MAX_SALES_KEY = 'max_sales'
+export const DEFAULT_MIN_DELAY_KEY = 'default_min_delay'
+export const DEFAULT_MAX_DELAY_KEY = 'default_max_delay'
 export const DEFAULT_MAX_SALES = 10
 
 export type SettingsRepository = ReturnType<typeof createSettingsRepository>

@@ -231,7 +231,7 @@ function InboxPage() {
           </div>
           <div className="h-px bg-line" />
           <div className="min-h-0 flex-1 overflow-auto">
-            {rooms.loading && !rooms.data ? (
+            {sessionId && rooms.loading && !rooms.data ? (
               <p className="px-4 py-10 text-center text-small text-ink-faint">Memuat room...</p>
             ) : null}
             {noNumbers ? (

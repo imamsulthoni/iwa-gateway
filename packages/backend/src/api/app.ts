@@ -107,7 +107,7 @@ export function createApp(deps: AppDependencies) {
   app.use('/settings', anyAuth, requireAdmin, rateLimit)
   app.route('/', createSettingsRoute(deps.settings))
 
-  // Endpoint pesan per sesi memakai Bearer token sesi, bukan API key.
+  // Endpoint pesan per sesi menerima API key, token sesi, atau token login sales.
   const sessionRateLimit = sessionRateLimitMiddleware(deps.redis, deps.env.RATE_LIMIT_PER_MIN)
   app.route(
     '/sessions',
@@ -116,6 +116,7 @@ export function createApp(deps: AppDependencies) {
       deps.messages,
       deps.queues,
       deps.auth,
+      deps.userAuth,
       sessionRateLimit,
     ),
   )
@@ -125,13 +126,16 @@ export function createApp(deps: AppDependencies) {
   app.use('/sessions/*', anyAuth, rateLimit)
   app.use('/messages/*', anyAuth, requireAdmin, rateLimit)
 
-  app.route('/sessions', createSessionsRoute(deps.sessions, deps.broadcasts, deps.redis))
-  app.route('/sessions', createBroadcastsRoute(deps.broadcasts, deps.queues))
+  app.route(
+    '/sessions',
+    createSessionsRoute(deps.sessions, deps.broadcasts, deps.redis, deps.settings),
+  )
+  app.route('/sessions', createBroadcastsRoute(deps.broadcasts, deps.sessions, deps.queues))
   app.route('/messages', createMessagesRoute(deps.messages, deps.queues))
 
-  // Inbox dan kirim pesan menerima admin maupun sales; broadcast dan webhook
-  // tetap khusus admin.
-  app.use('/v1/broadcasts/*', anyAuth, requireAdmin, rateLimit)
+  // Kirim pesan dan broadcast menerima admin maupun sales (dibatasi ke sesi
+  // miliknya); webhook tetap khusus admin.
+  app.use('/v1/broadcasts/*', anyAuth, rateLimit)
   app.use('/v1/webhooks/*', anyAuth, requireAdmin, rateLimit)
   app.use('/v1/sessions/:id/conversations', anyAuth, rateLimit)
   app.use('/v1/conversations/:id/messages', anyAuth, rateLimit)

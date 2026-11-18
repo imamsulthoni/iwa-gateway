@@ -44,9 +44,9 @@ describe('kontrak sesi', () => {
 
   it('mewajibkan salesName dan PIN bersama dengan nomor', () => {
     const base = { label: 'Sales A', phoneNumber: '628123456789' }
-    expect(
-      createSessionSchema.safeParse({ ...base, salesName: 'Budi', pin: '1234' }).success,
-    ).toBe(true)
+    expect(createSessionSchema.safeParse({ ...base, salesName: 'Budi', pin: '1234' }).success).toBe(
+      true,
+    )
     expect(createSessionSchema.safeParse({ ...base, salesName: 'Budi' }).success).toBe(false)
     expect(createSessionSchema.safeParse({ ...base, pin: '1234' }).success).toBe(false)
     expect(
@@ -313,7 +313,31 @@ describe('kontrak settings', () => {
     expect(updateSettingsSchema.safeParse({ maxSales: 0 }).success).toBe(false)
     expect(updateSettingsSchema.safeParse({ maxSales: 101 }).success).toBe(false)
     expect(updateSettingsSchema.safeParse({ maxSales: 2.5 }).success).toBe(false)
-    expect(settingsSchema.safeParse({ maxSales: 10, salesCount: 3 }).success).toBe(true)
+    expect(updateSettingsSchema.safeParse({}).success).toBe(false)
+    expect(
+      settingsSchema.safeParse({
+        maxSales: 10,
+        salesCount: 3,
+        defaultMinDelay: 10,
+        defaultMaxDelay: 30,
+      }).success,
+    ).toBe(true)
     expect(settingsSchema.safeParse({ maxSales: 10 }).success).toBe(false)
+  })
+
+  it('memvalidasi rentang default delay', () => {
+    expect(
+      updateSettingsSchema.safeParse({ defaultMinDelay: 10, defaultMaxDelay: 30 }).success,
+    ).toBe(true)
+    expect(updateSettingsSchema.safeParse({ defaultMinDelay: 10 }).success).toBe(false)
+    expect(
+      updateSettingsSchema.safeParse({ defaultMinDelay: 60, defaultMaxDelay: 30 }).success,
+    ).toBe(false)
+    expect(
+      updateSettingsSchema.safeParse({ defaultMinDelay: 9, defaultMaxDelay: 30 }).success,
+    ).toBe(false)
+    expect(
+      updateSettingsSchema.safeParse({ defaultMinDelay: 10, defaultMaxDelay: 601 }).success,
+    ).toBe(false)
   })
 })

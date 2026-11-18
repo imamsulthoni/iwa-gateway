@@ -32,7 +32,12 @@ describeIntegration('bootstrap sesi worker', () => {
   it('memuat sesi dengan auth dan melewati sesi tanpa auth', async () => {
     const repo = createSessionsRepository(connection.db)
     const sessions = createSessionsService(repo, {
-      getSettings: async () => ({ maxSales: 10, salesCount: 0 }),
+      getSettings: async () => ({
+        maxSales: 10,
+        salesCount: 0,
+        defaultMinDelay: 10,
+        defaultMaxDelay: 30,
+      }),
     })
     const withAuth = newId()
     const withoutAuth = newId()

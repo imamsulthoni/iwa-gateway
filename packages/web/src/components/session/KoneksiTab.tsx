@@ -1,23 +1,22 @@
 import { MESSAGE_STATUS_LABELS } from '@wa/shared'
-import { ArrowUpRight, Copy, Hash, QrCode, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, Copy, QrCode, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 
 import { Button, cn } from '../../design-system'
 import { api } from '../../lib/api'
-import { getDefaultDelay } from '../../lib/delay'
 import { formatDateTime, phoneFromJid } from '../../lib/format'
 import type { BroadcastCurrentDto, MessageListDto, SessionDto } from '../../lib/types'
-import { BroadcastRail, CardLabel, FIELD_INPUT, Panel, StatusDot } from './parts'
+import { BroadcastRail, CardLabel, Panel, StatusDot } from './parts'
 import { SalesAccountCard } from './SalesAccountCard'
 
 type KoneksiTabProps = {
   session: SessionDto
   salesName: string | null
-  readOnly: boolean
+  canManage: boolean
   broadcast: BroadcastCurrentDto
+  defaultDelay: { min: number; max: number }
   qr: string | null
-  pairingCode: string | null
   onRefresh: () => void
   onChanged: () => void
   onDelete: () => void
@@ -26,23 +25,21 @@ type KoneksiTabProps = {
 export function KoneksiTab({
   session,
   salesName,
-  readOnly,
+  canManage,
   broadcast,
+  defaultDelay,
   qr,
-  pairingCode,
   onRefresh,
   onChanged,
   onDelete,
 }: KoneksiTabProps) {
-  const [phone, setPhone] = useState(session.phoneNumber ?? '')
-
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const connected = session.status === 'connected'
   const loggedOut = session.status === 'logged_out'
 
-  const recent = useRecentMessages(session.id, connected && !readOnly)
+  const recent = useRecentMessages(session.id, connected)
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
@@ -55,12 +52,6 @@ export function KoneksiTab({
     } finally {
       setBusy(false)
     }
-  }
-
-  async function requestPairing() {
-    await run(() =>
-      api.post(`/sessions/${session.id}/pairing`, { phoneNumber: phone.replace(/\D/g, '') }),
-    )
   }
 
   async function login() {
@@ -120,7 +111,7 @@ export function KoneksiTab({
     <div className="flex w-full flex-col gap-4">
       <BroadcastRail broadcast={broadcast} />
 
-      {readOnly ? null : (
+      {canManage ? (
         <Link
           to="/settings"
           className="flex flex-col rounded-card border border-line bg-surface p-[18px] transition hover:border-line-strong"
@@ -130,7 +121,7 @@ export function KoneksiTab({
           <div className="flex items-center justify-between">
             <div className="flex items-end gap-1.5">
               <span className="text-[22px] font-semibold tracking-[-0.6px] text-ink">
-                {getDefaultDelay().min}–{getDefaultDelay().max}
+                {defaultDelay.min}–{defaultDelay.max}
               </span>
               <span className="pb-0.5 text-[11px] text-ink-soft">detik</span>
             </div>
@@ -141,7 +132,7 @@ export function KoneksiTab({
             Dipakai sebagai nilai awal form broadcast. Ubah di Pengaturan.
           </p>
         </Link>
-      )}
+      ) : null}
     </div>
   )
 
@@ -158,7 +149,9 @@ export function KoneksiTab({
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-2">
                   <StatusDot tone="green" />
-                  <h2 className="text-[19px] font-semibold tracking-[-0.5px] text-ink">Terhubung</h2>
+                  <h2 className="text-[19px] font-semibold tracking-[-0.5px] text-ink">
+                    Terhubung
+                  </h2>
                 </div>
                 <p className="text-small text-ink-soft">
                   Sesi aktif dan siap menerima perintah kirim.
@@ -225,11 +218,9 @@ export function KoneksiTab({
                     Sesi tidak bisa mengirim pesan sampai perangkat ditautkan kembali.
                   </p>
                 </div>
-                {readOnly ? null : (
-                  <Button className="self-start" disabled={busy} onClick={() => void login()}>
-                    Login ulang
-                  </Button>
-                )}
+                <Button className="self-start" disabled={busy} onClick={() => void login()}>
+                  Login ulang
+                </Button>
               </div>
             ) : (
               <div className="flex flex-wrap gap-[26px]">
@@ -265,38 +256,28 @@ export function KoneksiTab({
                     </div>
                   ))}
                   <div className="h-3.5" />
-                  {readOnly ? null : (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="h-[30px] px-3 text-[11.5px]"
-                        disabled={busy}
-                        onClick={onRefresh}
-                      >
-                        <RefreshCw className="size-3 text-ink-soft" aria-hidden />
-                        Muat ulang QR
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="h-[30px] px-3 text-[11.5px]"
-                        onClick={() => document.getElementById('pairing-phone')?.focus()}
-                      >
-                        Pakai kode pairing
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="h-[30px] px-3 text-[11.5px]"
-                        disabled={busy}
-                        onClick={() => void cancelPairing()}
-                      >
-                        <X className="size-3 text-ink-soft" aria-hidden />
-                        Batalkan
-                      </Button>
-                    </div>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-[30px] px-3 text-[11.5px]"
+                      disabled={busy}
+                      onClick={onRefresh}
+                    >
+                      <RefreshCw className="size-3 text-ink-soft" aria-hidden />
+                      Muat ulang QR
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-[30px] px-3 text-[11.5px]"
+                      disabled={busy}
+                      onClick={() => void cancelPairing()}
+                    >
+                      <X className="size-3 text-ink-soft" aria-hidden />
+                      Batalkan
+                    </Button>
+                  </div>
                   <div className="h-[18px]" />
                   <div className="flex items-start gap-[7px] rounded-[9px] bg-bg px-3 py-2.5">
                     <ShieldCheck className="mt-px size-3 shrink-0 text-ink-faint" aria-hidden />
@@ -310,7 +291,7 @@ export function KoneksiTab({
           </Panel>
         )}
 
-        {connected && !readOnly ? (
+        {connected ? (
           <Panel>
             <div className="flex items-center justify-between">
               <h2 className="text-[14.5px] font-semibold tracking-[-0.2px] text-ink">
@@ -358,12 +339,12 @@ export function KoneksiTab({
           </Panel>
         ) : null}
 
-        {!loggedOut && !readOnly ? (
+        {!loggedOut ? (
           <div className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface px-5 py-[18px]">
             <div className="flex flex-col gap-[3px]">
-              <p className="text-[12.5px] font-semibold text-ink">Login ulang / ganti nomor</p>
+              <p className="text-[12.5px] font-semibold text-ink">Login ulang</p>
               <p className="text-[11px] text-ink-soft">
-                Hubungkan perangkat lewat QR atau kode pairing 8 digit.
+                Hubungkan ulang perangkat lewat QR WhatsApp.
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-[7px]">
@@ -377,20 +358,11 @@ export function KoneksiTab({
                 <QrCode className="size-3 text-ink-soft" aria-hidden />
                 Scan QR
               </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-[30px] px-3 text-[11.5px]"
-                onClick={() => document.getElementById('pairing-phone')?.focus()}
-              >
-                <Hash className="size-3 text-ink-soft" aria-hidden />
-                Kode pairing
-              </Button>
             </div>
           </div>
         ) : null}
 
-        {readOnly ? null : <SalesAccountCard session={session} onChanged={onChanged} />}
+        {canManage ? <SalesAccountCard session={session} onChanged={onChanged} /> : null}
       </div>
 
       <div className="flex min-w-[320px] flex-1 flex-col gap-4">
@@ -398,80 +370,22 @@ export function KoneksiTab({
           rail
         ) : (
           <>
-            {readOnly ? null : (
-              <Panel className="gap-0 p-5">
-                <div className="flex items-center justify-between">
-                  <CardLabel>Atau kode pairing</CardLabel>
-                  <Hash className="size-[13px] text-ink-faint" aria-hidden />
-                </div>
-                <div className="h-3" />
-                {pairingCode ? (
-                  <>
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-data text-2xl font-semibold tracking-[3px] text-ink">
-                        {pairingCode}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => void navigator.clipboard?.writeText(pairingCode)}
-                        aria-label="Salin kode pairing"
-                        className="text-ink-soft transition hover:text-ink"
-                      >
-                        <Copy className="size-3" aria-hidden />
-                      </button>
-                    </div>
-                    <div className="h-2.5" />
-                    <p className="text-[10.5px] leading-[1.45] text-ink-soft">
-                      Masukkan kode ini di WhatsApp → Perangkat tertaut → Tautkan dengan nomor
-                      telepon.
-                    </p>
-                  </>
-                ) : (
-                  <div className="flex flex-col gap-2.5">
-                    <p className="text-[10.5px] leading-[1.45] text-ink-soft">
-                      Masukkan nomor WhatsApp untuk meminta kode pairing 8 digit.
-                    </p>
-                    <input
-                      value={phone}
-                      onChange={(event) => setPhone(event.target.value)}
-                      id="pairing-phone"
-                      placeholder="628123456789"
-                      inputMode="numeric"
-                      className={cn(FIELD_INPUT, 'h-10')}
-                    />
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="h-[32px] self-start px-3.5 text-[11.5px]"
-                      disabled={busy || phone.replace(/\D/g, '').length < 8}
-                      onClick={() => void requestPairing()}
-                    >
-                      Minta kode
-                    </Button>
-                  </div>
-                )}
-              </Panel>
-            )}
-
             <Panel className="gap-0 p-5">
               <CardLabel>Detail sesi</CardLabel>
               <div className="h-2.5" />
               <SummaryRow label="Public ID" value={session.publicId} />
-              <div className="h-px w-full bg-line" />
-              <SummaryRow label="Sales" value={session.label} />
               <div className="h-px w-full bg-line" />
               <SummaryRow label="Sales" value={salesName ?? '—'} />
               <div className="h-px w-full bg-line" />
               <SummaryRow label="Dibuat" value={formatDateTime(session.createdAt)} />
             </Panel>
 
-            {readOnly ? null : deleteCard}
+            {canManage ? deleteCard : null}
 
             <div className="flex items-start gap-[9px] rounded-card border border-line bg-surface p-4">
               <ShieldCheck className="mt-px size-3.5 shrink-0 text-ink-faint" aria-hidden />
               <p className="text-[10.5px] leading-[1.45] text-ink-soft">
-                Jangan bagikan QR atau kode pairing. Siapa pun yang memindainya bisa mengakses nomor
-                ini.
+                Jangan bagikan QR ini. Siapa pun yang memindainya bisa mengakses nomor.
               </p>
             </div>
           </>
