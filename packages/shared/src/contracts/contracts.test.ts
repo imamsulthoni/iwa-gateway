@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { authMeSchema, loginResponseSchema, loginSchema } from './auth.js'
 import { broadcastV1Schema, createBroadcastSchema } from './broadcast.js'
 import { conversationListSchema, conversationSchema, roomMessageSchema } from './conversation.js'
 import { sseEventSchema } from './event.js'
@@ -81,6 +82,49 @@ describe('kontrak pesan', () => {
     })
     expect(messageQuerySchema.safeParse({ direction: 'both' }).success).toBe(false)
     expect(crossSessionMessageQuerySchema.safeParse({ direction: 'up' }).success).toBe(false)
+  })
+})
+
+describe('kontrak auth', () => {
+  it('menerima nomor dan PIN valid', () => {
+    expect(loginSchema.parse({ phoneNumber: '628123456789', pin: '1234' })).toEqual({
+      phoneNumber: '628123456789',
+      pin: '1234',
+    })
+    expect(loginSchema.safeParse({ phoneNumber: '628123456789', pin: '12345678' }).success).toBe(
+      true,
+    )
+  })
+
+  it('menolak PIN 3 digit, 9 digit, dan huruf', () => {
+    for (const pin of ['123', '123456789', '12a4', '12 34']) {
+      expect(loginSchema.safeParse({ phoneNumber: '628123456789', pin }).success).toBe(false)
+    }
+  })
+
+  it('menolak nomor berspasi atau non-digit', () => {
+    for (const phoneNumber of ['+62 812', '6281 2345', '0812-3456']) {
+      expect(loginSchema.safeParse({ phoneNumber, pin: '1234' }).success).toBe(false)
+    }
+  })
+
+  it('membentuk respons login dan /auth/me dua mode', () => {
+    const user = {
+      id: 'u1',
+      name: 'Sales A',
+      phoneNumber: '628123456789',
+      role: 'sales',
+      active: true,
+    }
+
+    expect(
+      loginResponseSchema.safeParse({ token: 't', expiresAt: '2026-12-01T00:00:00.000Z', user })
+        .success,
+    ).toBe(true)
+    expect(authMeSchema.safeParse({ mode: 'admin', user: null }).success).toBe(true)
+    expect(authMeSchema.safeParse({ mode: 'sales', user }).success).toBe(true)
+    expect(authMeSchema.safeParse({ mode: 'sales', user: null }).success).toBe(true)
+    expect(authMeSchema.safeParse({ mode: 'lainnya', user: null }).success).toBe(false)
   })
 })
 

@@ -1,6 +1,7 @@
 export * from './constants/events.js'
 export * from './constants/limits.js'
 export * from './constants/status.js'
+export * from './contracts/auth.js'
 export * from './contracts/broadcast.js'
 export * from './contracts/conversation.js'
 export * from './contracts/event.js'
