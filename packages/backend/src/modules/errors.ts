@@ -26,6 +26,19 @@ export class ConflictError extends DomainError {
   }
 }
 
+export class UnauthorizedError extends DomainError {
+  constructor(message = 'Tidak terautentikasi') {
+    super(message, 'UNAUTHORIZED')
+  }
+}
+
+/** Nomor sudah terdaftar tetapi belum punya sesi WhatsApp yang ditautkan. */
+export class NoSessionError extends DomainError {
+  constructor(message = 'Nomor ini belum memiliki sesi WhatsApp') {
+    super(message, 'NO_SESSION')
+  }
+}
+
 /** Socket sesi belum siap; user perlu mengirim ulang setelah sesi terhubung. */
 export class SessionNotReadyError extends DomainError {
   constructor() {
