@@ -1,5 +1,5 @@
 import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@wa/shared'
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Link, createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { ArrowUpRight, ChevronDown, Megaphone, RefreshCw } from 'lucide-react'
 import { useMemo } from 'react'
 
@@ -16,6 +16,7 @@ import {
 } from '../../design-system'
 import { SessionStatusBadge } from '../../components/session-status'
 import { api } from '../../lib/api'
+import { isAdmin } from '../../lib/auth'
 import { formatDateTime, formatNumber, usePolling } from '../../lib/format'
 import type {
   BroadcastCurrentDto,
@@ -25,6 +26,9 @@ import type {
 } from '../../lib/types'
 
 export const Route = createFileRoute('/_auth/overview')({
+  beforeLoad: () => {
+    if (!isAdmin()) throw redirect({ to: '/numbers' })
+  },
   component: OverviewPage,
 })
 

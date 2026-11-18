@@ -134,6 +134,7 @@ function InboxPage() {
   })
 
   const selectedSession = sessions.data?.items.find((item) => item.publicId === sessionId)
+  const noNumbers = (sessions.data?.items.length ?? 1) === 0
   const roomItems = (rooms.data?.items ?? []).filter(
     (room) => room.sessionId === selectedSession?.id,
   )
@@ -201,7 +202,7 @@ function InboxPage() {
               }}
               options={(sessions.data?.items ?? []).map((item) => ({
                 value: item.publicId,
-                label: `${item.label} · ${item.status}`,
+                label: `${item.salesName ?? item.label} · ${item.status}`,
               }))}
             />
             <Button
@@ -230,8 +231,13 @@ function InboxPage() {
           </div>
           <div className="h-px bg-line" />
           <div className="min-h-0 flex-1 overflow-auto">
-            {rooms.loading && !rooms.data ? (
+            {sessionId && rooms.loading && !rooms.data ? (
               <p className="px-4 py-10 text-center text-small text-ink-faint">Memuat room...</p>
+            ) : null}
+            {noNumbers ? (
+              <p className="px-4 py-10 text-center text-small text-ink-faint">
+                Belum ada nomor WhatsApp untuk akun ini. Hubungi admin.
+              </p>
             ) : null}
             {rooms.data && roomItems.length === 0 ? (
               <p className="px-4 py-10 text-center text-small text-ink-faint">
@@ -340,7 +346,9 @@ function InboxPage() {
             </>
           ) : (
             <p className="m-auto px-6 text-center text-small text-ink-faint">
-              Pilih room chat untuk melihat percakapan.
+              {noNumbers
+                ? 'Belum ada nomor untuk akun ini. Hubungi admin.'
+                : 'Pilih room chat untuk melihat percakapan.'}
             </p>
           )}
         </section>

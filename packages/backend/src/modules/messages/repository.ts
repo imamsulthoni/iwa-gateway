@@ -1,8 +1,15 @@
-import { and, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
+import { and, desc, eq, getTableColumns, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 
 import type { Database } from '../../db/client.js'
 import { newId } from '../../db/id.js'
-import { conversations, messages, messageStatusEvents, type MessageRow } from '../../db/schema.js'
+import {
+  conversations,
+  messages,
+  messageStatusEvents,
+  users,
+  waSessions,
+  type MessageRow,
+} from '../../db/schema.js'
 import { isDuplicateKeyError } from '../db-errors.js'
 
 export type MessageCursor = {
@@ -205,11 +212,30 @@ export function createMessagesRepository(db: Database) {
       sessionId?: string,
       cursor?: MessageCursor,
       direction?: MessageRow['direction'],
-    ): Promise<{ items: MessageRow[]; nextCursor: MessageCursor | null }> {
+    ): Promise<{
+      items: (MessageRow & { salesName: string | null })[]
+      nextCursor: MessageCursor | null
+    }> {
       const conditions = [isNull(messages.deletedAt)]
       if (sessionId) conditions.push(eq(messages.sessionId, sessionId))
       if (direction) conditions.push(eq(messages.direction, direction))
-      return listPage(and(...conditions), limit, cursor)
+      const where = and(...conditions)
+      const condition = cursor ? and(where, cursorCondition(cursor)) : where
+
+      const rows = await db
+        .select({ ...getTableColumns(messages), salesName: users.name })
+        .from(messages)
+        .leftJoin(waSessions, eq(messages.sessionId, waSessions.id))
+        .leftJoin(users, eq(waSessions.ownerUserId, users.id))
+        .where(condition)
+        .orderBy(desc(messages.createdAt), desc(messages.id))
+        .limit(limit + 1)
+
+      const items = rows.slice(0, limit)
+      const last = items.at(-1)
+      const nextCursor =
+        rows.length > limit && last ? { createdAt: last.createdAt, id: last.id } : null
+      return { items, nextCursor }
     },
 
     async listByConversation(

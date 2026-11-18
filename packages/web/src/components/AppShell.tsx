@@ -13,8 +13,8 @@ import {
 import type { ReactNode } from 'react'
 
 import { cn } from '../design-system'
-import { api } from '../lib/api'
-import { clearApiKey } from '../lib/auth'
+import { api, logoutUser } from '../lib/api'
+import { clearAuth, getAuth, isAdmin } from '../lib/auth'
 import { usePolling } from '../lib/format'
 import type { HealthDto, SessionListDto } from '../lib/types'
 
@@ -37,6 +37,8 @@ const GROUPS = [
   },
 ] as const
 
+const SALES_PATHS = new Set(['/numbers', '/inbox'])
+
 function sidebarItem(active: boolean): string {
   return cn(
     'flex h-[38px] items-center gap-2.5 rounded-[9px] px-2.5 text-[13.5px] font-medium transition',
@@ -46,6 +48,17 @@ function sidebarItem(active: boolean): string {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
+  const admin = isAdmin()
+  const auth = getAuth()
+  const identity =
+    auth?.mode === 'sales'
+      ? { name: auth.user.name, label: 'sales' }
+      : { name: 'Admin', label: 'api key' }
+  const initials = identity.name.slice(0, 2).toUpperCase()
+  const groups = GROUPS.map((group) => ({
+    ...group,
+    items: admin ? group.items : group.items.filter((item) => SALES_PATHS.has(item.to)),
+  })).filter((group) => group.items.length > 0)
   const health = usePolling<HealthDto>(() => api.get<HealthDto>('/'), 20_000, true)
   const sessions = usePolling<SessionListDto>(
     () => api.get<SessionListDto>('/sessions'),
@@ -58,14 +71,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   const healthy = health.data?.status === 'ok'
 
   function logout() {
-    clearApiKey()
-    void navigate({ to: '/login' })
+    if (admin) {
+      clearAuth()
+      void navigate({ to: '/login' })
+      return
+    }
+    void logoutUser().finally(() => void navigate({ to: '/login' }))
   }
 
   return (
     <div className="flex min-h-screen bg-bg font-body text-ink">
       <aside className="sticky top-0 flex h-screen w-[248px] shrink-0 flex-col px-5 pt-7 pb-6">
-        <Link to="/overview" className="flex items-center gap-2.5 pb-4">
+        <Link to={admin ? '/overview' : '/numbers'} className="flex items-center gap-2.5 pb-4">
           <span className="flex size-[30px] items-center justify-center rounded-lg bg-ink">
             <MessageCircle className="size-4 text-white" aria-hidden />
           </span>
@@ -81,7 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="h-px w-full bg-line" />
 
         <div className="mt-[22px] flex flex-col gap-[22px]">
-          {GROUPS.map((group) => (
+          {groups.map((group) => (
             <div key={group.label}>
               <p className="font-data text-[9.5px] tracking-[1.6px] text-ink-faint uppercase">
                 {group.label}
@@ -145,11 +162,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="mt-[18px] flex items-center gap-[9px]">
           <span className="flex size-7 items-center justify-center rounded-pill border border-line bg-surface-soft font-data text-[9.5px] font-semibold text-ink-soft">
-            AD
+            {initials}
           </span>
           <span className="flex flex-1 flex-col gap-px">
-            <span className="text-body font-medium text-ink">Admin</span>
-            <span className="font-data text-[9.5px] text-ink-faint">api key</span>
+            <span className="truncate text-body font-medium text-ink">{identity.name}</span>
+            <span className="font-data text-[9.5px] text-ink-faint">{identity.label}</span>
           </span>
           <button
             type="button"

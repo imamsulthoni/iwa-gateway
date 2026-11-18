@@ -2,10 +2,12 @@ import { OpenAPIHono, createRoute } from '@hono/zod-openapi'
 import {
   SESSION_STATUS_LABELS,
   apiErrorBody,
+  attachSalesSchema,
   createSessionSchema,
   pairingRequestSchema,
   pairingResponseSchema,
   qrResponseSchema,
+  resetSalesPinSchema,
   sessionListSchema,
   sessionLiveSchema,
   sessionSchema,
@@ -20,8 +22,10 @@ import type { Redis } from 'ioredis'
 import type { BroadcastsService } from '../../modules/broadcasts/service.js'
 import type { SessionsService } from '../../modules/sessions/service.js'
 import { toSessionDto } from '../../modules/sessions/service.js'
+import type { SettingsService } from '../../modules/settings/service.js'
 import { publishSessionControl } from '../../infra/session-control.js'
 import type { AppBindings } from '../app.js'
+import { ensureSessionAccess, requireAdmin } from '../middleware/auth.js'
 import { idParamSchema, openApiError } from '../openapi.js'
 
 const EMPTY_BROADCAST: BroadcastCurrentDto = {
@@ -39,13 +43,14 @@ const EMPTY_BROADCAST: BroadcastCurrentDto = {
 }
 
 const apiKeySecurity = [{ ApiKey: [] }]
+const anyAuthSecurity: Record<string, string[]>[] = [{ ApiKey: [] }, { UserToken: [] }]
 
 const listSessionsRoute = createRoute({
   method: 'get',
   path: '/',
   tags: ['Sessions'],
   summary: 'Daftar sesi WhatsApp',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   responses: {
     200: {
       description: 'Maksimal 50 sesi terbaru',
@@ -75,7 +80,7 @@ const createSessionRoute = createRoute({
       content: { 'application/json': { schema: sessionTokenSchema } },
     },
     401: openApiError('API key tidak dikirim atau tidak valid'),
-    409: openApiError('publicId atau nomor sudah dipakai sesi lain'),
+    409: openApiError('publicId/nomor sudah dipakai, atau batas jumlah sales tercapai'),
     422: openApiError('Data sesi tidak valid'),
     429: openApiError('Rate limit terlampaui'),
     500: openApiError('Kesalahan internal'),
@@ -87,7 +92,7 @@ const getSessionRoute = createRoute({
   path: '/{id}',
   tags: ['Sessions'],
   summary: 'Detail satu sesi',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -122,14 +127,15 @@ const loginSessionRoute = createRoute({
   path: '/{id}/login',
   tags: ['Sessions'],
   summary: 'Mulai koneksi WhatsApp untuk sesi',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
       description: 'Sesi masuk status connecting',
       content: { 'application/json': { schema: sessionSchema } },
     },
-    401: openApiError('API key tidak dikirim atau tidak valid'),
+    401: openApiError('API key atau token login tidak valid'),
+    403: openApiError('Akses ke sesi ini ditolak'),
     404: openApiError('Sesi tidak ditemukan'),
     429: openApiError('Rate limit terlampaui'),
     500: openApiError('Kesalahan internal'),
@@ -141,14 +147,15 @@ const cancelSessionRoute = createRoute({
   path: '/{id}/cancel',
   tags: ['Sessions'],
   summary: 'Batalkan proses pairing',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
       description: 'Sesi diputus dan QR dikosongkan',
       content: { 'application/json': { schema: sessionSchema } },
     },
-    401: openApiError('API key tidak dikirim atau tidak valid'),
+    401: openApiError('API key atau token login tidak valid'),
+    403: openApiError('Akses ke sesi ini ditolak'),
     404: openApiError('Sesi tidak ditemukan'),
     409: openApiError('Sesi tidak sedang dalam proses pairing'),
     429: openApiError('Rate limit terlampaui'),
@@ -199,7 +206,7 @@ const sessionStatusRoute = createRoute({
   path: '/{id}/status',
   tags: ['Sessions'],
   summary: 'Status ringkas sesi',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -218,7 +225,7 @@ const sessionQrRoute = createRoute({
   path: '/{id}/qr',
   tags: ['Sessions'],
   summary: 'QR terakhir sesi',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -237,7 +244,7 @@ const sessionLiveRoute = createRoute({
   path: '/{id}/live',
   tags: ['Sessions'],
   summary: 'Gabungan state dashboard sesi',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -256,7 +263,7 @@ const pairingCodeRoute = createRoute({
   path: '/{id}/pairing',
   tags: ['Sessions'],
   summary: 'Pairing code terakhir sesi',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -274,8 +281,8 @@ const requestPairingCodeRoute = createRoute({
   method: 'post',
   path: '/{id}/pairing',
   tags: ['Sessions'],
-  summary: 'Minta pairing code untuk nomor tertentu',
-  security: apiKeySecurity,
+  summary: 'Pairing dengan kode dinonaktifkan (pakai QR)',
+  security: anyAuthSecurity,
   request: {
     params: idParamSchema,
     body: {
@@ -284,14 +291,64 @@ const requestPairingCodeRoute = createRoute({
     },
   },
   responses: {
-    202: {
-      description: 'Permintaan pairing diterima; code diisi worker secara asinkron',
-      content: { 'application/json': { schema: pairingResponseSchema } },
+    401: openApiError('API key atau token login tidak valid'),
+    409: openApiError('Pairing dengan kode dinonaktifkan; gunakan QR'),
+    429: openApiError('Rate limit terlampaui'),
+    500: openApiError('Kesalahan internal'),
+  },
+})
+
+const resetSalesPinRoute = createRoute({
+  method: 'post',
+  path: '/{id}/sales/pin',
+  tags: ['Sessions'],
+  summary: 'Reset PIN akun sales sesi',
+  security: apiKeySecurity,
+  request: {
+    params: idParamSchema,
+    body: {
+      content: { 'application/json': { schema: resetSalesPinSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: 'PIN diperbarui dan token login sales lama dicabut',
+      content: { 'application/json': { schema: sessionSchema } },
     },
     401: openApiError('API key tidak dikirim atau tidak valid'),
+    403: openApiError('Akses khusus admin'),
     404: openApiError('Sesi tidak ditemukan'),
-    409: openApiError('Nomor sudah dipakai sesi lain'),
-    422: openApiError('Nomor tidak valid'),
+    409: openApiError('Sesi ini belum memiliki akun sales'),
+    422: openApiError('PIN tidak valid'),
+    429: openApiError('Rate limit terlampaui'),
+    500: openApiError('Kesalahan internal'),
+  },
+})
+
+const attachSalesRoute = createRoute({
+  method: 'patch',
+  path: '/{id}/sales',
+  tags: ['Sessions'],
+  summary: 'Tautkan akun sales ke sesi lama',
+  security: apiKeySecurity,
+  request: {
+    params: idParamSchema,
+    body: {
+      content: { 'application/json': { schema: attachSalesSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: 'Akun sales tertaut ke sesi',
+      content: { 'application/json': { schema: sessionSchema } },
+    },
+    401: openApiError('API key tidak dikirim atau tidak valid'),
+    403: openApiError('Akses khusus admin'),
+    404: openApiError('Sesi tidak ditemukan'),
+    409: openApiError('Sesi sudah memiliki sales, nomor sudah dipakai, atau kuota penuh'),
+    422: openApiError('Data sales tidak valid atau sesi belum memiliki nomor'),
     429: openApiError('Rate limit terlampaui'),
     500: openApiError('Kesalahan internal'),
   },
@@ -301,15 +358,19 @@ export function createSessionsRoute(
   sessions: SessionsService,
   broadcasts: BroadcastsService,
   redis: Redis,
+  settings: SettingsService,
 ) {
   const router = new OpenAPIHono<AppBindings>()
 
   router.openapi(listSessionsRoute, async (c) => {
-    const rows = await sessions.list(50)
+    const actor = c.get('actor')
+    const ownerUserId = actor?.mode === 'sales' ? actor.user.id : undefined
+    const rows = await sessions.list(50, ownerUserId)
     return c.json({ items: rows.map(toSessionDto), nextCursor: null }, 200)
   })
 
   router.openapi(createSessionRoute, async (c) => {
+    requireAdmin(c)
     const input = c.req.valid('json')
     if (input.mode === 'pairing' && !input.phoneNumber) {
       return c.json(
@@ -321,23 +382,29 @@ export function createSessionsRoute(
     return c.json({ token, session: toSessionDto(session) }, 201)
   })
 
-  router.openapi(getSessionRoute, async (c) =>
-    c.json(toSessionDto(await sessions.get(c.req.param('id'))), 200),
-  )
+  router.openapi(getSessionRoute, async (c) => {
+    const session = await sessions.get(c.req.param('id'))
+    ensureSessionAccess(c, session)
+    return c.json(toSessionDto(session), 200)
+  })
 
   router.openapi(deleteSessionRoute, async (c) => {
+    requireAdmin(c)
     await sessions.remove(c.req.param('id'))
     return c.body(null, 204)
   })
 
   router.openapi(loginSessionRoute, async (c) => {
-    const session = await sessions.updateStatus(c.req.param('id'), 'connecting')
+    const current = await sessions.get(c.req.param('id'))
+    ensureSessionAccess(c, current)
+    const session = await sessions.updateStatus(current.id, 'connecting')
     await publishSessionControl(redis, { sessionId: session.id, action: 'start' })
     return c.json(toSessionDto(session), 200)
   })
 
   router.openapi(cancelSessionRoute, async (c) => {
     const session = await sessions.get(c.req.param('id'))
+    ensureSessionAccess(c, session)
     if (session.status === 'connected' || session.status === 'logged_out') {
       return c.json(apiErrorBody('CONFLICT', 'Sesi tidak sedang dalam proses pairing'), 409)
     }
@@ -351,18 +418,21 @@ export function createSessionsRoute(
   })
 
   router.openapi(logoutSessionRoute, async (c) => {
+    requireAdmin(c)
     const session = await sessions.updateStatus(c.req.param('id'), 'logged_out', { lastQr: null })
     await publishSessionControl(redis, { sessionId: session.id, action: 'stop', clearAuth: true })
     return c.json(toSessionDto(session), 200)
   })
 
   router.openapi(rotateSessionTokenRoute, async (c) => {
+    requireAdmin(c)
     const { session, token } = await sessions.rotateToken(c.req.param('id'))
     return c.json({ token, session: toSessionDto(session) }, 200)
   })
 
   router.openapi(sessionStatusRoute, async (c) => {
     const session = await sessions.get(c.req.param('id'))
+    ensureSessionAccess(c, session)
     return c.json(
       {
         status: session.status,
@@ -377,6 +447,7 @@ export function createSessionsRoute(
 
   router.openapi(sessionQrRoute, async (c) => {
     const session = await sessions.get(c.req.param('id'))
+    ensureSessionAccess(c, session)
     return c.json({ qr: session.lastQr, status: session.status }, 200)
   })
 
@@ -384,35 +455,45 @@ export function createSessionsRoute(
   // polling terpisah ke /sessions/:id, /status, /qr, dan /broadcast/current).
   router.openapi(sessionLiveRoute, async (c) => {
     const session = await sessions.get(c.req.param('id'))
-    const [broadcast, pairingCode] = await Promise.all([
+    ensureSessionAccess(c, session)
+    const [broadcast, pairingCode, config] = await Promise.all([
       broadcasts.current(session.id),
       redis.get(`wa:pairing:code:${session.id}`),
+      settings.getSettings(),
     ])
     const payload: SessionLiveDto = {
       session: toSessionDto(session),
       qr: session.lastQr,
       pairingCode,
       broadcast: broadcast ?? EMPTY_BROADCAST,
+      defaultDelay: { min: config.defaultMinDelay, max: config.defaultMaxDelay },
     }
     return c.json(payload, 200)
   })
 
   router.openapi(pairingCodeRoute, async (c) => {
     const session = await sessions.get(c.req.param('id'))
+    ensureSessionAccess(c, session)
     const code = await redis.get(`wa:pairing:code:${session.id}`)
     const payload: PairingResponseDto = { code, status: session.status }
     return c.json(payload, 200)
   })
 
   router.openapi(requestPairingCodeRoute, async (c) => {
-    const sessionId = c.req.param('id')
-    const input = c.req.valid('json')
-    await sessions.setPhoneNumber(sessionId, input.phoneNumber)
-    const session = await sessions.updateStatus(sessionId, 'connecting')
-    await redis.set(`wa:pairing:request:${sessionId}`, input.phoneNumber, 'EX', 600)
-    await publishSessionControl(redis, { sessionId, action: 'start' })
-    const payload: PairingResponseDto = { code: null, status: session.status }
-    return c.json(payload, 202)
+    // Pairing dengan kode dinonaktifkan sementara: hanya QR yang didukung.
+    return c.json(apiErrorBody('CONFLICT', 'Pairing dengan kode dinonaktifkan. Gunakan QR.'), 409)
+  })
+
+  router.openapi(resetSalesPinRoute, async (c) => {
+    requireAdmin(c)
+    const session = await sessions.resetSalesPin(c.req.param('id'), c.req.valid('json').pin)
+    return c.json(toSessionDto(session), 200)
+  })
+
+  router.openapi(attachSalesRoute, async (c) => {
+    requireAdmin(c)
+    const session = await sessions.attachSales(c.req.param('id'), c.req.valid('json'))
+    return c.json(toSessionDto(session), 200)
   })
 
   return router

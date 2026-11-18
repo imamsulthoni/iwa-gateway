@@ -1,7 +1,30 @@
 import { describe, expect, it } from 'vitest'
 
+import type { MessageRow } from '../../db/schema.js'
 import { normalizePhone, phoneFromJid, toUserJid } from './phone.js'
+import { toMessageDto } from './service.js'
 import { mapBaileysStatus, shouldAdvanceStatus } from './status.js'
+
+const MESSAGE: MessageRow = {
+  id: 'm1',
+  conversationId: null,
+  sessionId: 's1',
+  waMessageId: null,
+  clientRef: null,
+  direction: 'out',
+  type: 'text',
+  body: 'Halo',
+  raw: null,
+  status: 'sent',
+  error: null,
+  toJid: '628123456789@s.whatsapp.net',
+  customerId: null,
+  customerName: null,
+  broadcastId: null,
+  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  waTimestamp: null,
+  deletedAt: null,
+}
 
 describe('normalisasi nomor', () => {
   it('menyamakan 08xx, +62xx, dan 62xx', () => {
@@ -21,6 +44,16 @@ describe('normalisasi nomor', () => {
 
   it('menolak nomor terlalu pendek', () => {
     expect(() => normalizePhone('123')).toThrow()
+  })
+})
+
+describe('mapping pesan', () => {
+  it('mengisi salesName dari join owner sesi', () => {
+    expect(toMessageDto({ ...MESSAGE, salesName: 'Sales A' }).salesName).toBe('Sales A')
+  })
+
+  it('fallback null untuk pesan sesi lama', () => {
+    expect(toMessageDto(MESSAGE).salesName).toBeNull()
   })
 })
 

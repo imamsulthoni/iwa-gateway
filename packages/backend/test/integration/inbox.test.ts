@@ -198,7 +198,15 @@ describeIntegration('integrasi inbox', () => {
       redis,
       db: connection.db,
       auth: createApiKeyAuthenticator(connection.db),
-      sessions: createSessionsService(sessionsRepo()),
+      userAuth: {} as unknown as AppDependencies['userAuth'],
+      sessions: createSessionsService(sessionsRepo(), {
+        getSettings: async () => ({
+          maxSales: 10,
+          salesCount: 0,
+          defaultMinDelay: 10,
+          defaultMaxDelay: 30,
+        }),
+      }),
       messages: messagesService(),
       conversations: conversationsService(),
       broadcasts: { current: async () => null } as unknown as AppDependencies['broadcasts'],
@@ -210,6 +218,20 @@ describeIntegration('integrasi inbox', () => {
           runningBroadcasts: 0,
         }),
       } as unknown as AppDependencies['stats'],
+      settings: {
+        getSettings: async () => ({
+          maxSales: 10,
+          salesCount: 0,
+          defaultMinDelay: 10,
+          defaultMaxDelay: 30,
+        }),
+        updateSettings: async (values) => ({
+          maxSales: values.maxSales ?? 10,
+          salesCount: 0,
+          defaultMinDelay: values.defaultMinDelay ?? 10,
+          defaultMaxDelay: values.defaultMaxDelay ?? 30,
+        }),
+      },
       webhooks: {} as unknown as AppDependencies['webhooks'],
       queues: { send: { add: vi.fn() }, broadcast: { add: vi.fn() } } as never,
     })

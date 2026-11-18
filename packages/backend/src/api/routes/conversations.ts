@@ -10,16 +10,17 @@ import {
 import type { ConversationsService } from '../../modules/conversations/service.js'
 import type { SessionsService } from '../../modules/sessions/service.js'
 import type { AppBindings } from '../app.js'
+import { ensureSessionAccess } from '../middleware/auth.js'
 import { idParamSchema, openApiError } from '../openapi.js'
 
-const apiKeySecurity = [{ ApiKey: [] }]
+const anyAuthSecurity: Record<string, string[]>[] = [{ ApiKey: [] }, { UserToken: [] }]
 
 const listConversationsRoute = createRoute({
   method: 'get',
   path: '/sessions/{id}/conversations',
   tags: ['Conversations'],
   summary: 'Daftar room chat sebuah sesi',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema, query: conversationQuerySchema },
   responses: {
     200: {
@@ -39,7 +40,7 @@ const listRoomMessagesRoute = createRoute({
   path: '/conversations/{id}/messages',
   tags: ['Conversations'],
   summary: 'Riwayat pesan satu room',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema, query: roomMessageQuerySchema },
   responses: {
     200: {
@@ -59,7 +60,7 @@ const markConversationReadRoute = createRoute({
   path: '/conversations/{id}/read',
   tags: ['Conversations'],
   summary: 'Tandai room sudah dibaca',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -81,20 +82,25 @@ export function createConversationsRoute(
 
   router.openapi(listConversationsRoute, async (c) => {
     const session = await sessions.getByPublicId(c.req.param('id'))
+    ensureSessionAccess(c, session)
     const query = c.req.valid('query')
     const page = await conversations.listRooms(session.id, query.limit, query.cursor)
     return c.json(page, 200)
   })
 
   router.openapi(listRoomMessagesRoute, async (c) => {
+    const conversation = await conversations.get(c.req.param('id'))
+    ensureSessionAccess(c, await sessions.get(conversation.sessionId))
     const query = c.req.valid('query')
-    const page = await conversations.listMessages(c.req.param('id'), query.limit, query.cursor)
+    const page = await conversations.listMessages(conversation.id, query.limit, query.cursor)
     return c.json(page, 200)
   })
 
   router.openapi(markConversationReadRoute, async (c) => {
-    const conversation = await conversations.markRead(c.req.param('id'))
-    return c.json(conversation, 200)
+    const conversation = await conversations.get(c.req.param('id'))
+    ensureSessionAccess(c, await sessions.get(conversation.sessionId))
+    const updated = await conversations.markRead(conversation.id)
+    return c.json(updated, 200)
   })
 
   return router

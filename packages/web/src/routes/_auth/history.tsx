@@ -1,5 +1,5 @@
 import { MESSAGE_STATUS_LABELS } from '@wa/shared'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { ListFilter, RefreshCw, RotateCcw, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -7,10 +7,14 @@ import { ConfirmDialog } from '../../components/dialogs'
 import { Badge, Button, cn } from '../../design-system'
 import type { BadgeTone } from '../../design-system'
 import { api } from '../../lib/api'
+import { isAdmin } from '../../lib/auth'
 import { formatPhone, truncate } from '../../lib/format'
 import type { MessageListDto, RetryMessageResponseDto } from '../../lib/types'
 
 export const Route = createFileRoute('/_auth/history')({
+  beforeLoad: () => {
+    if (!isAdmin()) throw redirect({ to: '/numbers' })
+  },
   validateSearch: (search: Record<string, unknown>): { sessionId?: string } => {
     const sessionId = search.sessionId
     if (typeof sessionId === 'string' && sessionId.trim()) {
@@ -191,7 +195,7 @@ function HistoryPage() {
 
         <div className={cn(GRID, 'h-8 px-[22px]')}>
           <p className={COL_HEAD}>WAKTU</p>
-          <p className={COL_HEAD}>SESI</p>
+          <p className={COL_HEAD}>SALES</p>
           <p className={COL_HEAD}>TUJUAN</p>
           <p className={COL_HEAD}>CUSTOMER</p>
           <p className={COL_HEAD}>ISI PESAN</p>
@@ -227,7 +231,9 @@ function HistoryPage() {
                   <p className="font-data text-[11px] text-ink">{clock(row.createdAt)}</p>
                   <p className="font-data text-[8.5px] text-ink-faint">{day(row.createdAt)}</p>
                 </div>
-                <p className="truncate font-data text-[9.5px] text-ink-soft">{row.sessionId}</p>
+                <p className="truncate font-data text-[9.5px] text-ink-soft">
+                  {row.salesName ?? row.sessionId}
+                </p>
                 <p className="truncate font-data text-[9.5px] text-ink-soft">
                   {formatPhone(row.to)}
                 </p>

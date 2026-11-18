@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import { Badge, Button } from '../../design-system'
 import { api } from '../../lib/api'
 import { newClientRef } from '../../lib/client-ref'
-import { getDefaultDelay } from '../../lib/delay'
 import { usePolling } from '../../lib/format'
 import type { BroadcastCurrentDto, CreateBroadcastResponseDto, SessionDto } from '../../lib/types'
 import { BroadcastRail, CardLabel, NoteRow, Panel } from './parts'
@@ -12,6 +11,7 @@ import { BroadcastRail, CardLabel, NoteRow, Panel } from './parts'
 type BroadcastTabProps = {
   session: SessionDto
   broadcast: BroadcastCurrentDto | null
+  defaultDelay: { min: number; max: number }
   onRefresh: () => void
 }
 
@@ -29,12 +29,11 @@ function parseRecipients(value: string): Recipient[] {
     .filter((recipient) => recipient.to.length > 0)
 }
 
-export function BroadcastTab({ session, broadcast, onRefresh }: BroadcastTabProps) {
-  const defaults = getDefaultDelay()
+export function BroadcastTab({ session, broadcast, defaultDelay, onRefresh }: BroadcastTabProps) {
   const [recipients, setRecipients] = useState('')
   const [text, setText] = useState('')
-  const [minDelay, setMinDelay] = useState(defaults.min)
-  const [maxDelay, setMaxDelay] = useState(defaults.max)
+  const [minDelay, setMinDelay] = useState(defaultDelay.min)
+  const [maxDelay, setMaxDelay] = useState(defaultDelay.max)
   const [clientRef, setClientRef] = useState('')
   const [scheduledAt, setScheduledAt] = useState('')
   const [created, setCreated] = useState<CreateBroadcastResponseDto | null>(null)

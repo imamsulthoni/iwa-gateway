@@ -5,6 +5,7 @@ import {
   OPT_OUT_SOURCES,
   RECIPIENT_STATUSES,
   SESSION_STATUSES,
+  USER_ROLES,
   type WebhookEventType,
   type WebhookPayload,
 } from '@wa/shared'
@@ -42,6 +43,48 @@ export const apiKeys = mysqlTable(
   (table) => [uniqueIndex('api_keys_key_hash_uq').on(table.keyHash)],
 )
 
+export const users = mysqlTable(
+  'users',
+  {
+    id: char('id', { length: 36 }).primaryKey(),
+    name: varchar('name', { length: 255 }).notNull(),
+    phoneNumber: varchar('phone_number', { length: 32 }).notNull(),
+    role: mysqlEnum('role', [...USER_ROLES]).notNull().default('sales'),
+    pinHash: varchar('pin_hash', { length: 255 }).notNull(),
+    active: boolean('active').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: datetime('updated_at', { fsp: 3 })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP(3)`),
+  },
+  (table) => [uniqueIndex('users_phone_number_uq').on(table.phoneNumber)],
+)
+
+export const userSessions = mysqlTable(
+  'user_sessions',
+  {
+    id: char('id', { length: 36 }).primaryKey(),
+    userId: char('user_id', { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: char('token_hash', { length: 64 }).notNull(),
+    expiresAt: datetime('expires_at', { fsp: 3 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('user_sessions_token_hash_uq').on(table.tokenHash),
+    index('user_sessions_user_expires_idx').on(table.userId, table.expiresAt),
+  ],
+)
+
+export const appSettings = mysqlTable('app_settings', {
+  key: varchar('key', { length: 64 }).primaryKey(),
+  value: varchar('value', { length: 255 }).notNull(),
+  updatedAt: datetime('updated_at', { fsp: 3 })
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP(3)`),
+})
+
 export const waSessions = mysqlTable(
   'wa_sessions',
   {
@@ -59,6 +102,9 @@ export const waSessions = mysqlTable(
     tokenRotatedAt: datetime('token_rotated_at', { fsp: 3 }),
     salesId: varchar('sales_id', { length: 64 }),
     agentId: varchar('agent_id', { length: 64 }),
+    ownerUserId: char('owner_user_id', { length: 36 }).references(() => users.id, {
+      onDelete: 'set null',
+    }),
     dailySendLimit: int('daily_send_limit').notNull().default(200),
     authFormat: varchar('auth_format', { length: 16 }).notNull().default('v7'),
     pairingMethod: mysqlEnum('pairing_method', ['qr', 'code']).notNull().default('qr'),
@@ -70,6 +116,7 @@ export const waSessions = mysqlTable(
   (table) => [
     uniqueIndex('wa_sessions_public_id_uq').on(table.publicId),
     uniqueIndex('wa_sessions_phone_uq').on(table.phoneNumber),
+    uniqueIndex('wa_sessions_owner_uq').on(table.ownerUserId),
   ],
 )
 
@@ -268,6 +315,9 @@ export const webhookDeliveries = mysqlTable(
 )
 
 export type ApiKeyRow = typeof apiKeys.$inferSelect
+export type UserRow = typeof users.$inferSelect
+export type UserSessionRow = typeof userSessions.$inferSelect
+export type AppSettingRow = typeof appSettings.$inferSelect
 export type WaSessionRow = typeof waSessions.$inferSelect
 export type WaAuthCredsRow = typeof waAuthCreds.$inferSelect
 export type WaAuthKeyRow = typeof waAuthKeys.$inferSelect

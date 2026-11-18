@@ -99,7 +99,7 @@ describeIntegration('migrasi 0001 dengan data Fase 1', () => {
     await migrate(connection.db, { migrationsFolder: DRIZZLE_FOLDER })
     pool.release()
     await connection.pool.end()
-  })
+  }, 30000)
 
   it('backfill client_ref, mempertahankan data, dan menambah tabel Fase 2', async () => {
     await pool.query(

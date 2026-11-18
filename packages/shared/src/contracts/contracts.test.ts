@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { authMeSchema, loginResponseSchema, loginSchema } from './auth.js'
 import { broadcastV1Schema, createBroadcastSchema } from './broadcast.js'
 import { conversationListSchema, conversationSchema, roomMessageSchema } from './conversation.js'
 import { sseEventSchema } from './event.js'
@@ -11,7 +12,13 @@ import {
 } from './message.js'
 import { createOptOutSchema, optOutSchema } from './opt-out.js'
 import { paginationQuerySchema } from './pagination.js'
-import { createSessionSchema, publicIdSchema } from './session.js'
+import {
+  attachSalesSchema,
+  createSessionSchema,
+  publicIdSchema,
+  resetSalesPinSchema,
+} from './session.js'
+import { settingsSchema, updateSettingsSchema } from './settings.js'
 import { statsSchema } from './stats.js'
 import { webhookPayloadSchema } from './webhook.js'
 
@@ -33,6 +40,33 @@ describe('kontrak sesi', () => {
       createSessionSchema.safeParse({ label: 'A', mode: 'pairing', phoneNumber: '+62 812' })
         .success,
     ).toBe(false)
+  })
+
+  it('mewajibkan salesName dan PIN bersama dengan nomor', () => {
+    const base = { label: 'Sales A', phoneNumber: '628123456789' }
+    expect(createSessionSchema.safeParse({ ...base, salesName: 'Budi', pin: '1234' }).success).toBe(
+      true,
+    )
+    expect(createSessionSchema.safeParse({ ...base, salesName: 'Budi' }).success).toBe(false)
+    expect(createSessionSchema.safeParse({ ...base, pin: '1234' }).success).toBe(false)
+    expect(
+      createSessionSchema.safeParse({ label: 'Sales A', salesName: 'Budi', pin: '1234' }).success,
+    ).toBe(false)
+  })
+
+  it('menolak PIN bukan 4-8 digit angka pada pembuatan sesi', () => {
+    const base = { label: 'Sales A', phoneNumber: '628123456789', salesName: 'Budi' }
+    for (const pin of ['123', '123456789', '12a4']) {
+      expect(createSessionSchema.safeParse({ ...base, pin }).success).toBe(false)
+    }
+  })
+
+  it('memvalidasi kontrak reset PIN dan tautkan sales', () => {
+    expect(resetSalesPinSchema.safeParse({ pin: '1234' }).success).toBe(true)
+    expect(resetSalesPinSchema.safeParse({ pin: '123' }).success).toBe(false)
+    expect(attachSalesSchema.safeParse({ salesName: 'Budi', pin: '123456' }).success).toBe(true)
+    expect(attachSalesSchema.safeParse({ salesName: '', pin: '123456' }).success).toBe(false)
+    expect(attachSalesSchema.safeParse({ salesName: 'Budi', pin: '123456789' }).success).toBe(false)
   })
 })
 
@@ -65,6 +99,7 @@ describe('kontrak pesan', () => {
       waMessageId: null,
       error: null,
       customerName: null,
+      salesName: null,
       createdAt: '2026-01-01T00:00:00.000Z',
       deletedAt: null,
     }
@@ -81,6 +116,49 @@ describe('kontrak pesan', () => {
     })
     expect(messageQuerySchema.safeParse({ direction: 'both' }).success).toBe(false)
     expect(crossSessionMessageQuerySchema.safeParse({ direction: 'up' }).success).toBe(false)
+  })
+})
+
+describe('kontrak auth', () => {
+  it('menerima nomor dan PIN valid', () => {
+    expect(loginSchema.parse({ phoneNumber: '628123456789', pin: '1234' })).toEqual({
+      phoneNumber: '628123456789',
+      pin: '1234',
+    })
+    expect(loginSchema.safeParse({ phoneNumber: '628123456789', pin: '12345678' }).success).toBe(
+      true,
+    )
+  })
+
+  it('menolak PIN 3 digit, 9 digit, dan huruf', () => {
+    for (const pin of ['123', '123456789', '12a4', '12 34']) {
+      expect(loginSchema.safeParse({ phoneNumber: '628123456789', pin }).success).toBe(false)
+    }
+  })
+
+  it('menolak nomor berspasi atau non-digit', () => {
+    for (const phoneNumber of ['+62 812', '6281 2345', '0812-3456']) {
+      expect(loginSchema.safeParse({ phoneNumber, pin: '1234' }).success).toBe(false)
+    }
+  })
+
+  it('membentuk respons login dan /auth/me dua mode', () => {
+    const user = {
+      id: 'u1',
+      name: 'Sales A',
+      phoneNumber: '628123456789',
+      role: 'sales',
+      active: true,
+    }
+
+    expect(
+      loginResponseSchema.safeParse({ token: 't', expiresAt: '2026-12-01T00:00:00.000Z', user })
+        .success,
+    ).toBe(true)
+    expect(authMeSchema.safeParse({ mode: 'admin', user: null }).success).toBe(true)
+    expect(authMeSchema.safeParse({ mode: 'sales', user }).success).toBe(true)
+    expect(authMeSchema.safeParse({ mode: 'sales', user: null }).success).toBe(true)
+    expect(authMeSchema.safeParse({ mode: 'lainnya', user: null }).success).toBe(false)
   })
 })
 
@@ -225,5 +303,41 @@ describe('kontrak pagination', () => {
 describe('kontrak statistik', () => {
   it('menolak field hilang', () => {
     expect(statsSchema.safeParse({ connectedSessions: 1 }).success).toBe(false)
+  })
+})
+
+describe('kontrak settings', () => {
+  it('membatasi maxSales 1..100 dan membentuk respons', () => {
+    expect(updateSettingsSchema.safeParse({ maxSales: 1 }).success).toBe(true)
+    expect(updateSettingsSchema.safeParse({ maxSales: 100 }).success).toBe(true)
+    expect(updateSettingsSchema.safeParse({ maxSales: 0 }).success).toBe(false)
+    expect(updateSettingsSchema.safeParse({ maxSales: 101 }).success).toBe(false)
+    expect(updateSettingsSchema.safeParse({ maxSales: 2.5 }).success).toBe(false)
+    expect(updateSettingsSchema.safeParse({}).success).toBe(false)
+    expect(
+      settingsSchema.safeParse({
+        maxSales: 10,
+        salesCount: 3,
+        defaultMinDelay: 10,
+        defaultMaxDelay: 30,
+      }).success,
+    ).toBe(true)
+    expect(settingsSchema.safeParse({ maxSales: 10 }).success).toBe(false)
+  })
+
+  it('memvalidasi rentang default delay', () => {
+    expect(
+      updateSettingsSchema.safeParse({ defaultMinDelay: 10, defaultMaxDelay: 30 }).success,
+    ).toBe(true)
+    expect(updateSettingsSchema.safeParse({ defaultMinDelay: 10 }).success).toBe(false)
+    expect(
+      updateSettingsSchema.safeParse({ defaultMinDelay: 60, defaultMaxDelay: 30 }).success,
+    ).toBe(false)
+    expect(
+      updateSettingsSchema.safeParse({ defaultMinDelay: 9, defaultMaxDelay: 30 }).success,
+    ).toBe(false)
+    expect(
+      updateSettingsSchema.safeParse({ defaultMinDelay: 10, defaultMaxDelay: 601 }).success,
+    ).toBe(false)
   })
 })

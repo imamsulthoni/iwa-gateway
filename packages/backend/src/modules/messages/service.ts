@@ -41,7 +41,7 @@ export function decodeCursor(value?: string): MessageCursor | undefined {
   }
 }
 
-export function toMessageDto(row: MessageRow): MessageDto {
+export function toMessageDto(row: MessageRow & { salesName?: string | null }): MessageDto {
   return {
     id: row.id,
     sessionId: row.sessionId,
@@ -52,6 +52,7 @@ export function toMessageDto(row: MessageRow): MessageDto {
     waMessageId: row.waMessageId,
     error: row.error,
     customerName: row.customerName,
+    salesName: row.salesName ?? null,
     createdAt: row.createdAt.toISOString(),
     deletedAt: row.deletedAt?.toISOString() ?? null,
   }
@@ -72,7 +73,10 @@ export function toRoomMessageDto(row: MessageRow): RoomMessageDto {
   }
 }
 
-function toPage(rows: { items: MessageRow[]; nextCursor: MessageCursor | null }): {
+function toPage(rows: {
+  items: (MessageRow & { salesName?: string | null })[]
+  nextCursor: MessageCursor | null
+}): {
   items: MessageDto[]
   nextCursor: string | null
 } {

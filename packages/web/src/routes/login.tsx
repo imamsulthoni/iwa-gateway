@@ -4,12 +4,12 @@ import type { FormEvent } from 'react'
 import { useState } from 'react'
 
 import { Button, cn } from '../design-system'
-import { verifyApiKey } from '../lib/api'
-import { getApiKey, setApiKey } from '../lib/auth'
+import { ApiError, login, verifyApiKey } from '../lib/api'
+import { getAuth, isAdmin, setApiKey, setSalesAuth } from '../lib/auth'
 
 export const Route = createFileRoute('/login')({
   beforeLoad: () => {
-    if (getApiKey()) throw redirect({ to: '/overview' })
+    if (getAuth()) throw redirect({ to: isAdmin() ? '/overview' : '/numbers' })
   },
   component: LoginPage,
 })
@@ -21,27 +21,60 @@ const TERMINAL_ROWS = [
   { key: 'uptime', value: '99,98%  ·  12 hari', accent: true },
 ] as const
 
+function loginMessage(cause: unknown): string {
+  if (cause instanceof ApiError) {
+    if (cause.code === 'NO_SESSION') {
+      return 'Nomor ini belum punya sesi WhatsApp. Hubungi admin.'
+    }
+    if (cause.code === 'SALES_LIMIT_REACHED') {
+      return 'Batas jumlah sales tercapai. Hubungi admin.'
+    }
+  }
+  return 'Nomor atau PIN salah'
+}
+
 function LoginPage() {
   const navigate = useNavigate()
+  const [mode, setMode] = useState<'sales' | 'admin'>('sales')
+  const [phone, setPhone] = useState('')
+  const [pin, setPin] = useState('')
   const [apiKey, setApiKeyValue] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [reveal, setReveal] = useState(false)
 
+  const digits = phone.replace(/\D/g, '')
+  const canSubmit =
+    mode === 'admin' ? apiKey.trim().length > 0 : /^\d{8,15}$/.test(digits) && /^\d{4,8}$/.test(pin)
+
+  function switchMode(next: 'sales' | 'admin') {
+    setMode(next)
+    setError(null)
+    setReveal(false)
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!canSubmit) return
     setBusy(true)
     setError(null)
     try {
-      const valid = await verifyApiKey(apiKey.trim())
-      if (!valid) {
-        setError('API key tidak valid atau sudah dicabut')
+      if (mode === 'admin') {
+        const valid = await verifyApiKey(apiKey.trim())
+        if (!valid) {
+          setError('API key tidak valid atau sudah dicabut')
+          return
+        }
+        setApiKey(apiKey.trim())
+        await navigate({ to: '/overview' })
         return
       }
-      setApiKey(apiKey.trim())
-      await navigate({ to: '/overview' })
+
+      const result = await login(digits, pin)
+      setSalesAuth(result.token, result.user)
+      await navigate({ to: '/numbers' })
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Gagal memverifikasi API key')
+      setError(mode === 'admin' ? 'API key tidak valid atau sudah dicabut' : loginMessage(cause))
     } finally {
       setBusy(false)
     }
@@ -104,66 +137,149 @@ function LoginPage() {
       <main className="flex flex-1 items-center justify-center px-6 py-10 lg:px-[72px]">
         <div className="w-full max-w-[420px]">
           <p className="font-data text-[9.5px] tracking-[1.8px] text-ink-faint uppercase">
-            ADMIN ACCESS
+            {mode === 'admin' ? 'ADMIN ACCESS' : 'SALES ACCESS'}
           </p>
           <h1 className="mt-3.5 text-[31px] font-semibold tracking-[-1.1px] text-ink">
             Masuk ke console
           </h1>
           <p className="mt-2 text-body text-ink-soft">
-            Tempelkan API key admin untuk mengakses sesi, pesan, dan broadcast.
+            {mode === 'admin'
+              ? 'Tempelkan API key admin untuk mengakses sesi, pesan, dan broadcast.'
+              : 'Masuk dengan nomor WhatsApp dan PIN yang diberikan admin.'}
           </p>
 
           <form className="mt-7" onSubmit={(event) => void submit(event)}>
-            <label
-              htmlFor="api-key"
-              className="font-data text-label tracking-[1.2px] text-ink-soft uppercase"
-            >
-              API KEY
-            </label>
-            <div
-              className={cn(
-                'mt-2 flex h-[52px] items-center gap-2.5 rounded-field border bg-bg px-3.5 transition',
-                error ? 'border-red' : 'border-line-strong focus-within:border-ink',
-              )}
-            >
-              <KeyRound className="size-3.5 shrink-0 text-ink-faint" aria-hidden />
-              <input
-                id="api-key"
-                type={reveal ? 'text' : 'password'}
-                value={apiKey}
-                onChange={(event) => setApiKeyValue(event.target.value)}
-                placeholder="x-api-key"
-                autoFocus
-                autoComplete="off"
-                spellCheck={false}
-                className="min-w-0 flex-1 bg-transparent font-data text-[12px] text-ink outline-none placeholder:text-ink-faint"
-              />
-              <button
-                type="button"
-                onClick={() => setReveal((value) => !value)}
-                aria-label={reveal ? 'Sembunyikan API key' : 'Tampilkan API key'}
-                className="text-ink-faint transition hover:text-ink-soft"
-              >
-                {reveal ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-              </button>
-            </div>
+            {mode === 'sales' ? (
+              <>
+                <label
+                  htmlFor="phone"
+                  className="font-data text-label tracking-[1.2px] text-ink-soft uppercase"
+                >
+                  NOMOR WHATSAPP
+                </label>
+                <div
+                  className={cn(
+                    'mt-2 flex h-[52px] items-center gap-2.5 rounded-field border bg-bg px-3.5 transition',
+                    error ? 'border-red' : 'border-line-strong focus-within:border-ink',
+                  )}
+                >
+                  <MessageCircle className="size-3.5 shrink-0 text-ink-faint" aria-hidden />
+                  <input
+                    id="phone"
+                    type="tel"
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value)}
+                    placeholder="628123456789"
+                    autoFocus
+                    inputMode="numeric"
+                    autoComplete="username"
+                    className="min-w-0 flex-1 bg-transparent font-data text-[12px] text-ink outline-none placeholder:text-ink-faint"
+                  />
+                </div>
+
+                <label
+                  htmlFor="pin"
+                  className="mt-4 flex font-data text-label tracking-[1.2px] text-ink-soft uppercase"
+                >
+                  PIN
+                </label>
+                <div
+                  className={cn(
+                    'mt-2 flex h-[52px] items-center gap-2.5 rounded-field border bg-bg px-3.5 transition',
+                    error ? 'border-red' : 'border-line-strong focus-within:border-ink',
+                  )}
+                >
+                  <Lock className="size-3.5 shrink-0 text-ink-faint" aria-hidden />
+                  <input
+                    id="pin"
+                    type={reveal ? 'text' : 'password'}
+                    value={pin}
+                    onChange={(event) => setPin(event.target.value.replace(/\D/g, ''))}
+                    placeholder="4–8 digit"
+                    inputMode="numeric"
+                    autoComplete="current-password"
+                    className="min-w-0 flex-1 bg-transparent font-data text-[12px] text-ink outline-none placeholder:text-ink-faint"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setReveal((value) => !value)}
+                    aria-label={reveal ? 'Sembunyikan PIN' : 'Tampilkan PIN'}
+                    className="text-ink-faint transition hover:text-ink-soft"
+                  >
+                    {reveal ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <label
+                  htmlFor="api-key"
+                  className="font-data text-label tracking-[1.2px] text-ink-soft uppercase"
+                >
+                  API KEY
+                </label>
+                <div
+                  className={cn(
+                    'mt-2 flex h-[52px] items-center gap-2.5 rounded-field border bg-bg px-3.5 transition',
+                    error ? 'border-red' : 'border-line-strong focus-within:border-ink',
+                  )}
+                >
+                  <KeyRound className="size-3.5 shrink-0 text-ink-faint" aria-hidden />
+                  <input
+                    id="api-key"
+                    type={reveal ? 'text' : 'password'}
+                    value={apiKey}
+                    onChange={(event) => setApiKeyValue(event.target.value)}
+                    placeholder="x-api-key"
+                    autoFocus
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="min-w-0 flex-1 bg-transparent font-data text-[12px] text-ink outline-none placeholder:text-ink-faint"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setReveal((value) => !value)}
+                    aria-label={reveal ? 'Sembunyikan API key' : 'Tampilkan API key'}
+                    className="text-ink-faint transition hover:text-ink-soft"
+                  >
+                    {reveal ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                  </button>
+                </div>
+              </>
+            )}
+
             {error ? <p className="mt-2 text-help text-red">{error}</p> : null}
 
-            <Button type="submit" size="lg" className="mt-[34px] w-full" disabled={busy || !apiKey}>
+            <Button
+              type="submit"
+              size="lg"
+              className="mt-[34px] w-full"
+              disabled={busy || !canSubmit}
+            >
               Masuk ke dashboard
               <ArrowRight className="size-3.5" aria-hidden />
             </Button>
           </form>
 
+          <button
+            type="button"
+            onClick={() => switchMode(mode === 'admin' ? 'sales' : 'admin')}
+            className="mt-4 w-full text-center text-[11px] font-medium text-ink transition hover:text-ink-soft"
+          >
+            {mode === 'admin'
+              ? 'Masuk sebagai sales (nomor + PIN)'
+              : 'Masuk sebagai admin (API key)'}
+          </button>
+
           <p className="mt-3.5 flex items-start gap-[7px] text-[10.5px] leading-[1.5] text-ink-faint">
             <Lock className="mt-px size-[11px] shrink-0" aria-hidden />
-            Key disimpan di sessionStorage dan hilang saat tab ditutup.
+            Kredensial disimpan di sessionStorage dan hilang saat tab ditutup.
           </p>
 
           <div className="mt-9 h-px w-full bg-line" />
 
           <div className="mt-4 flex items-center justify-between gap-3">
-            <p className="text-[11px] text-ink-faint">Belum punya API key?</p>
+            <p className="text-[11px] text-ink-faint">Belum punya akses?</p>
             <p className="text-[11px] font-medium text-ink">Hubungi admin layanan ↗</p>
           </div>
         </div>

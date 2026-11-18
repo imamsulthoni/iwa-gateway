@@ -25,6 +25,8 @@ export function handleError(error: unknown, c: Context, logger: AppLogger) {
       VALIDATION_ERROR: 422,
       NOT_FOUND: 404,
       CONFLICT: 409,
+      NO_SESSION: 403,
+      SALES_LIMIT_REACHED: 409,
       UNAUTHORIZED: 401,
       FORBIDDEN: 403,
       RATE_LIMITED: 429,

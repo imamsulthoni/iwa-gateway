@@ -10,10 +10,9 @@ import {
   sendMessageV1Schema,
 } from '@wa/shared'
 import type { MiddlewareHandler } from 'hono'
-import { createMiddleware } from 'hono/factory'
 
 import type { ApiKeyAuthenticator } from '../../modules/auth/api-key.js'
-import { verifySessionToken } from '../../modules/auth/session-token.js'
+import type { AuthService } from '../../modules/auth/service.js'
 import type { ConversationsService } from '../../modules/conversations/service.js'
 import { toUserJid } from '../../modules/messages/phone.js'
 import type { MessagesService } from '../../modules/messages/service.js'
@@ -21,52 +20,22 @@ import type { SessionsService } from '../../modules/sessions/service.js'
 import type { QueueRegistry } from '../../infra/queue.js'
 import { enqueue, SEND_JOB_OPTIONS } from '../../infra/queue.js'
 import type { AppBindings } from '../app.js'
+import { apiKeyOrSessionTokenMiddleware, ensureSessionAccess } from '../middleware/auth.js'
 import { idParamSchema, openApiError } from '../openapi.js'
 
-function anyAuthMiddleware(auth: ApiKeyAuthenticator, sessions: SessionsService) {
-  return createMiddleware<AppBindings>(async (c, next) => {
-    const apiKey = c.req.header('x-api-key')
-    if (apiKey) {
-      const record = await auth.findActive(apiKey)
-      if (!record) {
-        return c.json(apiErrorBody('UNAUTHORIZED', 'API key tidak valid'), 401)
-      }
-      c.set('apiKeyId', record.id)
-      await next()
-      return
-    }
-
-    const header = c.req.header('authorization')
-    const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : null
-    if (!token) {
-      return c.json(apiErrorBody('UNAUTHORIZED', 'API key atau token sesi wajib dikirim'), 401)
-    }
-    const sessionId = c.req.param('id')
-    if (!sessionId) {
-      return c.json(apiErrorBody('VALIDATION_ERROR', 'ID sesi wajib diisi'), 422)
-    }
-    try {
-      const session = await sessions.get(sessionId)
-      if (!session.tokenHash || !verifySessionToken(token, session.tokenHash)) {
-        return c.json(apiErrorBody('UNAUTHORIZED', 'Token sesi tidak valid'), 401)
-      }
-      c.set('session', session)
-    } catch (error) {
-      void error
-      return c.json(apiErrorBody('NOT_FOUND', 'Sesi tidak ditemukan'), 404)
-    }
-    await next()
-  })
-}
-
-const anyAuthSecurity: Record<string, string[]>[] = [{ ApiKey: [] }, { SessionToken: [] }]
+const sessionMessageSecurity: Record<string, string[]>[] = [
+  { ApiKey: [] },
+  { SessionToken: [] },
+  { UserToken: [] },
+]
+const adminOrSalesSecurity: Record<string, string[]>[] = [{ ApiKey: [] }, { UserToken: [] }]
 
 const sendMessageRoute = createRoute({
   method: 'post',
   path: '/{id}/messages',
   tags: ['Messages (sesi)'],
   summary: 'Kirim pesan dari sebuah sesi',
-  security: anyAuthSecurity,
+  security: sessionMessageSecurity,
   request: {
     params: idParamSchema,
     body: {
@@ -96,7 +65,7 @@ const sendMessageV1Route = createRoute({
   path: '/messages',
   tags: ['Messages'],
   summary: 'Kirim pesan teks lintas sesi',
-  security: [{ ApiKey: [] }],
+  security: adminOrSalesSecurity,
   request: {
     body: {
       content: { 'application/json': { schema: sendMessageV1Schema } },
@@ -125,7 +94,7 @@ const listSessionMessagesRoute = createRoute({
   path: '/{id}/messages',
   tags: ['Messages (sesi)'],
   summary: 'Riwayat pesan sebuah sesi',
-  security: anyAuthSecurity,
+  security: sessionMessageSecurity,
   request: { params: idParamSchema, query: messageQuerySchema },
   responses: {
     200: {
@@ -201,16 +170,22 @@ export function createSessionMessagesRoute(
   messages: MessagesService,
   queues: QueueRegistry,
   auth: ApiKeyAuthenticator,
+  userAuth: AuthService,
   rateLimit: MiddlewareHandler<AppBindings>,
 ) {
   const router = new OpenAPIHono<AppBindings>()
 
-  router.use('/:id/messages', anyAuthMiddleware(auth, sessions), rateLimit)
+  router.use(
+    '/:id/messages',
+    apiKeyOrSessionTokenMiddleware({ apiKey: auth, auth: userAuth, sessions }),
+    rateLimit,
+  )
 
   router.openapi(sendMessageRoute, async (c) => {
     const sessionId = c.req.param('id')
     const input = c.req.valid('json')
-    const session = await sessions.get(sessionId)
+    const session = c.get('session') ?? (await sessions.get(sessionId))
+    if (c.get('actor')) ensureSessionAccess(c, session)
 
     // Sesi yang belum terhubung tidak boleh menerima pesan baru. Replay
     // idempoten (clientRef sama) tetap mengembalikan pesan lama.
@@ -246,12 +221,10 @@ export function createSessionMessagesRoute(
 
   router.openapi(listSessionMessagesRoute, async (c) => {
     const query = c.req.valid('query')
-    const page = await messages.listBySession(
-      c.req.param('id'),
-      query.limit,
-      query.cursor,
-      query.direction,
-    )
+    const sessionId = c.req.param('id')
+    const session = c.get('session') ?? (await sessions.get(sessionId))
+    if (c.get('actor')) ensureSessionAccess(c, session)
+    const page = await messages.listBySession(sessionId, query.limit, query.cursor, query.direction)
     return c.json(page, 200)
   })
 
@@ -269,6 +242,7 @@ export function createV1MessagesRoute(
   router.openapi(sendMessageV1Route, async (c) => {
     const input = c.req.valid('json')
     const session = await sessions.getByPublicId(input.sessionId)
+    ensureSessionAccess(c, session)
 
     if (session.status !== 'connected') {
       const existing = await messages.findByClientRef(session.id, input.clientRef)

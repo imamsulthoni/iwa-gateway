@@ -37,6 +37,9 @@ const TABLES = [
   'wa_auth_keys',
   'wa_auth_creds',
   'wa_sessions',
+  'user_sessions',
+  'users',
+  'app_settings',
   'api_keys',
 ]
 

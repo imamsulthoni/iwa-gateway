@@ -1,3 +1,7 @@
+export const USER_ROLES = ['admin', 'sales'] as const
+
+export type UserRole = (typeof USER_ROLES)[number]
+
 export const SESSION_STATUSES = [
   'created',
   'qr_pending',

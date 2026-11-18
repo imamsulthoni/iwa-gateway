@@ -7,6 +7,7 @@ import { trackSseConnection } from '../../infra/metrics.js'
 import { subscribeSessionEvents } from '../../infra/pubsub.js'
 import type { SessionsService } from '../../modules/sessions/service.js'
 import type { AppBindings } from '../app.js'
+import { ensureSessionAccess } from '../middleware/auth.js'
 
 const HEARTBEAT_MS = 15_000
 
@@ -15,6 +16,7 @@ export function createEventsRoute(sessions: SessionsService, redis: Redis, logge
 
   router.get('/sessions/:id/events', async (c) => {
     const session = await sessions.getByPublicId(c.req.param('id'))
+    ensureSessionAccess(c, session)
 
     return streamSSE(c, async (stream) => {
       const closeTracking = trackSseConnection()

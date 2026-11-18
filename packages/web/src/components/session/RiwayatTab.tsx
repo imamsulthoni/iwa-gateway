@@ -5,6 +5,7 @@ import { Link } from '@tanstack/react-router'
 
 import { Badge, Button, cn } from '../../design-system'
 import { api } from '../../lib/api'
+import { isAdmin } from '../../lib/auth'
 import { formatDateTime, formatPhone, truncate } from '../../lib/format'
 import type { MessageListDto, RetryMessageResponseDto, SessionDto } from '../../lib/types'
 import { CardLabel, NoteRow, Panel } from './parts'
@@ -16,6 +17,7 @@ type RiwayatTabProps = {
 const GRID = 'grid grid-cols-[70px_112px_92px_minmax(0,1fr)_96px_30px] items-center'
 
 export function RiwayatTab({ session }: RiwayatTabProps) {
+  const admin = isAdmin()
   const [items, setItems] = useState<MessageListDto['items']>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -131,7 +133,7 @@ export function RiwayatTab({ session }: RiwayatTabProps) {
                   </Badge>
                 </div>
                 <div className="flex justify-end">
-                  {message.status === 'failed' ? (
+                  {admin && message.status === 'failed' ? (
                     <button
                       type="button"
                       aria-label="Kirim ulang pesan"

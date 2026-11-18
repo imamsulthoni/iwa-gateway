@@ -1,27 +1,89 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm'
 
 import type { Database } from '../../db/client.js'
-import { waSessions, type WaSessionRow } from '../../db/schema.js'
+import {
+  userSessions,
+  users,
+  waSessions,
+  type UserRow,
+  type WaSessionRow,
+} from '../../db/schema.js'
+
+export type SessionWithOwner = WaSessionRow & { salesName: string | null }
 
 export type SessionsRepository = ReturnType<typeof createSessionsRepository>
 
 export function createSessionsRepository(db: Database) {
+  function selectWithOwner() {
+    return db
+      .select({ ...getTableColumns(waSessions), salesName: users.name })
+      .from(waSessions)
+      .leftJoin(users, eq(waSessions.ownerUserId, users.id))
+  }
+
   return {
     async insert(values: typeof waSessions.$inferInsert): Promise<void> {
       await db.insert(waSessions).values(values)
     },
 
-    async findById(id: string): Promise<WaSessionRow | null> {
-      const [row] = await db.select().from(waSessions).where(eq(waSessions.id, id)).limit(1)
+    /** Akun sales dan sesinya dibuat atomik agar tidak ada baris yatim. */
+    async insertWithOwner(
+      user: typeof users.$inferInsert,
+      session: typeof waSessions.$inferInsert,
+    ): Promise<void> {
+      await db.transaction(async (tx) => {
+        await tx.insert(users).values(user)
+        await tx.insert(waSessions).values(session)
+      })
+    },
+
+    async deleteUser(id: string): Promise<void> {
+      await db.delete(users).where(eq(users.id, id))
+    },
+
+    async findUserByPhone(phoneNumber: string): Promise<UserRow | null> {
+      const [row] = await db.select().from(users).where(eq(users.phoneNumber, phoneNumber)).limit(1)
       return row ?? null
     },
 
-    async findByPublicId(publicId: string): Promise<WaSessionRow | null> {
+    async findOwnedSession(userId: string): Promise<WaSessionRow | null> {
       const [row] = await db
         .select()
         .from(waSessions)
-        .where(eq(waSessions.publicId, publicId))
+        .where(eq(waSessions.ownerUserId, userId))
         .limit(1)
+      return row ?? null
+    },
+
+    async updateUser(id: string, values: { name?: string; pinHash?: string }): Promise<void> {
+      await db
+        .update(users)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(users.id, id))
+    },
+
+    async revokeUserTokens(userId: string): Promise<void> {
+      await db.delete(userSessions).where(eq(userSessions.userId, userId))
+    },
+
+    /** Akun sales baru dan penautannya ke sesi dibuat atomik agar tidak ada user yatim. */
+    async insertOwner(user: typeof users.$inferInsert, sessionId: string): Promise<void> {
+      await db.transaction(async (tx) => {
+        await tx.insert(users).values(user)
+        await tx
+          .update(waSessions)
+          .set({ ownerUserId: user.id, updatedAt: new Date() })
+          .where(eq(waSessions.id, sessionId))
+      })
+    },
+
+    async findById(id: string): Promise<SessionWithOwner | null> {
+      const [row] = await selectWithOwner().where(eq(waSessions.id, id)).limit(1)
+      return row ?? null
+    },
+
+    async findByPublicId(publicId: string): Promise<SessionWithOwner | null> {
+      const [row] = await selectWithOwner().where(eq(waSessions.publicId, publicId)).limit(1)
       return row ?? null
     },
 
@@ -34,8 +96,11 @@ export function createSessionsRepository(db: Database) {
       return row ?? null
     },
 
-    async list(limit = 50): Promise<WaSessionRow[]> {
-      return db.select().from(waSessions).orderBy(desc(waSessions.createdAt)).limit(limit)
+    async list(limit = 50, ownerUserId?: string): Promise<SessionWithOwner[]> {
+      const query = ownerUserId
+        ? selectWithOwner().where(eq(waSessions.ownerUserId, ownerUserId))
+        : selectWithOwner()
+      return query.orderBy(desc(waSessions.createdAt)).limit(limit)
     },
 
     async update(id: string, values: Partial<typeof waSessions.$inferInsert>): Promise<void> {

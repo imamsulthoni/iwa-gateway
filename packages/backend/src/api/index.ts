@@ -10,6 +10,8 @@ import { createRoleLogger } from '../infra/logger.js'
 import { closeQueues, createQueues } from '../infra/queue.js'
 import { closeRedis, createRedis } from '../infra/redis.js'
 import { createApiKeyAuthenticator } from '../modules/auth/api-key.js'
+import { createAuthRepository } from '../modules/auth/repository.js'
+import { createAuthService } from '../modules/auth/service.js'
 import { createBroadcastsRepository } from '../modules/broadcasts/repository.js'
 import { createBroadcastsService } from '../modules/broadcasts/service.js'
 import { createConversationsRepository } from '../modules/conversations/repository.js'
@@ -20,6 +22,8 @@ import { createOptOutsRepository } from '../modules/opt-outs/repository.js'
 import { createOptOutsService } from '../modules/opt-outs/service.js'
 import { createSessionsRepository } from '../modules/sessions/repository.js'
 import { createSessionsService } from '../modules/sessions/service.js'
+import { createSettingsRepository } from '../modules/settings/repository.js'
+import { createSettingsService } from '../modules/settings/service.js'
 import { createStatsService } from '../modules/stats/service.js'
 import { createWebhooksRepository } from '../modules/webhooks/repository.js'
 import { createWebhooksService } from '../modules/webhooks/service.js'
@@ -38,6 +42,8 @@ const conversationsRepo = createConversationsRepository(database.db)
 const broadcastsRepo = createBroadcastsRepository(database.db)
 const optOutsRepo = createOptOutsRepository(database.db)
 const webhooksRepo = createWebhooksRepository(database.db)
+const authRepo = createAuthRepository(database.db)
+const settingsService = createSettingsService(createSettingsRepository(database.db))
 
 const app = createApp({
   env,
@@ -45,7 +51,8 @@ const app = createApp({
   redis,
   db: database.db,
   auth: createApiKeyAuthenticator(database.db),
-  sessions: createSessionsService(sessionsRepo),
+  userAuth: createAuthService(authRepo),
+  sessions: createSessionsService(sessionsRepo, settingsService),
   messages: createMessagesService(messagesRepo),
   conversations: createConversationsService(conversationsRepo),
   broadcasts: createBroadcastsService(broadcastsRepo, createOptOutsService(optOutsRepo)),
@@ -55,6 +62,7 @@ const app = createApp({
     broadcasts: broadcastsRepo,
     timezone: env.APP_TIMEZONE,
   }),
+  settings: settingsService,
   webhooks: createWebhooksService(webhooksRepo, {
     allowPrivateHttp: env.WEBHOOK_ALLOW_HTTP_PRIVATE,
   }),

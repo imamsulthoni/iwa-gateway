@@ -47,7 +47,14 @@ describeIntegration('integrasi broadcast lanjutan', () => {
   const optOutsRepo = () => createOptOutsRepository(connection.db)
 
   function sessionsService() {
-    return createSessionsService(sessionsRepo())
+    return createSessionsService(sessionsRepo(), {
+      getSettings: async () => ({
+        maxSales: 10,
+        salesCount: 0,
+        defaultMinDelay: 10,
+        defaultMaxDelay: 30,
+      }),
+    })
   }
 
   function messagesService() {

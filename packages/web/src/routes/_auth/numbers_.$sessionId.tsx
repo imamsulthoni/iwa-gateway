@@ -1,4 +1,5 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@wa/shared'
 import { ArrowLeft, KeyRound, LogOut, RefreshCw } from 'lucide-react'
 import { useRef, useState } from 'react'
 
@@ -11,6 +12,7 @@ import { SessionStatusBadge } from '../../components/session-status'
 import { TokenDialog } from '../../components/token-dialog'
 import { Button, cn } from '../../design-system'
 import { api } from '../../lib/api'
+import { isAdmin } from '../../lib/auth'
 import { formatPhone, usePolling } from '../../lib/format'
 import type { BroadcastCurrentDto, SessionLiveDto, SessionTokenDto } from '../../lib/types'
 
@@ -44,6 +46,8 @@ const EMPTY_BROADCAST: BroadcastCurrentDto = {
 function SessionDetailPage() {
   const { sessionId } = Route.useParams()
   const navigate = useNavigate()
+  const admin = isAdmin()
+  const tabs = TABS
   const [tab, setTab] = useState<TabId>('koneksi')
   const [tokenResult, setTokenResult] = useState<SessionTokenDto | null>(null)
   const [confirm, setConfirm] = useState<'logout' | 'delete' | null>(null)
@@ -117,7 +121,11 @@ function SessionDetailPage() {
   }
 
   const broadcastCount = broadcastCurrent.jobId ? 1 : 0
-  const meta = [data.label, data.agentId, formatPhone(data.phoneNumber)]
+  const defaultDelay = live.data?.defaultDelay ?? {
+    min: DEFAULT_MIN_DELAY_SECONDS,
+    max: DEFAULT_MAX_DELAY_SECONDS,
+  }
+  const meta = [data.label, data.salesName, formatPhone(data.phoneNumber)]
     .filter((value) => Boolean(value))
     .join('  ·  ')
 
@@ -156,33 +164,37 @@ function SessionDetailPage() {
             <RefreshCw className="size-[13px] text-ink-soft" aria-hidden />
             Refresh
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-[30px] px-[13px] text-[12px]"
-            disabled={busy}
-            onClick={() => rotateToken()}
-          >
-            <KeyRound className="size-[13px] text-ink-soft" aria-hidden />
-            Rotasi token
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-[30px] px-[13px] text-[12px]"
-            disabled={busy || data.status === 'logged_out'}
-            onClick={() => setConfirm('logout')}
-          >
-            <LogOut className="size-[13px] text-ink-soft" aria-hidden />
-            Logout
-          </Button>
+          {admin ? (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-[30px] px-[13px] text-[12px]"
+                disabled={busy}
+                onClick={() => rotateToken()}
+              >
+                <KeyRound className="size-[13px] text-ink-soft" aria-hidden />
+                Rotasi token
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-[30px] px-[13px] text-[12px]"
+                disabled={busy || data.status === 'logged_out'}
+                onClick={() => setConfirm('logout')}
+              >
+                <LogOut className="size-[13px] text-ink-soft" aria-hidden />
+                Logout
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
 
       <div className="h-5" />
 
       <div className="flex w-full items-end gap-[26px] border-b border-line">
-        {TABS.map((item) => {
+        {tabs.map((item) => {
           const active = tab === item.id
           return (
             <button
@@ -218,10 +230,11 @@ function SessionDetailPage() {
       {tab === 'koneksi' ? (
         <KoneksiTab
           session={data}
-          agentId={data.agentId}
+          salesName={data.salesName}
+          canManage={admin}
           broadcast={broadcastCurrent}
+          defaultDelay={defaultDelay}
           qr={live.data?.qr ?? null}
-          pairingCode={live.data?.pairingCode ?? null}
           onRefresh={refreshAll}
           onChanged={refreshAll}
           onDelete={() => setConfirm('delete')}
@@ -229,7 +242,12 @@ function SessionDetailPage() {
       ) : null}
       {tab === 'kirim' ? <KirimTab session={data} onChanged={refreshAll} /> : null}
       {tab === 'broadcast' ? (
-        <BroadcastTab session={data} broadcast={broadcastCurrent} onRefresh={refreshAll} />
+        <BroadcastTab
+          session={data}
+          broadcast={broadcastCurrent}
+          defaultDelay={defaultDelay}
+          onRefresh={refreshAll}
+        />
       ) : null}
       {tab === 'riwayat' ? <RiwayatTab session={data} /> : null}
 

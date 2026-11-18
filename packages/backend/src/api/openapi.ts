@@ -84,6 +84,11 @@ export function createOpenApiApp() {
     scheme: 'bearer',
     description: 'Bearer token sesi dari endpoint pembuatan/rotasi token sesi.',
   })
+  app.openAPIRegistry.registerComponent('securitySchemes', 'UserToken', {
+    type: 'http',
+    scheme: 'bearer',
+    description: 'Bearer token login sales dari POST /auth/login.',
+  })
 
   return app
 }

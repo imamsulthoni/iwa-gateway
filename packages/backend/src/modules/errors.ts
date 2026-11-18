@@ -26,6 +26,32 @@ export class ConflictError extends DomainError {
   }
 }
 
+export class UnauthorizedError extends DomainError {
+  constructor(message = 'Tidak terautentikasi') {
+    super(message, 'UNAUTHORIZED')
+  }
+}
+
+export class ForbiddenError extends DomainError {
+  constructor(message = 'Akses ditolak') {
+    super(message, 'FORBIDDEN')
+  }
+}
+
+/** Nomor sudah terdaftar tetapi belum punya sesi WhatsApp yang ditautkan. */
+export class NoSessionError extends DomainError {
+  constructor(message = 'Nomor ini belum memiliki sesi WhatsApp') {
+    super(message, 'NO_SESSION')
+  }
+}
+
+/** Kuota akun sales sudah penuh; admin perlu menaikkan batas atau menghapus sales. */
+export class SalesLimitReachedError extends DomainError {
+  constructor(message = 'Batas jumlah sales tercapai') {
+    super(message, 'SALES_LIMIT_REACHED')
+  }
+}
+
 /** Socket sesi belum siap; user perlu mengirim ulang setelah sesi terhubung. */
 export class SessionNotReadyError extends DomainError {
   constructor() {

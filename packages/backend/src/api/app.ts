@@ -8,17 +8,25 @@ import type { AppLogger } from '../infra/logger.js'
 import type { QueueRegistry } from '../infra/queue.js'
 import type { RedisClient } from '../infra/redis.js'
 import type { ApiKeyAuthenticator } from '../modules/auth/api-key.js'
+import type { AuthService } from '../modules/auth/service.js'
 import type { BroadcastsService } from '../modules/broadcasts/service.js'
 import type { ConversationsService } from '../modules/conversations/service.js'
 import type { MessagesService } from '../modules/messages/service.js'
 import type { WaSessionRow } from '../db/schema.js'
 import type { SessionsService } from '../modules/sessions/service.js'
+import type { SettingsService } from '../modules/settings/service.js'
 import type { StatsService } from '../modules/stats/service.js'
 import type { WebhooksService } from '../modules/webhooks/service.js'
-import { apiKeyMiddleware } from './middleware/api-key.js'
+import type { Actor } from './middleware/auth.js'
+import { anyAuthMiddleware, requireAdminMiddleware } from './middleware/auth.js'
 import { handleError, notFound } from './middleware/error.js'
-import { rateLimitMiddleware, sessionRateLimitMiddleware } from './middleware/rate-limit.js'
+import {
+  loginRateLimitMiddleware,
+  rateLimitMiddleware,
+  sessionRateLimitMiddleware,
+} from './middleware/rate-limit.js'
 import { createOpenApiApp, openApiDocumentConfig } from './openapi.js'
+import { createAuthRoute } from './routes/auth.js'
 import { createBroadcastsRoute, createBroadcastsV1Route } from './routes/broadcasts.js'
 import { createConversationsRoute } from './routes/conversations.js'
 import { createEventsRoute } from './routes/events.js'
@@ -29,6 +37,7 @@ import {
   createV1MessagesRoute,
 } from './routes/messages.js'
 import { createSessionsRoute } from './routes/sessions.js'
+import { createSettingsRoute } from './routes/settings.js'
 import { createStatsRoute } from './routes/stats.js'
 import { createWebhooksRoute } from './routes/webhooks.js'
 
@@ -36,6 +45,7 @@ export type AppBindings = {
   Variables: {
     apiKeyId: string
     session: WaSessionRow
+    actor?: Actor
   }
 }
 
@@ -45,11 +55,13 @@ export type AppDependencies = {
   redis: RedisClient
   db: Database
   auth: ApiKeyAuthenticator
+  userAuth: AuthService
   sessions: SessionsService
   messages: MessagesService
   conversations: ConversationsService
   broadcasts: BroadcastsService
   stats: StatsService
+  settings: SettingsService
   webhooks: WebhooksService
   queues: QueueRegistry
 }
@@ -72,7 +84,8 @@ function requestLogger(logger: AppLogger) {
 
 export function createApp(deps: AppDependencies) {
   const app = createOpenApiApp()
-  const requireApiKey = apiKeyMiddleware(deps.auth)
+  const anyAuth = anyAuthMiddleware({ apiKey: deps.auth, auth: deps.userAuth })
+  const requireAdmin = requireAdminMiddleware()
   const rateLimit = rateLimitMiddleware(deps.redis, deps.env.RATE_LIMIT_PER_MIN)
 
   app.use('*', cors({ origin: deps.env.CORS_ORIGIN }))
@@ -84,10 +97,17 @@ export function createApp(deps: AppDependencies) {
 
   app.route('/', createHealthRoute({ db: deps.db, redis: deps.redis }))
 
-  app.use('/stats', requireApiKey, rateLimit)
+  // Login sales publik; /auth/me dan /auth/logout menerima API key atau token login.
+  app.use('/auth/login', loginRateLimitMiddleware(deps.redis))
+  app.route('/auth', createAuthRoute({ apiKey: deps.auth, auth: deps.userAuth }))
+
+  app.use('/stats', anyAuth, requireAdmin, rateLimit)
   app.route('/', createStatsRoute(deps.stats))
 
-  // Endpoint pesan per sesi memakai Bearer token sesi, bukan API key.
+  app.use('/settings', anyAuth, requireAdmin, rateLimit)
+  app.route('/', createSettingsRoute(deps.settings))
+
+  // Endpoint pesan per sesi menerima API key, token sesi, atau token login sales.
   const sessionRateLimit = sessionRateLimitMiddleware(deps.redis, deps.env.RATE_LIMIT_PER_MIN)
   app.route(
     '/sessions',
@@ -96,21 +116,33 @@ export function createApp(deps: AppDependencies) {
       deps.messages,
       deps.queues,
       deps.auth,
+      deps.userAuth,
       sessionRateLimit,
     ),
   )
 
-  app.use('/sessions', requireApiKey, rateLimit)
-  app.use('/sessions/*', requireApiKey, rateLimit)
-  app.use('/messages', requireApiKey, rateLimit)
-  app.use('/messages/*', requireApiKey, rateLimit)
+  // Pola wildcard Hono juga cocok dengan path tanpa segmen tambahan, jadi satu
+  // pola per prefix cukup dan mencegah middleware/rate limit berjalan dua kali.
+  app.use('/sessions/*', anyAuth, rateLimit)
+  app.use('/messages/*', anyAuth, requireAdmin, rateLimit)
 
-  app.route('/sessions', createSessionsRoute(deps.sessions, deps.broadcasts, deps.redis))
-  app.route('/sessions', createBroadcastsRoute(deps.broadcasts, deps.queues))
+  app.route(
+    '/sessions',
+    createSessionsRoute(deps.sessions, deps.broadcasts, deps.redis, deps.settings),
+  )
+  app.route('/sessions', createBroadcastsRoute(deps.broadcasts, deps.sessions, deps.queues))
   app.route('/messages', createMessagesRoute(deps.messages, deps.queues))
 
-  app.use('/v1', requireApiKey, rateLimit)
-  app.use('/v1/*', requireApiKey, rateLimit)
+  // Kirim pesan dan broadcast menerima admin maupun sales (dibatasi ke sesi
+  // miliknya); webhook tetap khusus admin.
+  app.use('/v1/broadcasts/*', anyAuth, rateLimit)
+  app.use('/v1/webhooks/*', anyAuth, requireAdmin, rateLimit)
+  app.use('/v1/sessions/:id/conversations', anyAuth, rateLimit)
+  app.use('/v1/conversations/:id/messages', anyAuth, rateLimit)
+  app.use('/v1/conversations/:id/read', anyAuth, rateLimit)
+  app.use('/v1/sessions/:id/events', anyAuth, rateLimit)
+  app.use('/v1/messages', anyAuth, rateLimit)
+
   app.route(
     '/v1',
     createV1MessagesRoute(deps.messages, deps.conversations, deps.sessions, deps.queues),

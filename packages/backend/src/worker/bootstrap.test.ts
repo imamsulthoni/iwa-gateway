@@ -32,6 +32,7 @@ const ROW: WaSessionRow = {
   tokenRotatedAt: null,
   salesId: null,
   agentId: null,
+  ownerUserId: null,
   dailySendLimit: 200,
   authFormat: 'v7',
   pairingMethod: 'qr',
