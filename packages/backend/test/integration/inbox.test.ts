@@ -198,6 +198,7 @@ describeIntegration('integrasi inbox', () => {
       redis,
       db: connection.db,
       auth: createApiKeyAuthenticator(connection.db),
+      userAuth: {} as unknown as AppDependencies['userAuth'],
       sessions: createSessionsService(sessionsRepo()),
       messages: messagesService(),
       conversations: conversationsService(),

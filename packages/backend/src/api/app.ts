@@ -8,6 +8,7 @@ import type { AppLogger } from '../infra/logger.js'
 import type { QueueRegistry } from '../infra/queue.js'
 import type { RedisClient } from '../infra/redis.js'
 import type { ApiKeyAuthenticator } from '../modules/auth/api-key.js'
+import type { AuthService } from '../modules/auth/service.js'
 import type { BroadcastsService } from '../modules/broadcasts/service.js'
 import type { ConversationsService } from '../modules/conversations/service.js'
 import type { MessagesService } from '../modules/messages/service.js'
@@ -19,6 +20,7 @@ import { apiKeyMiddleware } from './middleware/api-key.js'
 import { handleError, notFound } from './middleware/error.js'
 import { rateLimitMiddleware, sessionRateLimitMiddleware } from './middleware/rate-limit.js'
 import { createOpenApiApp, openApiDocumentConfig } from './openapi.js'
+import { createAuthRoute } from './routes/auth.js'
 import { createBroadcastsRoute, createBroadcastsV1Route } from './routes/broadcasts.js'
 import { createConversationsRoute } from './routes/conversations.js'
 import { createEventsRoute } from './routes/events.js'
@@ -45,6 +47,7 @@ export type AppDependencies = {
   redis: RedisClient
   db: Database
   auth: ApiKeyAuthenticator
+  userAuth: AuthService
   sessions: SessionsService
   messages: MessagesService
   conversations: ConversationsService
@@ -83,6 +86,9 @@ export function createApp(deps: AppDependencies) {
   app.get('/docs', Scalar({ url: '/openapi.json', pageTitle: openApiDocumentConfig.info.title }))
 
   app.route('/', createHealthRoute({ db: deps.db, redis: deps.redis }))
+
+  // Login sales publik; /auth/me dan /auth/logout menerima API key atau token login.
+  app.route('/auth', createAuthRoute({ apiKey: deps.auth, auth: deps.userAuth }))
 
   app.use('/stats', requireApiKey, rateLimit)
   app.route('/', createStatsRoute(deps.stats))

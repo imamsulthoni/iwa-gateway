@@ -10,6 +10,8 @@ import { createRoleLogger } from '../infra/logger.js'
 import { closeQueues, createQueues } from '../infra/queue.js'
 import { closeRedis, createRedis } from '../infra/redis.js'
 import { createApiKeyAuthenticator } from '../modules/auth/api-key.js'
+import { createAuthRepository } from '../modules/auth/repository.js'
+import { createAuthService } from '../modules/auth/service.js'
 import { createBroadcastsRepository } from '../modules/broadcasts/repository.js'
 import { createBroadcastsService } from '../modules/broadcasts/service.js'
 import { createConversationsRepository } from '../modules/conversations/repository.js'
@@ -38,6 +40,7 @@ const conversationsRepo = createConversationsRepository(database.db)
 const broadcastsRepo = createBroadcastsRepository(database.db)
 const optOutsRepo = createOptOutsRepository(database.db)
 const webhooksRepo = createWebhooksRepository(database.db)
+const authRepo = createAuthRepository(database.db)
 
 const app = createApp({
   env,
@@ -45,6 +48,7 @@ const app = createApp({
   redis,
   db: database.db,
   auth: createApiKeyAuthenticator(database.db),
+  userAuth: createAuthService(authRepo),
   sessions: createSessionsService(sessionsRepo),
   messages: createMessagesService(messagesRepo),
   conversations: createConversationsService(conversationsRepo),

@@ -5,13 +5,23 @@ import type { QueueRegistry } from '../infra/queue.js'
 import { createLogger } from '../infra/logger.js'
 import type { RedisClient } from '../infra/redis.js'
 import { hashSessionToken } from '../modules/auth/session-token.js'
-import { ValidationError } from '../modules/errors.js'
+import type { AuthService } from '../modules/auth/service.js'
+import { NoSessionError, UnauthorizedError, ValidationError } from '../modules/errors.js'
 import type { MessagesService } from '../modules/messages/service.js'
 import type { SessionsService } from '../modules/sessions/service.js'
 import { createApp, type AppDependencies } from './app.js'
 
 const TOKEN = 'token-sesi'
+const USER_TOKEN = 'token-user'
 const SESSION_ID = '01a1ddfa-295a-7557-9bd3-00293fdc047b'
+
+const AUTH_USER = {
+  id: 'user-1',
+  name: 'Sales A',
+  phoneNumber: '628123456789',
+  role: 'sales' as const,
+  active: true,
+}
 
 const SESSION: WaSessionRow = {
   id: SESSION_ID,
@@ -110,6 +120,22 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     markRead: vi.fn(async () => ({})),
   } as unknown as AppDependencies['conversations']
 
+  const userAuth = {
+    login: vi.fn(async (phoneNumber: string, pin: string) => {
+      if (phoneNumber !== AUTH_USER.phoneNumber || pin !== '123456') {
+        throw new UnauthorizedError('Nomor atau PIN salah')
+      }
+      return {
+        token: USER_TOKEN,
+        expiresAt: new Date('2026-12-01T00:00:00.000Z'),
+        user: AUTH_USER,
+      }
+    }),
+    authenticate: vi.fn(async (token: string) => (token === USER_TOKEN ? AUTH_USER : null)),
+    logout: vi.fn(async () => undefined),
+    me: vi.fn(async () => AUTH_USER),
+  } as unknown as AuthService
+
   const deps: AppDependencies = {
     env: {
       NODE_ENV: 'test',
@@ -132,6 +158,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     auth: {
       findActive: async (plaintext) => (plaintext === 'valid-key' ? { id: 'key-1' } : null),
     },
+    userAuth,
     sessions,
     messages,
     conversations,
@@ -154,7 +181,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     ...overrides,
   }
 
-  return { app: createApp(deps), queue, messages, conversations, redis, sessions }
+  return { app: createApp(deps), queue, messages, conversations, redis, sessions, userAuth }
 }
 
 describe('API Hono', () => {
@@ -537,6 +564,9 @@ describe('API Hono', () => {
 
     expect(document.openapi).toBe('3.1.0')
     expect(document.paths).toHaveProperty('/sessions')
+    expect(document.paths).toHaveProperty('/auth/login')
+    expect(document.paths).toHaveProperty('/auth/me')
+    expect(document.paths).toHaveProperty('/auth/logout')
     expect(document.paths).toHaveProperty('/sessions/{id}/live')
     expect(document.paths).toHaveProperty('/messages')
     expect(document.paths).toHaveProperty('/stats')
@@ -545,6 +575,7 @@ describe('API Hono', () => {
     expect(document.paths).toHaveProperty('/v1/webhooks')
     expect(document.components.securitySchemes.ApiKey?.type).toBe('apiKey')
     expect(document.components.securitySchemes.SessionToken?.type).toBe('http')
+    expect(document.components.securitySchemes.UserToken?.type).toBe('http')
     expect(document.info.description).toContain('X-Signature: sha256=')
     expect(document.info.description).toContain('message.received')
   })
@@ -616,5 +647,105 @@ describe('API Hono', () => {
     const { app } = createTestApp()
     const response = await app.request(`/v1/sessions/${SESSION.publicId}/events`)
     expect(response.status).toBe(401)
+  })
+
+  it('POST /auth/login publik mengembalikan token tanpa hash', async () => {
+    const { app } = createTestApp()
+    const response = await app.request('/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phoneNumber: AUTH_USER.phoneNumber, pin: '123456' }),
+    })
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body).toMatchObject({
+      token: USER_TOKEN,
+      expiresAt: '2026-12-01T00:00:00.000Z',
+      user: { id: 'user-1', role: 'sales', active: true },
+    })
+    expect(JSON.stringify(body)).not.toContain('pinHash')
+    expect(JSON.stringify(body)).not.toContain('tokenHash')
+  })
+
+  it('POST /auth/login memakai pesan generik dan NO_SESSION terpisah', async () => {
+    const { app } = createTestApp()
+    const wrong = await app.request('/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phoneNumber: AUTH_USER.phoneNumber, pin: '654321' }),
+    })
+    expect(wrong.status).toBe(401)
+    expect(await wrong.json()).toEqual({
+      error: { code: 'UNAUTHORIZED', message: 'Nomor atau PIN salah' },
+    })
+
+    const noSession = createTestApp({
+      userAuth: {
+        login: async () => {
+          throw new NoSessionError()
+        },
+      } as unknown as AuthService,
+    })
+    const response = await noSession.app.request('/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phoneNumber: AUTH_USER.phoneNumber, pin: '123456' }),
+    })
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({ error: { code: 'NO_SESSION' } })
+  })
+
+  it('POST /auth/login menolak PIN atau nomor tidak valid dengan 422', async () => {
+    const { app } = createTestApp()
+    const response = await app.request('/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phoneNumber: '6281 2345', pin: '123' }),
+    })
+    expect(response.status).toBe(422)
+  })
+
+  it('GET /auth/me membedakan admin dan sales serta menolak tanpa kredensial', async () => {
+    const { app } = createTestApp()
+
+    const admin = await app.request('/auth/me', { headers: { 'x-api-key': 'valid-key' } })
+    expect(admin.status).toBe(200)
+    expect(await admin.json()).toEqual({ mode: 'admin', user: null })
+
+    const sales = await app.request('/auth/me', {
+      headers: { authorization: `Bearer ${USER_TOKEN}` },
+    })
+    expect(sales.status).toBe(200)
+    const body = (await sales.json()) as { mode: string; user: Record<string, unknown> }
+    expect(body.mode).toBe('sales')
+    expect(body.user).toMatchObject({ id: 'user-1', name: 'Sales A' })
+    expect(body.user).not.toHaveProperty('pinHash')
+
+    const anonymous = await app.request('/auth/me')
+    expect(anonymous.status).toBe(401)
+
+    const invalid = await app.request('/auth/me', {
+      headers: { authorization: 'Bearer token-salah' },
+    })
+    expect(invalid.status).toBe(401)
+  })
+
+  it('POST /auth/logout mencabut token sales dan idempoten untuk admin', async () => {
+    const { app, userAuth } = createTestApp()
+
+    const sales = await app.request('/auth/logout', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${USER_TOKEN}` },
+    })
+    expect(sales.status).toBe(204)
+    expect(userAuth.logout).toHaveBeenCalledWith(USER_TOKEN)
+
+    const admin = await app.request('/auth/logout', {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key' },
+    })
+    expect(admin.status).toBe(204)
+    expect(userAuth.logout).toHaveBeenCalledOnce()
   })
 })
