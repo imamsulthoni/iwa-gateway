@@ -66,6 +66,7 @@ describe('kontrak pesan', () => {
       waMessageId: null,
       error: null,
       customerName: null,
+      salesName: null,
       createdAt: '2026-01-01T00:00:00.000Z',
       deletedAt: null,
     }

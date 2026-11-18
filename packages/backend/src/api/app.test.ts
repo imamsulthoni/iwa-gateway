@@ -394,6 +394,38 @@ describe('API Hono', () => {
     expect(listAll).toHaveBeenCalledWith(50, undefined, undefined, 'out')
   })
 
+  it('riwayat lintas sesi mengisi salesName dan null untuk pesan lama', async () => {
+    const base = {
+      id: 'm1',
+      sessionId: SESSION_ID,
+      to: '628123456789@s.whatsapp.net',
+      clientRef: 'ref-1',
+      body: 'Halo',
+      status: 'sent' as const,
+      waMessageId: null,
+      error: null,
+      customerName: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      deletedAt: null,
+    }
+    const listAll = vi.fn(async () => ({
+      items: [
+        { ...base, salesName: 'Sales A' },
+        { ...base, id: 'm2', salesName: null },
+      ],
+      nextCursor: null,
+    }))
+    const { app } = createTestApp({
+      messages: { listAll } as unknown as MessagesService,
+    })
+    const response = await app.request('/messages', { headers: { 'x-api-key': 'valid-key' } })
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { items: { salesName: string | null }[] }
+    expect(body.items[0]?.salesName).toBe('Sales A')
+    expect(body.items[1]?.salesName).toBeNull()
+  })
+
   it('riwayat sesi meneruskan filter arah pesan', async () => {
     const listBySession = vi.fn(async () => ({ items: [], nextCursor: null }))
     const { app } = createTestApp({
