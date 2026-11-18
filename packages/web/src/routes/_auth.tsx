@@ -1,11 +1,11 @@
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 
 import { AppShell } from '../components/AppShell'
-import { getApiKey } from '../lib/auth'
+import { getAuth } from '../lib/auth'
 
 export const Route = createFileRoute('/_auth')({
   beforeLoad: () => {
-    if (!getApiKey()) throw redirect({ to: '/login' })
+    if (!getAuth()) throw redirect({ to: '/login' })
   },
   component: AuthLayout,
 })

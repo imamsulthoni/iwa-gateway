@@ -5,7 +5,7 @@ import {
   MIN_DELAY_SECONDS,
   isValidDelayRange,
 } from '@wa/shared'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import {
   CircleCheck,
   DatabaseZap,
@@ -16,16 +16,20 @@ import {
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react'
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 
 import { Badge, Button, cn } from '../../design-system'
 import { api } from '../../lib/api'
+import { isAdmin } from '../../lib/auth'
 import { getDefaultDelay, saveDefaultDelay } from '../../lib/delay'
 import { getEnv } from '../../lib/env'
 import { formatDateTime, usePolling } from '../../lib/format'
-import type { HealthDto } from '../../lib/types'
+import type { HealthDto, SettingsDto } from '../../lib/types'
 
 export const Route = createFileRoute('/_auth/settings')({
+  beforeLoad: () => {
+    if (!isAdmin()) throw redirect({ to: '/numbers' })
+  },
   component: SettingsPage,
 })
 
@@ -57,6 +61,51 @@ function SettingsPage() {
   const [delay, setDelay] = useState(() => getDefaultDelay())
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null)
   const [updatedAt, setUpdatedAt] = useState(() => new Date())
+  const [settings, setSettings] = useState<SettingsDto | null>(null)
+  const [maxSales, setMaxSales] = useState('')
+  const [salesNotice, setSalesNotice] = useState<{
+    tone: 'success' | 'danger'
+    text: string
+  } | null>(null)
+  const [savingSales, setSavingSales] = useState(false)
+
+  useEffect(() => {
+    void api
+      .get<SettingsDto>('/settings')
+      .then((value) => {
+        setSettings(value)
+        setMaxSales(String(value.maxSales))
+      })
+      .catch((cause: unknown) =>
+        setSalesNotice({
+          tone: 'danger',
+          text: cause instanceof Error ? cause.message : 'Gagal memuat batas sales',
+        }),
+      )
+  }, [])
+
+  const maxSalesValue = Number(maxSales)
+  const maxSalesValid =
+    Number.isInteger(maxSalesValue) && maxSalesValue >= 1 && maxSalesValue <= 100
+
+  async function saveSalesLimit() {
+    if (!maxSalesValid) return
+    setSavingSales(true)
+    setSalesNotice(null)
+    try {
+      const result = await api.patch<SettingsDto>('/settings', { maxSales: maxSalesValue })
+      setSettings(result)
+      setMaxSales(String(result.maxSales))
+      setSalesNotice({ tone: 'success', text: 'Batas jumlah sales tersimpan.' })
+    } catch (cause) {
+      setSalesNotice({
+        tone: 'danger',
+        text: cause instanceof Error ? cause.message : 'Gagal menyimpan batas sales',
+      })
+    } finally {
+      setSavingSales(false)
+    }
+  }
 
   const info = health.data
   const healthy = info?.status === 'ok'
@@ -257,6 +306,85 @@ function SettingsPage() {
           </button>
         </section>
       </div>
+
+      <div className="h-4" />
+
+      <section className="flex w-[680px] max-w-full flex-col rounded-card border border-line bg-surface p-[26px]">
+        <div className="flex justify-between gap-3">
+          <div className="flex flex-col gap-[5px]">
+            <h2 className="text-[17px] font-semibold tracking-[-0.3px] text-ink">
+              Batas jumlah sales
+            </h2>
+            <p className="text-small text-ink-faint">
+              Kuota akun sales yang boleh dibuat admin. Berlaku saat menambah nomor baru.
+            </p>
+          </div>
+          <span className="h-fit rounded-pill bg-surface-soft px-[9px] py-1 font-data text-[8.5px] tracking-[0.8px] text-ink-soft">
+            SERVER
+          </span>
+        </div>
+
+        <div className="h-[22px]" />
+
+        <div className="flex items-end gap-3.5">
+          <label className="flex flex-col gap-[7px]">
+            <span className="font-data text-[9px] tracking-[1.1px] text-ink-faint uppercase">
+              MAKSIMUM SALES
+            </span>
+            <span className="flex h-12 w-[150px] items-center justify-between rounded-field bg-bg px-3.5">
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={maxSales}
+                onChange={(event) => setMaxSales(event.target.value)}
+                className="w-full bg-transparent font-data text-[17px] font-medium text-ink outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+              <span className="font-data text-[9.5px] text-ink-faint">AKUN</span>
+            </span>
+          </label>
+          <p className="pb-2 font-data text-[11px] text-ink-soft">
+            {settings ? `${settings.salesCount} / ${settings.maxSales} akun terpakai` : 'memuat...'}
+          </p>
+        </div>
+
+        <div className="h-3" />
+
+        <div className="flex items-center gap-[7px]">
+          <Info className="size-3 shrink-0 text-ink-faint" aria-hidden />
+          <p className="text-[10.5px] text-ink-soft">
+            Nilai 1–100. Penambahan nomor ditolak saat kuota penuh.
+          </p>
+        </div>
+
+        <div className="h-[18px]" />
+
+        {salesNotice ? (
+          <div
+            className={cn(
+              'flex items-center gap-2 rounded-[10px] px-3 py-2.5',
+              salesNotice.tone === 'success' ? 'bg-green-soft text-green' : 'bg-red-soft text-red',
+            )}
+          >
+            {salesNotice.tone === 'success' ? (
+              <CircleCheck className="size-[13px] shrink-0" aria-hidden />
+            ) : (
+              <Info className="size-[13px] shrink-0" aria-hidden />
+            )}
+            <p className="text-small">{salesNotice.text}</p>
+          </div>
+        ) : null}
+
+        <div className="h-5" />
+
+        <Button
+          className="h-[34px] self-start px-[18px] text-[12.5px]"
+          disabled={savingSales || !maxSalesValid}
+          onClick={() => void saveSalesLimit()}
+        >
+          {savingSales ? 'Menyimpan...' : 'Simpan batas sales'}
+        </Button>
+      </section>
 
       <div className="h-4" />
 

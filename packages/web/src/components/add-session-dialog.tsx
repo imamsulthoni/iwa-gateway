@@ -1,4 +1,4 @@
-import { Info } from 'lucide-react'
+import { Eye, EyeOff, Info } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button, cn } from '../design-system'
@@ -20,17 +20,21 @@ type Mode = 'qr' | 'pairing'
 
 export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogProps) {
   const [publicId, setPublicId] = useState('')
-  const [salesId, setSalesId] = useState('')
-  const [agentId, setAgentId] = useState('')
+  const [salesName, setSalesName] = useState('')
   const [mode, setMode] = useState<Mode>('qr')
   const [phoneNumber, setPhoneNumber] = useState('')
+  const [pin, setPin] = useState('')
+  const [reveal, setReveal] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const phone = phoneNumber.replace(/\D/g, '')
   const canSubmit =
     /^[A-Za-z0-9_-]{1,32}$/.test(publicId.trim()) &&
-    (mode === 'qr' || (phone.length >= 8 && phone.length <= 15))
+    salesName.trim().length > 0 &&
+    phone.length >= 8 &&
+    phone.length <= 15 &&
+    /^\d{4,8}$/.test(pin)
 
   function close() {
     setError(null)
@@ -39,10 +43,11 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
 
   function reset() {
     setPublicId('')
-    setSalesId('')
-    setAgentId('')
+    setSalesName('')
     setMode('qr')
     setPhoneNumber('')
+    setPin('')
+    setReveal(false)
     setError(null)
   }
 
@@ -55,9 +60,9 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
         label: publicId.trim(),
         publicId: publicId.trim(),
         mode,
-        phoneNumber: mode === 'pairing' ? phone : undefined,
-        salesId: salesId.trim() || undefined,
-        agentId: agentId.trim() || undefined,
+        phoneNumber: phone,
+        salesName: salesName.trim(),
+        pin,
       })
       reset()
       onCreated(result)
@@ -72,7 +77,7 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
     <Modal
       open={open}
       title="Tambah nomor baru"
-      description="Buat sesi baru, lalu hubungkan perangkat lewat QR atau kode pairing."
+      description="Buat sesi baru bersama akun sales, lalu hubungkan perangkat lewat QR atau kode pairing."
       onClose={close}
       footer={
         <>
@@ -104,23 +109,50 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className={LABEL}>Sales ID (opsional)</span>
+          <span className={LABEL}>Nama sales</span>
           <input
-            value={salesId}
-            onChange={(event) => setSalesId(event.target.value)}
-            placeholder="mis. rani-sales"
+            value={salesName}
+            onChange={(event) => setSalesName(event.target.value)}
+            placeholder="mis. Rani"
             className={INPUT}
           />
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className={LABEL}>Agent ID (opsional)</span>
+          <span className={LABEL}>Nomor WhatsApp</span>
           <input
-            value={agentId}
-            onChange={(event) => setAgentId(event.target.value)}
-            placeholder="mis. rani@ops"
+            value={phoneNumber}
+            onChange={(event) => setPhoneNumber(event.target.value)}
+            placeholder="628123456789"
+            inputMode="numeric"
             className={INPUT}
           />
+          <span className="text-note text-ink-faint">
+            8–15 digit, format internasional tanpa tanda +. Dipakai untuk login sales.
+          </span>
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className={LABEL}>PIN</span>
+          <span className="relative flex items-center">
+            <input
+              value={pin}
+              onChange={(event) => setPin(event.target.value.replace(/\D/g, ''))}
+              placeholder="4–8 digit"
+              inputMode="numeric"
+              autoComplete="new-password"
+              className={cn(INPUT, 'pr-11')}
+            />
+            <button
+              type="button"
+              onClick={() => setReveal((value) => !value)}
+              aria-label={reveal ? 'Sembunyikan PIN' : 'Tampilkan PIN'}
+              className="absolute right-3.5 text-ink-faint transition hover:text-ink-soft"
+            >
+              {reveal ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+            </button>
+          </span>
+          <span className="text-note text-ink-faint">Hanya angka, 4–8 digit.</span>
         </label>
 
         <div className="flex flex-col gap-2">
@@ -140,22 +172,6 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
             />
           </div>
         </div>
-
-        {mode === 'pairing' ? (
-          <label className="flex flex-col gap-1.5">
-            <span className={LABEL}>Nomor WhatsApp</span>
-            <input
-              value={phoneNumber}
-              onChange={(event) => setPhoneNumber(event.target.value)}
-              placeholder="628123456789"
-              inputMode="numeric"
-              className={INPUT}
-            />
-            <span className="text-note text-ink-faint">
-              8–15 digit, format internasional tanpa tanda +.
-            </span>
-          </label>
-        ) : null}
 
         {error ? (
           <p className="rounded-[9px] bg-red-soft px-3 py-2 text-note text-red">{error}</p>

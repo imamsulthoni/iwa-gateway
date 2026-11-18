@@ -1,5 +1,5 @@
 import { WEBHOOK_EVENT_TYPES } from '@wa/shared'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { KeyRound, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '../../design-system'
 import { api } from '../../lib/api'
+import { isAdmin } from '../../lib/auth'
 import { formatDateTime, usePolling } from '../../lib/format'
 import type {
   WebhookDeliveryDto,
@@ -30,6 +31,9 @@ import type {
 } from '../../lib/types'
 
 export const Route = createFileRoute('/_auth/webhooks')({
+  beforeLoad: () => {
+    if (!isAdmin()) throw redirect({ to: '/numbers' })
+  },
   component: WebhooksPage,
 })
 

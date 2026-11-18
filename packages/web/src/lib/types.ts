@@ -22,6 +22,7 @@ export type {
   SessionLiveDto,
   SessionStatusDto,
   SessionTokenDto,
+  SettingsDto,
   StatsDto,
   WebhookDeliveryDto,
   WebhookDeliveryListDto,

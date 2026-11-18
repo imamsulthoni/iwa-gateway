@@ -11,6 +11,7 @@ import { SessionStatusBadge } from '../../components/session-status'
 import { TokenDialog } from '../../components/token-dialog'
 import { Button, cn } from '../../design-system'
 import { api } from '../../lib/api'
+import { isAdmin } from '../../lib/auth'
 import { formatPhone, usePolling } from '../../lib/format'
 import type { BroadcastCurrentDto, SessionLiveDto, SessionTokenDto } from '../../lib/types'
 
@@ -44,6 +45,8 @@ const EMPTY_BROADCAST: BroadcastCurrentDto = {
 function SessionDetailPage() {
   const { sessionId } = Route.useParams()
   const navigate = useNavigate()
+  const admin = isAdmin()
+  const tabs = admin ? TABS : TABS.filter((item) => item.id === 'koneksi' || item.id === 'riwayat')
   const [tab, setTab] = useState<TabId>('koneksi')
   const [tokenResult, setTokenResult] = useState<SessionTokenDto | null>(null)
   const [confirm, setConfirm] = useState<'logout' | 'delete' | null>(null)
@@ -117,7 +120,7 @@ function SessionDetailPage() {
   }
 
   const broadcastCount = broadcastCurrent.jobId ? 1 : 0
-  const meta = [data.label, data.agentId, formatPhone(data.phoneNumber)]
+  const meta = [data.label, data.salesName, formatPhone(data.phoneNumber)]
     .filter((value) => Boolean(value))
     .join('  ·  ')
 
@@ -156,33 +159,37 @@ function SessionDetailPage() {
             <RefreshCw className="size-[13px] text-ink-soft" aria-hidden />
             Refresh
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-[30px] px-[13px] text-[12px]"
-            disabled={busy}
-            onClick={() => rotateToken()}
-          >
-            <KeyRound className="size-[13px] text-ink-soft" aria-hidden />
-            Rotasi token
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-[30px] px-[13px] text-[12px]"
-            disabled={busy || data.status === 'logged_out'}
-            onClick={() => setConfirm('logout')}
-          >
-            <LogOut className="size-[13px] text-ink-soft" aria-hidden />
-            Logout
-          </Button>
+          {admin ? (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-[30px] px-[13px] text-[12px]"
+                disabled={busy}
+                onClick={() => rotateToken()}
+              >
+                <KeyRound className="size-[13px] text-ink-soft" aria-hidden />
+                Rotasi token
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-[30px] px-[13px] text-[12px]"
+                disabled={busy || data.status === 'logged_out'}
+                onClick={() => setConfirm('logout')}
+              >
+                <LogOut className="size-[13px] text-ink-soft" aria-hidden />
+                Logout
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
 
       <div className="h-5" />
 
       <div className="flex w-full items-end gap-[26px] border-b border-line">
-        {TABS.map((item) => {
+        {tabs.map((item) => {
           const active = tab === item.id
           return (
             <button
@@ -218,7 +225,8 @@ function SessionDetailPage() {
       {tab === 'koneksi' ? (
         <KoneksiTab
           session={data}
-          agentId={data.agentId}
+          salesName={data.salesName}
+          readOnly={!admin}
           broadcast={broadcastCurrent}
           qr={live.data?.qr ?? null}
           pairingCode={live.data?.pairingCode ?? null}

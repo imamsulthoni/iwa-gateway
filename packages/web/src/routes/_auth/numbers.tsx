@@ -9,6 +9,7 @@ import { SessionStatusBadge } from '../../components/session-status'
 import { TokenDialog } from '../../components/token-dialog'
 import { Button, Select, cn } from '../../design-system'
 import { api } from '../../lib/api'
+import { isAdmin } from '../../lib/auth'
 import { formatDateTime, formatPhone, usePolling } from '../../lib/format'
 import type { SessionListDto, SessionTokenDto } from '../../lib/types'
 
@@ -16,13 +17,14 @@ export const Route = createFileRoute('/_auth/numbers')({
   component: NumbersPage,
 })
 
-const GRID = 'grid grid-cols-[minmax(0,1fr)_130px_130px_120px_170px_112px] items-center'
+const GRID = 'grid grid-cols-[minmax(0,1fr)_180px_120px_170px_112px] items-center'
 const STATUS_OPTIONS = [{ value: 'all', label: 'Semua status' }].concat(
   Object.entries(SESSION_STATUS_LABELS).map(([value, label]) => ({ value, label })),
 )
 
 function NumbersPage() {
   const navigate = useNavigate()
+  const admin = isAdmin()
   const sessions = usePolling(() => api.get<SessionListDto>('/sessions'), 10_000, true)
   const [createOpen, setCreateOpen] = useState(false)
   const [tokenResult, setTokenResult] = useState<SessionTokenDto | null>(null)
@@ -91,13 +93,15 @@ function NumbersPage() {
             <RefreshCw className="size-3.5 text-ink-soft" aria-hidden />
             Refresh
           </Button>
-          <Button
-            className="h-[34px] px-4 text-[12.5px]"
-            onClick={() => setCreateOpen(true)}
-          >
-            <Plus className="size-3.5" aria-hidden />
-            Tambah nomor
-          </Button>
+          {admin ? (
+            <Button
+              className="h-[34px] px-4 text-[12.5px]"
+              onClick={() => setCreateOpen(true)}
+            >
+              <Plus className="size-3.5" aria-hidden />
+              Tambah nomor
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -141,7 +145,6 @@ function NumbersPage() {
         <div className={cn(GRID, 'h-8 px-[22px]')}>
           <p className={COL_HEAD}>Session</p>
           <p className={COL_HEAD}>Sales</p>
-          <p className={COL_HEAD}>Agent</p>
           <p className={COL_HEAD}>Status</p>
           <p className={COL_HEAD}>Terakhir terhubung</p>
           <p className={cn(COL_HEAD, 'text-right')}>Aksi</p>
@@ -155,7 +158,9 @@ function NumbersPage() {
         {!error && filtered.length === 0 ? (
           <p className="px-[22px] py-10 text-center text-small text-ink-faint">
             {items.length === 0
-              ? 'Belum ada sesi. Tambahkan nomor untuk memulai.'
+              ? admin
+                ? 'Belum ada sesi. Tambahkan nomor untuk memulai.'
+                : 'Belum ada nomor untuk akun ini. Hubungi admin.'
               : 'Tidak ada sesi yang cocok dengan filter.'}
           </p>
         ) : null}
@@ -172,8 +177,7 @@ function NumbersPage() {
                   {formatPhone(session.phoneNumber)}
                 </p>
               </div>
-              <p className="truncate text-body text-ink">{session.salesId ?? '—'}</p>
-              <p className="truncate text-body text-ink">{session.agentId ?? '—'}</p>
+              <p className="truncate text-body text-ink">{session.salesName ?? '—'}</p>
               <div>
                 <SessionStatusBadge status={session.status} />
               </div>
@@ -194,7 +198,7 @@ function NumbersPage() {
                 >
                   Buka
                 </Button>
-                {session.status !== 'connected' ? (
+                {admin && session.status !== 'connected' ? (
                   <Button
                     variant="destructive"
                     size="icon"
@@ -230,7 +234,7 @@ function NumbersPage() {
           <div className="h-4" />
           <div className="flex gap-5">
             {[
-              ['01', 'Buat sesi', 'Tentukan Session ID dan Agent ID opsional.'],
+              ['01', 'Buat sesi', 'Tentukan Session ID, nama sales, dan PIN.'],
               ['02', 'Hubungkan', 'Scan QR atau masukkan kode pairing.'],
               ['03', 'Siap kirim', 'Kirim pesan tunggal atau broadcast.'],
             ].map(([num, title, desc], index) => (

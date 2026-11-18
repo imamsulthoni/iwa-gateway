@@ -1,7 +1,7 @@
 import { sseEventSchema, type SseEvent } from '@wa/shared'
 import { useEffect, useRef } from 'react'
 
-import { getApiKey } from './auth'
+import { getAuth } from './auth'
 import { getEnv } from './env'
 
 export function parseSseEvent(block: string): SseEvent | null {
@@ -44,11 +44,15 @@ export function useSessionEvents(
 
     async function connect(): Promise<void> {
       try {
-        const apiKey = getApiKey()
-        if (!apiKey) return
+        const auth = getAuth()
+        if (!auth) return
+        const headers: Record<string, string> =
+          auth.mode === 'admin'
+            ? { 'x-api-key': auth.apiKey }
+            : { authorization: `Bearer ${auth.token}` }
         const response = await fetch(
           `${getEnv().apiBaseUrl}/v1/sessions/${encodeURIComponent(sessionId as string)}/events`,
-          { headers: { 'x-api-key': apiKey }, signal: controller.signal },
+          { headers, signal: controller.signal },
         )
         if (!response.ok || !response.body) throw new Error('SSE tidak tersedia')
 
