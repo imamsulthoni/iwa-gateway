@@ -18,7 +18,11 @@ import type { StatsService } from '../modules/stats/service.js'
 import type { WebhooksService } from '../modules/webhooks/service.js'
 import { apiKeyMiddleware } from './middleware/api-key.js'
 import { handleError, notFound } from './middleware/error.js'
-import { rateLimitMiddleware, sessionRateLimitMiddleware } from './middleware/rate-limit.js'
+import {
+  loginRateLimitMiddleware,
+  rateLimitMiddleware,
+  sessionRateLimitMiddleware,
+} from './middleware/rate-limit.js'
 import { createOpenApiApp, openApiDocumentConfig } from './openapi.js'
 import { createAuthRoute } from './routes/auth.js'
 import { createBroadcastsRoute, createBroadcastsV1Route } from './routes/broadcasts.js'
@@ -88,6 +92,7 @@ export function createApp(deps: AppDependencies) {
   app.route('/', createHealthRoute({ db: deps.db, redis: deps.redis }))
 
   // Login sales publik; /auth/me dan /auth/logout menerima API key atau token login.
+  app.use('/auth/login', loginRateLimitMiddleware(deps.redis))
   app.route('/auth', createAuthRoute({ apiKey: deps.auth, auth: deps.userAuth }))
 
   app.use('/stats', requireApiKey, rateLimit)

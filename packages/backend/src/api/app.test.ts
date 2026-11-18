@@ -184,6 +184,18 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
   return { app: createApp(deps), queue, messages, conversations, redis, sessions, userAuth }
 }
 
+function attemptLogin(app: ReturnType<typeof createApp>, phoneNumber: string, ip: string) {
+  return app.request(
+    '/auth/login',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phoneNumber, pin: '654321' }),
+    },
+    { incoming: { socket: { remoteAddress: ip } } } as never,
+  )
+}
+
 describe('API Hono', () => {
   it('GET / publik mengembalikan nama, versi, status, dan metrik', async () => {
     const { app } = createTestApp()
@@ -729,6 +741,58 @@ describe('API Hono', () => {
       headers: { authorization: 'Bearer token-salah' },
     })
     expect(invalid.status).toBe(401)
+  })
+
+  it('rate limit login menolak percobaan ke-6 per nomor', async () => {
+    const counts = new Map<string, number>()
+    const redis = {
+      incr: vi.fn(async (key: string) => {
+        const next = (counts.get(key) ?? 0) + 1
+        counts.set(key, next)
+        return next
+      }),
+      expire: vi.fn(async () => 1),
+    } as unknown as RedisClient
+    const { app } = createTestApp({ redis })
+
+    for (let i = 0; i < 5; i += 1) {
+      const response = await attemptLogin(app, '628111111111', '10.0.0.1')
+      expect(response.status).toBe(401)
+    }
+
+    const limited = await attemptLogin(app, '628111111111', '10.0.0.1')
+    expect(limited.status).toBe(429)
+    expect(limited.headers.get('retry-after')).toBe('300')
+    const body = (await limited.json()) as { error: { code: string; message: string } }
+    expect(body.error.code).toBe('RATE_LIMITED')
+    expect(body.error.message).not.toContain('628111111111')
+
+    const otherPhone = await attemptLogin(app, '628222222222', '10.0.0.2')
+    expect(otherPhone.status).toBe(401)
+
+    const otherIpSamePhone = await attemptLogin(app, '628111111111', '10.0.0.3')
+    expect(otherIpSamePhone.status).toBe(429)
+  })
+
+  it('rate limit login juga membatasi per IP', async () => {
+    const counts = new Map<string, number>()
+    const redis = {
+      incr: vi.fn(async (key: string) => {
+        const next = (counts.get(key) ?? 0) + 1
+        counts.set(key, next)
+        return next
+      }),
+      expire: vi.fn(async () => 1),
+    } as unknown as RedisClient
+    const { app } = createTestApp({ redis })
+
+    for (let i = 0; i < 5; i += 1) {
+      const response = await attemptLogin(app, `6281234567${String(i).padStart(2, '0')}`, '10.1.0.1')
+      expect(response.status).toBe(401)
+    }
+
+    const limited = await attemptLogin(app, '628999999999', '10.1.0.1')
+    expect(limited.status).toBe(429)
   })
 
   it('POST /auth/logout mencabut token sales dan idempoten untuk admin', async () => {
