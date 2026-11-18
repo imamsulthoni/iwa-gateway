@@ -20,6 +20,21 @@ export function createSessionsRepository(db: Database) {
       await db.insert(waSessions).values(values)
     },
 
+    /** Akun sales dan sesinya dibuat atomik agar tidak ada baris yatim. */
+    async insertWithOwner(
+      user: typeof users.$inferInsert,
+      session: typeof waSessions.$inferInsert,
+    ): Promise<void> {
+      await db.transaction(async (tx) => {
+        await tx.insert(users).values(user)
+        await tx.insert(waSessions).values(session)
+      })
+    },
+
+    async deleteUser(id: string): Promise<void> {
+      await db.delete(users).where(eq(users.id, id))
+    },
+
     async findById(id: string): Promise<SessionWithOwner | null> {
       const [row] = await selectWithOwner().where(eq(waSessions.id, id)).limit(1)
       return row ?? null

@@ -45,6 +45,13 @@ export class NoSessionError extends DomainError {
   }
 }
 
+/** Kuota akun sales sudah penuh; admin perlu menaikkan batas atau menghapus sales. */
+export class SalesLimitReachedError extends DomainError {
+  constructor(message = 'Batas jumlah sales tercapai') {
+    super(message, 'SALES_LIMIT_REACHED')
+  }
+}
+
 /** Socket sesi belum siap; user perlu mengirim ulang setelah sesi terhubung. */
 export class SessionNotReadyError extends DomainError {
   constructor() {

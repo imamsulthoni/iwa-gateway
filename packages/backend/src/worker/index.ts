@@ -15,6 +15,8 @@ import { createOptOutsRepository } from '../modules/opt-outs/repository.js'
 import { createOptOutsService } from '../modules/opt-outs/service.js'
 import { createSessionsRepository } from '../modules/sessions/repository.js'
 import { createSessionsService } from '../modules/sessions/service.js'
+import { createSettingsRepository } from '../modules/settings/repository.js'
+import { createSettingsService } from '../modules/settings/service.js'
 import { createWebhookOutbox } from '../modules/webhooks/outbox.js'
 import { createWebhooksRepository } from '../modules/webhooks/repository.js'
 import { bootstrapSessions } from './bootstrap.js'
@@ -40,7 +42,10 @@ const messagesRepo = createMessagesRepository(database.db)
 const broadcastsRepo = createBroadcastsRepository(database.db)
 const optOutsRepo = createOptOutsRepository(database.db)
 const webhooksRepo = createWebhooksRepository(database.db)
-const sessions = createSessionsService(sessionsRepo)
+const sessions = createSessionsService(
+  sessionsRepo,
+  createSettingsService(createSettingsRepository(database.db)),
+)
 const messages = createMessagesService(messagesRepo)
 const optOuts = createOptOutsService(optOutsRepo)
 const broadcasts = createBroadcastsService(broadcastsRepo, optOuts)

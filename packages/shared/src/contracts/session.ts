@@ -16,14 +16,28 @@ export const phoneNumberSchema = z
 
 export const sessionModeSchema = z.enum(['qr', 'pairing'])
 
-export const createSessionSchema = z.object({
-  label: z.string().min(1).max(255),
-  publicId: publicIdSchema.optional(),
-  mode: sessionModeSchema.default('qr'),
-  phoneNumber: phoneNumberSchema.optional(),
-  salesId: z.string().max(64).optional(),
-  agentId: z.string().max(64).optional(),
-})
+export const createSessionSchema = z
+  .object({
+    label: z.string().min(1).max(255),
+    publicId: publicIdSchema.optional(),
+    mode: sessionModeSchema.default('qr'),
+    phoneNumber: phoneNumberSchema.optional(),
+    salesId: z.string().max(64).optional(),
+    agentId: z.string().max(64).optional(),
+    salesName: z.string().min(1).max(255).optional(),
+    pin: z
+      .string()
+      .regex(/^\d{4,8}$/, 'PIN harus 4-8 digit angka')
+      .optional(),
+  })
+  .refine((input) => (input.salesName === undefined) === (input.pin === undefined), {
+    message: 'salesName dan PIN wajib diisi bersama',
+    path: ['pin'],
+  })
+  .refine((input) => input.salesName === undefined || input.phoneNumber !== undefined, {
+    message: 'Nomor WhatsApp wajib diisi bila membuat akun sales',
+    path: ['phoneNumber'],
+  })
 
 export type CreateSessionInput = z.infer<typeof createSessionSchema>
 

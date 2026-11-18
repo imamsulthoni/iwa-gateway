@@ -13,6 +13,7 @@ import {
 import { createOptOutSchema, optOutSchema } from './opt-out.js'
 import { paginationQuerySchema } from './pagination.js'
 import { createSessionSchema, publicIdSchema } from './session.js'
+import { settingsSchema, updateSettingsSchema } from './settings.js'
 import { statsSchema } from './stats.js'
 import { webhookPayloadSchema } from './webhook.js'
 
@@ -34,6 +35,25 @@ describe('kontrak sesi', () => {
       createSessionSchema.safeParse({ label: 'A', mode: 'pairing', phoneNumber: '+62 812' })
         .success,
     ).toBe(false)
+  })
+
+  it('mewajibkan salesName dan PIN bersama dengan nomor', () => {
+    const base = { label: 'Sales A', phoneNumber: '628123456789' }
+    expect(
+      createSessionSchema.safeParse({ ...base, salesName: 'Budi', pin: '1234' }).success,
+    ).toBe(true)
+    expect(createSessionSchema.safeParse({ ...base, salesName: 'Budi' }).success).toBe(false)
+    expect(createSessionSchema.safeParse({ ...base, pin: '1234' }).success).toBe(false)
+    expect(
+      createSessionSchema.safeParse({ label: 'Sales A', salesName: 'Budi', pin: '1234' }).success,
+    ).toBe(false)
+  })
+
+  it('menolak PIN bukan 4-8 digit angka pada pembuatan sesi', () => {
+    const base = { label: 'Sales A', phoneNumber: '628123456789', salesName: 'Budi' }
+    for (const pin of ['123', '123456789', '12a4']) {
+      expect(createSessionSchema.safeParse({ ...base, pin }).success).toBe(false)
+    }
   })
 })
 
@@ -270,5 +290,17 @@ describe('kontrak pagination', () => {
 describe('kontrak statistik', () => {
   it('menolak field hilang', () => {
     expect(statsSchema.safeParse({ connectedSessions: 1 }).success).toBe(false)
+  })
+})
+
+describe('kontrak settings', () => {
+  it('membatasi maxSales 1..100 dan membentuk respons', () => {
+    expect(updateSettingsSchema.safeParse({ maxSales: 1 }).success).toBe(true)
+    expect(updateSettingsSchema.safeParse({ maxSales: 100 }).success).toBe(true)
+    expect(updateSettingsSchema.safeParse({ maxSales: 0 }).success).toBe(false)
+    expect(updateSettingsSchema.safeParse({ maxSales: 101 }).success).toBe(false)
+    expect(updateSettingsSchema.safeParse({ maxSales: 2.5 }).success).toBe(false)
+    expect(settingsSchema.safeParse({ maxSales: 10, salesCount: 3 }).success).toBe(true)
+    expect(settingsSchema.safeParse({ maxSales: 10 }).success).toBe(false)
   })
 })

@@ -9,6 +9,7 @@ import type { AuthService } from '../modules/auth/service.js'
 import { NoSessionError, UnauthorizedError, ValidationError } from '../modules/errors.js'
 import type { MessagesService } from '../modules/messages/service.js'
 import type { SessionsService } from '../modules/sessions/service.js'
+import type { SettingsService } from '../modules/settings/service.js'
 import { createApp, type AppDependencies } from './app.js'
 
 const TOKEN = 'token-sesi'
@@ -170,6 +171,14 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     me: vi.fn(async () => AUTH_USER),
   } as unknown as AuthService
 
+  const settings = {
+    getSettings: vi.fn(async () => ({ maxSales: 10, salesCount: 2 })),
+    updateSettings: vi.fn(async (values: { maxSales: number }) => ({
+      maxSales: values.maxSales,
+      salesCount: 2,
+    })),
+  } as unknown as SettingsService
+
   const deps: AppDependencies = {
     env: TEST_ENV,
     logger: createLogger('silent'),
@@ -196,12 +205,13 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
         runningBroadcasts: 0,
       }),
     } as unknown as AppDependencies['stats'],
+    settings,
     webhooks: {} as unknown as AppDependencies['webhooks'],
     queues,
     ...overrides,
   }
 
-  return { app: createApp(deps), queue, messages, conversations, redis, sessions, userAuth }
+  return { app: createApp(deps), queue, messages, conversations, redis, sessions, userAuth, settings }
 }
 
 function attemptLogin(app: ReturnType<typeof createApp>, phoneNumber: string, ip: string) {
@@ -798,6 +808,8 @@ describe('API Hono', () => {
       { method: 'DELETE', path: '/messages/m1' },
       { method: 'POST', path: '/messages/m1/retry' },
       { method: 'GET', path: '/stats' },
+      { method: 'GET', path: '/settings' },
+      { method: 'PATCH', path: '/settings', body: JSON.stringify({ maxSales: 5 }) },
       { method: 'GET', path: '/v1/broadcasts/b1' },
       { method: 'GET', path: '/v1/webhooks' },
     ]
@@ -883,6 +895,73 @@ describe('API Hono', () => {
     }
   })
 
+  it('GET /settings mengembalikan maxSales dan salesCount untuk admin', async () => {
+    const { app } = createTestApp()
+    const response = await app.request('/settings', { headers: { 'x-api-key': 'valid-key' } })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ maxSales: 10, salesCount: 2 })
+  })
+
+  it('PATCH /settings menyimpan maxSales dan menolak nilai di luar 1..100', async () => {
+    const { app, settings } = createTestApp()
+    const headers = { 'x-api-key': 'valid-key', 'content-type': 'application/json' }
+
+    const ok = await app.request('/settings', {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ maxSales: 25 }),
+    })
+    expect(ok.status).toBe(200)
+    expect(await ok.json()).toEqual({ maxSales: 25, salesCount: 2 })
+    expect(settings.updateSettings).toHaveBeenCalledWith({ maxSales: 25 })
+
+    for (const maxSales of [0, 101]) {
+      const invalid = await app.request('/settings', {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ maxSales }),
+      })
+      expect(invalid.status).toBe(422)
+    }
+  })
+
+  it('POST /sessions meneruskan salesName + PIN dan tidak membocorkan PIN', async () => {
+    const { app, sessions } = createTestApp()
+    const response = await app.request('/sessions', {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        label: 'Sales A',
+        salesName: 'Budi',
+        phoneNumber: '628123456789',
+        pin: '123456',
+      }),
+    })
+
+    expect(response.status).toBe(201)
+    expect(sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        salesName: 'Budi',
+        pin: '123456',
+        phoneNumber: '628123456789',
+      }),
+    )
+    expect(JSON.stringify(await response.json())).not.toContain('123456')
+  })
+
+  it('POST /sessions menolak salesName tanpa PIN dengan 422', async () => {
+    const { app, sessions } = createTestApp()
+    const response = await app.request('/sessions', {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ label: 'Sales A', salesName: 'Budi', phoneNumber: '628123456789' }),
+    })
+
+    expect(response.status).toBe(422)
+    expect(sessions.create).not.toHaveBeenCalled()
+  })
+
   it('GET /docs menyajikan referensi Scalar sebagai HTML', async () => {
     const { app } = createTestApp()
     const response = await app.request('/docs')
@@ -912,6 +991,7 @@ describe('API Hono', () => {
     expect(document.paths).toHaveProperty('/sessions/{id}/live')
     expect(document.paths).toHaveProperty('/messages')
     expect(document.paths).toHaveProperty('/stats')
+    expect(document.paths).toHaveProperty('/settings')
     expect(document.paths).toHaveProperty('/v1/conversations/{id}/messages')
     expect(document.paths).toHaveProperty('/v1/broadcasts')
     expect(document.paths).toHaveProperty('/v1/webhooks')

@@ -22,6 +22,8 @@ import { createOptOutsRepository } from '../modules/opt-outs/repository.js'
 import { createOptOutsService } from '../modules/opt-outs/service.js'
 import { createSessionsRepository } from '../modules/sessions/repository.js'
 import { createSessionsService } from '../modules/sessions/service.js'
+import { createSettingsRepository } from '../modules/settings/repository.js'
+import { createSettingsService } from '../modules/settings/service.js'
 import { createStatsService } from '../modules/stats/service.js'
 import { createWebhooksRepository } from '../modules/webhooks/repository.js'
 import { createWebhooksService } from '../modules/webhooks/service.js'
@@ -41,6 +43,7 @@ const broadcastsRepo = createBroadcastsRepository(database.db)
 const optOutsRepo = createOptOutsRepository(database.db)
 const webhooksRepo = createWebhooksRepository(database.db)
 const authRepo = createAuthRepository(database.db)
+const settingsService = createSettingsService(createSettingsRepository(database.db))
 
 const app = createApp({
   env,
@@ -49,7 +52,7 @@ const app = createApp({
   db: database.db,
   auth: createApiKeyAuthenticator(database.db),
   userAuth: createAuthService(authRepo),
-  sessions: createSessionsService(sessionsRepo),
+  sessions: createSessionsService(sessionsRepo, settingsService),
   messages: createMessagesService(messagesRepo),
   conversations: createConversationsService(conversationsRepo),
   broadcasts: createBroadcastsService(broadcastsRepo, createOptOutsService(optOutsRepo)),
@@ -59,6 +62,7 @@ const app = createApp({
     broadcasts: broadcastsRepo,
     timezone: env.APP_TIMEZONE,
   }),
+  settings: settingsService,
   webhooks: createWebhooksService(webhooksRepo, {
     allowPrivateHttp: env.WEBHOOK_ALLOW_HTTP_PRIVATE,
   }),

@@ -14,6 +14,7 @@ import type { ConversationsService } from '../modules/conversations/service.js'
 import type { MessagesService } from '../modules/messages/service.js'
 import type { WaSessionRow } from '../db/schema.js'
 import type { SessionsService } from '../modules/sessions/service.js'
+import type { SettingsService } from '../modules/settings/service.js'
 import type { StatsService } from '../modules/stats/service.js'
 import type { WebhooksService } from '../modules/webhooks/service.js'
 import type { Actor } from './middleware/auth.js'
@@ -36,6 +37,7 @@ import {
   createV1MessagesRoute,
 } from './routes/messages.js'
 import { createSessionsRoute } from './routes/sessions.js'
+import { createSettingsRoute } from './routes/settings.js'
 import { createStatsRoute } from './routes/stats.js'
 import { createWebhooksRoute } from './routes/webhooks.js'
 
@@ -59,6 +61,7 @@ export type AppDependencies = {
   conversations: ConversationsService
   broadcasts: BroadcastsService
   stats: StatsService
+  settings: SettingsService
   webhooks: WebhooksService
   queues: QueueRegistry
 }
@@ -100,6 +103,9 @@ export function createApp(deps: AppDependencies) {
 
   app.use('/stats', anyAuth, requireAdmin, rateLimit)
   app.route('/', createStatsRoute(deps.stats))
+
+  app.use('/settings', anyAuth, requireAdmin, rateLimit)
+  app.route('/', createSettingsRoute(deps.settings))
 
   // Endpoint pesan per sesi memakai Bearer token sesi, bukan API key.
   const sessionRateLimit = sessionRateLimitMiddleware(deps.redis, deps.env.RATE_LIMIT_PER_MIN)

@@ -5,8 +5,10 @@ import { publicIdSchema, type SessionDto } from '@wa/shared'
 import { newId } from '../../db/id.js'
 import type { WaSessionRow } from '../../db/schema.js'
 import { isDuplicateKeyError } from '../db-errors.js'
-import { NotFoundError } from '../errors.js'
+import { NotFoundError, SalesLimitReachedError, ValidationError } from '../errors.js'
 import { generateSessionToken, hashSessionToken } from '../auth/session-token.js'
+import { hashPin } from '../auth/pin.js'
+import type { SettingsService } from '../settings/service.js'
 import { DuplicatePhoneError, DuplicatePublicIdError, InvalidPublicIdError } from './errors.js'
 import type { SessionsRepository, SessionWithOwner } from './repository.js'
 
@@ -16,6 +18,8 @@ export type CreateSessionValues = {
   phoneNumber?: string
   salesId?: string
   agentId?: string
+  salesName?: string
+  pin?: string
   dailySendLimit?: number
 }
 
@@ -40,7 +44,10 @@ export function toSessionDto(row: WaSessionRow & { salesName?: string | null }):
   }
 }
 
-export function createSessionsService(repo: SessionsRepository) {
+export function createSessionsService(
+  repo: SessionsRepository,
+  settings: Pick<SettingsService, 'getSettings'>,
+) {
   async function get(id: string): Promise<SessionWithOwner> {
     const row = await repo.findById(id)
     if (!row) {
@@ -80,7 +87,7 @@ export function createSessionsService(repo: SessionsRepository) {
 
       const token = generateSessionToken()
       const id = newId()
-      await repo.insert({
+      const session: Parameters<SessionsRepository['insert']>[0] = {
         id,
         publicId,
         label: values.label,
@@ -90,7 +97,37 @@ export function createSessionsService(repo: SessionsRepository) {
         salesId: values.salesId ?? null,
         agentId: values.agentId ?? null,
         dailySendLimit: values.dailySendLimit ?? 200,
-      })
+      }
+
+      const createsSales = values.salesName !== undefined || values.pin !== undefined
+      if (createsSales) {
+        if (!values.salesName || !values.pin || !values.phoneNumber) {
+          throw new ValidationError('Nama sales, PIN, dan nomor WhatsApp wajib diisi bersama')
+        }
+        // shortcut: kuota dibaca sebelum transaksi, dua create bersamaan bisa lolos 1 di atas
+        // batas; tambah lock bila enforcement harus ketat.
+        const { maxSales, salesCount } = await settings.getSettings()
+        if (salesCount >= maxSales) throw new SalesLimitReachedError()
+
+        const userId = newId()
+        try {
+          await repo.insertWithOwner(
+            {
+              id: userId,
+              name: values.salesName,
+              phoneNumber: values.phoneNumber,
+              role: 'sales',
+              pinHash: hashPin(values.pin),
+            },
+            { ...session, ownerUserId: userId },
+          )
+        } catch (error) {
+          if (isDuplicateKeyError(error)) throw new DuplicatePhoneError(values.phoneNumber)
+          throw error
+        }
+      } else {
+        await repo.insert(session)
+      }
       return { session: await get(id), token }
     },
 
@@ -128,8 +165,10 @@ export function createSessionsService(repo: SessionsRepository) {
     },
 
     async remove(id: string): Promise<void> {
-      await get(id)
+      const session = await get(id)
       await repo.remove(id)
+      // Satu akun sales = satu nomor; hapus akun agar kuota kembali dan nomor tidak bisa login.
+      if (session.ownerUserId) await repo.deleteUser(session.ownerUserId)
     },
 
     async startable(): Promise<WaSessionRow[]> {

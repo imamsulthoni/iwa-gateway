@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { ConflictError, NotFoundError } from '../errors.js'
+import { ConflictError, NotFoundError, SalesLimitReachedError, ValidationError } from '../errors.js'
 import { hashSessionToken, verifySessionToken } from '../auth/session-token.js'
 import type { SessionsRepository, SessionWithOwner } from './repository.js'
 import { createSessionsService, toSessionDto } from './service.js'
@@ -32,6 +32,14 @@ function createMemoryRepository(): SessionsRepository {
         createdAt: now,
         updatedAt: now,
       })
+    },
+    async insertWithOwner(user, session) {
+      await repo.insert({ ...session, ownerUserId: user.id })
+      const row = rows.get(session.id)
+      if (row) rows.set(session.id, { ...row, salesName: user.name })
+    },
+    async deleteUser() {
+      // User disimpan terpisah di DB nyata; service selalu menghapus sesi lebih dulu.
     },
     async findById(id) {
       return rows.get(id) ?? null
@@ -75,9 +83,16 @@ function createMemoryRepository(): SessionsRepository {
   return repo
 }
 
+function createService(
+  repo = createMemoryRepository(),
+  settings: { maxSales: number; salesCount: number } = { maxSales: 10, salesCount: 0 },
+) {
+  return createSessionsService(repo, { getSettings: async () => settings })
+}
+
 describe('sessions service', () => {
   it('membuat sesi dan menyimpan hash token', async () => {
-    const service = createSessionsService(createMemoryRepository())
+    const service = createService()
     const { session, token } = await service.create({ label: 'Sales A', publicId: 'sales-a' })
 
     expect(session.publicId).toBe('sales-a')
@@ -86,8 +101,41 @@ describe('sessions service', () => {
     expect(verifySessionToken(token, session.tokenHash ?? '')).toBe(true)
   })
 
+  it('membuat akun sales dan menyimpan PIN sebagai hash', async () => {
+    const repo = createMemoryRepository()
+    const service = createService(repo)
+    const { session } = await service.create({
+      label: 'Sales A',
+      salesName: 'Budi',
+      phoneNumber: '628123456789',
+      pin: '123456',
+    })
+
+    expect(session.salesName).toBe('Budi')
+    expect(session.ownerUserId).not.toBeNull()
+  })
+
+  it('menolak pembuatan akun sales saat kuota penuh', async () => {
+    const service = createService(createMemoryRepository(), { maxSales: 1, salesCount: 1 })
+    await expect(
+      service.create({
+        label: 'Sales B',
+        salesName: 'Budi',
+        phoneNumber: '628123456789',
+        pin: '123456',
+      }),
+    ).rejects.toBeInstanceOf(SalesLimitReachedError)
+  })
+
+  it('menolak nama sales atau PIN yang tidak berpasangan', async () => {
+    const service = createService()
+    await expect(
+      service.create({ label: 'A', salesName: 'Budi', phoneNumber: '628123456789' }),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
   it('menolak public_id tidak valid dan duplikat', async () => {
-    const service = createSessionsService(createMemoryRepository())
+    const service = createService()
     await expect(service.create({ label: 'A', publicId: 'tidak valid' })).rejects.toThrow()
     await service.create({ label: 'A', publicId: 'sama' })
     await expect(service.create({ label: 'B', publicId: 'sama' })).rejects.toBeInstanceOf(
@@ -96,7 +144,7 @@ describe('sessions service', () => {
   })
 
   it('menolak nomor duplikat', async () => {
-    const service = createSessionsService(createMemoryRepository())
+    const service = createService()
     await service.create({ label: 'A', publicId: 'a', phoneNumber: '628123456789' })
     await expect(
       service.create({ label: 'B', publicId: 'b', phoneNumber: '628123456789' }),
@@ -104,7 +152,7 @@ describe('sessions service', () => {
   })
 
   it('rotasi token membuat token lama gagal', async () => {
-    const service = createSessionsService(createMemoryRepository())
+    const service = createService()
     const created = await service.create({ label: 'A', publicId: 'a' })
     const rotated = await service.rotateToken(created.session.id)
 
@@ -118,7 +166,7 @@ describe('sessions service', () => {
     const repo = createMemoryRepository()
     await repo.insert({ id: '1', publicId: 'a', label: 'A', ownerUserId: 'user-1' })
     await repo.insert({ id: '2', publicId: 'b', label: 'B', ownerUserId: 'user-2' })
-    const service = createSessionsService(repo)
+    const service = createService(repo)
 
     expect((await service.list(50, 'user-1')).map((row) => row.publicId)).toEqual(['a'])
     expect((await service.list(50, 'user-2')).map((row) => row.publicId)).toEqual(['b'])
@@ -139,7 +187,7 @@ describe('sessions service', () => {
   })
 
   it('mengubah status dan menghapus sesi', async () => {
-    const service = createSessionsService(createMemoryRepository())
+    const service = createService()
     const { session } = await service.create({ label: 'A', publicId: 'a' })
 
     expect((await service.updateStatus(session.id, 'connecting')).status).toBe('connecting')

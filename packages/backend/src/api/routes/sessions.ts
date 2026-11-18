@@ -77,7 +77,7 @@ const createSessionRoute = createRoute({
       content: { 'application/json': { schema: sessionTokenSchema } },
     },
     401: openApiError('API key tidak dikirim atau tidak valid'),
-    409: openApiError('publicId atau nomor sudah dipakai sesi lain'),
+    409: openApiError('publicId/nomor sudah dipakai, atau batas jumlah sales tercapai'),
     422: openApiError('Data sesi tidak valid'),
     429: openApiError('Rate limit terlampaui'),
     500: openApiError('Kesalahan internal'),
