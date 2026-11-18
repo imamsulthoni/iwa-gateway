@@ -25,6 +25,7 @@ function createMemoryRepository(): SessionsRepository {
         tokenRotatedAt: null,
         salesId: values.salesId ?? null,
         agentId: values.agentId ?? null,
+        ownerUserId: null,
         dailySendLimit: values.dailySendLimit ?? 200,
         authFormat: 'v7',
         pairingMethod: 'qr',

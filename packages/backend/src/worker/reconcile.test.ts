@@ -32,6 +32,7 @@ function row(status: WaSessionRow['status'], id = 's1'): WaSessionRow {
     tokenRotatedAt: null,
     salesId: null,
     agentId: null,
+    ownerUserId: null,
     dailySendLimit: 200,
     authFormat: 'v7',
     pairingMethod: 'qr',

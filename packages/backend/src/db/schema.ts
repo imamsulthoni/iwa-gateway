@@ -102,6 +102,9 @@ export const waSessions = mysqlTable(
     tokenRotatedAt: datetime('token_rotated_at', { fsp: 3 }),
     salesId: varchar('sales_id', { length: 64 }),
     agentId: varchar('agent_id', { length: 64 }),
+    ownerUserId: char('owner_user_id', { length: 36 }).references(() => users.id, {
+      onDelete: 'set null',
+    }),
     dailySendLimit: int('daily_send_limit').notNull().default(200),
     authFormat: varchar('auth_format', { length: 16 }).notNull().default('v7'),
     pairingMethod: mysqlEnum('pairing_method', ['qr', 'code']).notNull().default('qr'),
@@ -113,6 +116,7 @@ export const waSessions = mysqlTable(
   (table) => [
     uniqueIndex('wa_sessions_public_id_uq').on(table.publicId),
     uniqueIndex('wa_sessions_phone_uq').on(table.phoneNumber),
+    uniqueIndex('wa_sessions_owner_uq').on(table.ownerUserId),
   ],
 )
 
