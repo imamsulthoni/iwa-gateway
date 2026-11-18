@@ -115,7 +115,7 @@ export function createApp(deps: AppDependencies) {
   )
 
   // Pola wildcard Hono juga cocok dengan path tanpa segmen tambahan, jadi satu
-// pola per prefix cukup dan mencegah middleware/rate limit berjalan dua kali.
+  // pola per prefix cukup dan mencegah middleware/rate limit berjalan dua kali.
   app.use('/sessions/*', anyAuth, rateLimit)
   app.use('/messages/*', anyAuth, requireAdmin, rateLimit)
 
