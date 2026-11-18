@@ -1,11 +1,7 @@
 import { z } from 'zod'
 
 import { USER_ROLES } from '../constants/status.js'
-import { phoneNumberSchema } from './session.js'
-
-export const pinSchema = z
-  .string()
-  .regex(/^\d{4,8}$/, 'PIN harus 4-8 digit angka')
+import { phoneNumberSchema, pinSchema } from './session.js'
 
 export const loginSchema = z.object({
   phoneNumber: phoneNumberSchema,

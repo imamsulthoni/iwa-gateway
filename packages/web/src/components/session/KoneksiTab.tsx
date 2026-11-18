@@ -9,6 +9,7 @@ import { getDefaultDelay } from '../../lib/delay'
 import { formatDateTime, phoneFromJid } from '../../lib/format'
 import type { BroadcastCurrentDto, MessageListDto, SessionDto } from '../../lib/types'
 import { BroadcastRail, CardLabel, FIELD_INPUT, Panel, StatusDot } from './parts'
+import { SalesAccountCard } from './SalesAccountCard'
 
 type KoneksiTabProps = {
   session: SessionDto
@@ -388,6 +389,8 @@ export function KoneksiTab({
             </div>
           </div>
         ) : null}
+
+        {readOnly ? null : <SalesAccountCard session={session} onChanged={onChanged} />}
       </div>
 
       <div className="flex min-w-[320px] flex-1 flex-col gap-4">

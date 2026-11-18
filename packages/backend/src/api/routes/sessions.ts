@@ -2,10 +2,12 @@ import { OpenAPIHono, createRoute } from '@hono/zod-openapi'
 import {
   SESSION_STATUS_LABELS,
   apiErrorBody,
+  attachSalesSchema,
   createSessionSchema,
   pairingRequestSchema,
   pairingResponseSchema,
   qrResponseSchema,
+  resetSalesPinSchema,
   sessionListSchema,
   sessionLiveSchema,
   sessionSchema,
@@ -299,6 +301,62 @@ const requestPairingCodeRoute = createRoute({
   },
 })
 
+const resetSalesPinRoute = createRoute({
+  method: 'post',
+  path: '/{id}/sales/pin',
+  tags: ['Sessions'],
+  summary: 'Reset PIN akun sales sesi',
+  security: apiKeySecurity,
+  request: {
+    params: idParamSchema,
+    body: {
+      content: { 'application/json': { schema: resetSalesPinSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: 'PIN diperbarui dan token login sales lama dicabut',
+      content: { 'application/json': { schema: sessionSchema } },
+    },
+    401: openApiError('API key tidak dikirim atau tidak valid'),
+    403: openApiError('Akses khusus admin'),
+    404: openApiError('Sesi tidak ditemukan'),
+    409: openApiError('Sesi ini belum memiliki akun sales'),
+    422: openApiError('PIN tidak valid'),
+    429: openApiError('Rate limit terlampaui'),
+    500: openApiError('Kesalahan internal'),
+  },
+})
+
+const attachSalesRoute = createRoute({
+  method: 'patch',
+  path: '/{id}/sales',
+  tags: ['Sessions'],
+  summary: 'Tautkan akun sales ke sesi lama',
+  security: apiKeySecurity,
+  request: {
+    params: idParamSchema,
+    body: {
+      content: { 'application/json': { schema: attachSalesSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: 'Akun sales tertaut ke sesi',
+      content: { 'application/json': { schema: sessionSchema } },
+    },
+    401: openApiError('API key tidak dikirim atau tidak valid'),
+    403: openApiError('Akses khusus admin'),
+    404: openApiError('Sesi tidak ditemukan'),
+    409: openApiError('Sesi sudah memiliki sales, nomor sudah dipakai, atau kuota penuh'),
+    422: openApiError('Data sales tidak valid atau sesi belum memiliki nomor'),
+    429: openApiError('Rate limit terlampaui'),
+    500: openApiError('Kesalahan internal'),
+  },
+})
+
 export function createSessionsRoute(
   sessions: SessionsService,
   broadcasts: BroadcastsService,
@@ -430,6 +488,18 @@ export function createSessionsRoute(
     await publishSessionControl(redis, { sessionId, action: 'start' })
     const payload: PairingResponseDto = { code: null, status: session.status }
     return c.json(payload, 202)
+  })
+
+  router.openapi(resetSalesPinRoute, async (c) => {
+    requireAdmin(c)
+    const session = await sessions.resetSalesPin(c.req.param('id'), c.req.valid('json').pin)
+    return c.json(toSessionDto(session), 200)
+  })
+
+  router.openapi(attachSalesRoute, async (c) => {
+    requireAdmin(c)
+    const session = await sessions.attachSales(c.req.param('id'), c.req.valid('json'))
+    return c.json(toSessionDto(session), 200)
   })
 
   return router

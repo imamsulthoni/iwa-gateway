@@ -90,6 +90,8 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     remove: vi.fn(async () => undefined),
     rotateToken: vi.fn(async () => ({ session: SESSION, token: TOKEN })),
     setPhoneNumber: vi.fn(async () => SESSION),
+    resetSalesPin: vi.fn(async () => SESSION),
+    attachSales: vi.fn(async () => SESSION),
     updateStatus: vi.fn(async (_id: string, status: WaSessionRow['status'], patch = {}) => ({
       ...SESSION,
       status,
@@ -803,6 +805,16 @@ describe('API Hono', () => {
         path: `/sessions/${SESSION_ID}/pairing`,
         body: JSON.stringify({ phoneNumber: '628123456789' }),
       },
+      {
+        method: 'PATCH',
+        path: `/sessions/${SESSION_ID}/sales`,
+        body: JSON.stringify({ salesName: 'Budi', pin: '123456' }),
+      },
+      {
+        method: 'POST',
+        path: `/sessions/${SESSION_ID}/sales/pin`,
+        body: JSON.stringify({ pin: '654321' }),
+      },
       { method: 'POST', path: `/sessions/${SESSION_ID}/broadcast`, body: broadcastBody },
       { method: 'GET', path: '/messages' },
       { method: 'DELETE', path: '/messages/m1' },
@@ -962,6 +974,53 @@ describe('API Hono', () => {
     expect(sessions.create).not.toHaveBeenCalled()
   })
 
+  it('admin bisa reset PIN dan menautkan sales tanpa membocorkan PIN', async () => {
+    const { app, sessions } = createTestApp()
+    const headers = { 'x-api-key': 'valid-key', 'content-type': 'application/json' }
+
+    const attach = await app.request(`/sessions/${SESSION_ID}/sales`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ salesName: 'Budi', pin: '123456' }),
+    })
+    expect(attach.status).toBe(200)
+    expect(sessions.attachSales).toHaveBeenCalledWith(SESSION_ID, {
+      salesName: 'Budi',
+      pin: '123456',
+    })
+    expect(JSON.stringify(await attach.json())).not.toContain('123456')
+
+    const reset = await app.request(`/sessions/${SESSION_ID}/sales/pin`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ pin: '654321' }),
+    })
+    expect(reset.status).toBe(200)
+    expect(sessions.resetSalesPin).toHaveBeenCalledWith(SESSION_ID, '654321')
+    expect(JSON.stringify(await reset.json())).not.toContain('654321')
+  })
+
+  it('reset PIN dan tautkan sales menolak PIN tidak valid dengan 422', async () => {
+    const { app, sessions } = createTestApp()
+    const headers = { 'x-api-key': 'valid-key', 'content-type': 'application/json' }
+
+    const attach = await app.request(`/sessions/${SESSION_ID}/sales`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ salesName: 'Budi', pin: '123' }),
+    })
+    expect(attach.status).toBe(422)
+    expect(sessions.attachSales).not.toHaveBeenCalled()
+
+    const reset = await app.request(`/sessions/${SESSION_ID}/sales/pin`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ pin: '123456789' }),
+    })
+    expect(reset.status).toBe(422)
+    expect(sessions.resetSalesPin).not.toHaveBeenCalled()
+  })
+
   it('GET /docs menyajikan referensi Scalar sebagai HTML', async () => {
     const { app } = createTestApp()
     const response = await app.request('/docs')
@@ -989,6 +1048,8 @@ describe('API Hono', () => {
     expect(document.paths).toHaveProperty('/auth/me')
     expect(document.paths).toHaveProperty('/auth/logout')
     expect(document.paths).toHaveProperty('/sessions/{id}/live')
+    expect(document.paths).toHaveProperty('/sessions/{id}/sales')
+    expect(document.paths).toHaveProperty('/sessions/{id}/sales/pin')
     expect(document.paths).toHaveProperty('/messages')
     expect(document.paths).toHaveProperty('/stats')
     expect(document.paths).toHaveProperty('/settings')

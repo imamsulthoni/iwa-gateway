@@ -140,7 +140,7 @@ logs/*.log {
 
 Referensi interaktif: `GET /openapi.json` (OpenAPI 3.1) dan `GET /docs` (Scalar). Versi markdown untuk reviewer/integrator: [`API-CONTRACT.md`](./API-CONTRACT.md).
 
-Auth: header `x-api-key` (API key admin) untuk semua endpoint, kecuali dua endpoint pesan per sesi yang juga menerima `Authorization: Bearer <token sesi>`.
+Auth: `x-api-key` (API key admin) untuk endpoint admin, atau `Authorization: Bearer <token login sales>` untuk sales (login nomor WhatsApp + PIN lewat `POST /auth/login`). Dua endpoint pesan per sesi juga menerima `Authorization: Bearer <token sesi>`. Endpoint sales otomatis dibatasi ke sesi & inbox miliknya (403 di luar itu).
 
 - Format error: `{ "error": { "code": "snake_case", "message": "..." } }`
 - Pagination: `limit` (default 20, maksimum 100) + `cursor` opak → `{ "items": [...], "nextCursor": "..." }`
@@ -157,9 +157,14 @@ Auth: header `x-api-key` (API key admin) untuk semua endpoint, kecuali dua endpo
 | `GET`    | `/`                               | Nama, versi, status dependensi, dan metrik                          |
 | `GET`    | `/openapi.json`                   | Dokumen OpenAPI 3.1                                                 |
 | `GET`    | `/docs`                           | Dokumentasi interaktif (Scalar)                                     |
+| `POST`   | `/auth/login`                     | Login sales (nomor WhatsApp + PIN), rate limit ketat                |
+| `GET`    | `/auth/me`                        | Identitas aktor: admin atau sales                                   |
+| `POST`   | `/auth/logout`                    | Cabut token login sales                                             |
+| `GET`    | `/settings`                       | Batas `maxSales` dan jumlah sales aktif (admin)                     |
+| `PATCH`  | `/settings`                       | Ubah batas jumlah sales 1–100 (admin)                               |
 | `GET`    | `/stats`                          | Sesi terhubung, pesan hari ini, total pesan, broadcast              |
-| `GET`    | `/sessions`                       | Daftar sesi                                                         |
-| `POST`   | `/sessions`                       | Buat sesi (mode `qr`/`pairing`) + token sekali tampil               |
+| `GET`    | `/sessions`                       | Daftar sesi (sales: hanya miliknya)                                 |
+| `POST`   | `/sessions`                       | Buat sesi (mode `qr`/`pairing`) + akun sales + token sekali tampil  |
 | `GET`    | `/sessions/:id`                   | Detail sesi                                                         |
 | `DELETE` | `/sessions/:id`                   | Hapus sesi + auth state (cascade)                                   |
 | `GET`    | `/sessions/:id/status`            | Status ringkas sesi + label UI                                      |
@@ -171,6 +176,8 @@ Auth: header `x-api-key` (API key admin) untuk semua endpoint, kecuali dua endpo
 | `POST`   | `/sessions/:id/login`             | Login ulang setelah `logged_out`                                    |
 | `POST`   | `/sessions/:id/logout`            | Logout sesi dan hapus auth tersimpan                                |
 | `POST`   | `/sessions/:id/token`             | Rotasi token sesi (tampil sekali)                                   |
+| `PATCH`  | `/sessions/:id/sales`             | Tautkan akun sales ke sesi lama (admin)                             |
+| `POST`   | `/sessions/:id/sales/pin`         | Reset PIN sales + cabut token login lama (admin)                    |
 | `POST`   | `/sessions/:id/messages`          | Kirim pesan teks — API key atau token sesi                          |
 | `GET`    | `/sessions/:id/messages`          | Riwayat pesan per sesi — API key atau token sesi                    |
 | `POST`   | `/sessions/:id/broadcast`         | Buat dan mulai broadcast                                            |
@@ -196,6 +203,13 @@ Auth: header `x-api-key` (API key admin) untuk semua endpoint, kecuali dua endpo
 | `GET`    | `/v1/webhooks/:id/deliveries`     | Log delivery (`limit`, `cursor`, filter `status`)                   |
 
 `:id` sesi adalah `public_id` (slug 1–32 karakter `[A-Za-z0-9_-]`); `:id` conversation, broadcast, dan webhook adalah UUID.
+
+### Alur admin vs sales
+
+- **Admin** masuk dengan API key. Admin membuat nomor sekaligus akun sales (nama, nomor WhatsApp, PIN), mengatur batas jumlah sales di Pengaturan, melihat semua nomor/riwayat, dan mengelola webhook/broadcast.
+- **Sales** masuk dengan nomor WhatsApp + PIN. Hanya menu Nomor dan Inbox yang tersedia; daftar nomor, detail, inbox, SSE, dan kirim balasan dibatasi ke sesinya sendiri. Sales tidak bisa menambah, menghapus, pairing ulang, atau logout nomor.
+- Login gagal selalu `Nomor atau PIN salah`; nomor yang belum punya sesi membalas `NO_SESSION` (403). Reset PIN lewat detail nomor mencabut token login lama.
+- Sesi lama (`owner_user_id` kosong) hanya bisa diakses admin sampai ditautkan lewat `PATCH /sessions/:id/sales`.
 
 ### Webhook keluar
 

@@ -14,6 +14,8 @@ export const phoneNumberSchema = z
   .string()
   .regex(/^\d{8,15}$/, 'Nomor harus 8-15 digit tanpa spasi atau tanda baca')
 
+export const pinSchema = z.string().regex(/^\d{4,8}$/, 'PIN harus 4-8 digit angka')
+
 export const sessionModeSchema = z.enum(['qr', 'pairing'])
 
 export const createSessionSchema = z
@@ -25,10 +27,7 @@ export const createSessionSchema = z
     salesId: z.string().max(64).optional(),
     agentId: z.string().max(64).optional(),
     salesName: z.string().min(1).max(255).optional(),
-    pin: z
-      .string()
-      .regex(/^\d{4,8}$/, 'PIN harus 4-8 digit angka')
-      .optional(),
+    pin: pinSchema.optional(),
   })
   .refine((input) => (input.salesName === undefined) === (input.pin === undefined), {
     message: 'salesName dan PIN wajib diisi bersama',
@@ -40,6 +39,17 @@ export const createSessionSchema = z
   })
 
 export type CreateSessionInput = z.infer<typeof createSessionSchema>
+
+export const resetSalesPinSchema = z.object({ pin: pinSchema })
+
+export type ResetSalesPinInput = z.infer<typeof resetSalesPinSchema>
+
+export const attachSalesSchema = z.object({
+  salesName: z.string().min(1).max(255),
+  pin: pinSchema,
+})
+
+export type AttachSalesInput = z.infer<typeof attachSalesSchema>
 
 export const sessionSchema = z.object({
   id: z.string(),

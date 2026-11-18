@@ -12,7 +12,12 @@ import {
 } from './message.js'
 import { createOptOutSchema, optOutSchema } from './opt-out.js'
 import { paginationQuerySchema } from './pagination.js'
-import { createSessionSchema, publicIdSchema } from './session.js'
+import {
+  attachSalesSchema,
+  createSessionSchema,
+  publicIdSchema,
+  resetSalesPinSchema,
+} from './session.js'
 import { settingsSchema, updateSettingsSchema } from './settings.js'
 import { statsSchema } from './stats.js'
 import { webhookPayloadSchema } from './webhook.js'
@@ -54,6 +59,14 @@ describe('kontrak sesi', () => {
     for (const pin of ['123', '123456789', '12a4']) {
       expect(createSessionSchema.safeParse({ ...base, pin }).success).toBe(false)
     }
+  })
+
+  it('memvalidasi kontrak reset PIN dan tautkan sales', () => {
+    expect(resetSalesPinSchema.safeParse({ pin: '1234' }).success).toBe(true)
+    expect(resetSalesPinSchema.safeParse({ pin: '123' }).success).toBe(false)
+    expect(attachSalesSchema.safeParse({ salesName: 'Budi', pin: '123456' }).success).toBe(true)
+    expect(attachSalesSchema.safeParse({ salesName: '', pin: '123456' }).success).toBe(false)
+    expect(attachSalesSchema.safeParse({ salesName: 'Budi', pin: '123456789' }).success).toBe(false)
   })
 })
 

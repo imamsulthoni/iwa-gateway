@@ -5,7 +5,12 @@ import { publicIdSchema, type SessionDto } from '@wa/shared'
 import { newId } from '../../db/id.js'
 import type { WaSessionRow } from '../../db/schema.js'
 import { isDuplicateKeyError } from '../db-errors.js'
-import { NotFoundError, SalesLimitReachedError, ValidationError } from '../errors.js'
+import {
+  ConflictError,
+  NotFoundError,
+  SalesLimitReachedError,
+  ValidationError,
+} from '../errors.js'
 import { generateSessionToken, hashSessionToken } from '../auth/session-token.js'
 import { hashPin } from '../auth/pin.js'
 import type { SettingsService } from '../settings/service.js'
@@ -21,6 +26,11 @@ export type CreateSessionValues = {
   salesName?: string
   pin?: string
   dailySendLimit?: number
+}
+
+export type AttachSalesValues = {
+  salesName: string
+  pin: string
 }
 
 export type SessionsService = ReturnType<typeof createSessionsService>
@@ -169,6 +179,55 @@ export function createSessionsService(
       await repo.remove(id)
       // Satu akun sales = satu nomor; hapus akun agar kuota kembali dan nomor tidak bisa login.
       if (session.ownerUserId) await repo.deleteUser(session.ownerUserId)
+    },
+
+    async resetSalesPin(id: string, pin: string): Promise<SessionWithOwner> {
+      const session = await get(id)
+      if (!session.ownerUserId) throw new ConflictError('Sesi ini belum memiliki akun sales')
+      await repo.updateUser(session.ownerUserId, { pinHash: hashPin(pin) })
+      await repo.revokeUserTokens(session.ownerUserId)
+      return get(id)
+    },
+
+    async attachSales(id: string, values: AttachSalesValues): Promise<SessionWithOwner> {
+      const session = await get(id)
+      if (session.ownerUserId) throw new ConflictError('Sesi sudah memiliki akun sales')
+      if (!session.phoneNumber) throw new ValidationError('Sesi belum memiliki nomor WhatsApp')
+
+      const pinHash = hashPin(values.pin)
+      const existing = await repo.findUserByPhone(session.phoneNumber)
+      if (existing) {
+        if (existing.role !== 'sales') throw new ConflictError('Nomor sudah dipakai akun lain')
+        if (await repo.findOwnedSession(existing.id)) {
+          throw new ConflictError('Nomor sudah dipakai sesi lain')
+        }
+        await repo.updateUser(existing.id, { name: values.salesName, pinHash })
+        await repo.revokeUserTokens(existing.id)
+        await repo.update(id, { ownerUserId: existing.id })
+        return get(id)
+      }
+
+      // shortcut: kuota dibaca sebelum insert, dua attach bersamaan bisa lolos 1 di atas
+      // batas; tambah lock bila enforcement harus ketat.
+      const { maxSales, salesCount } = await settings.getSettings()
+      if (salesCount >= maxSales) throw new SalesLimitReachedError()
+
+      try {
+        await repo.insertOwner(
+          {
+            id: newId(),
+            name: values.salesName,
+            phoneNumber: session.phoneNumber,
+            role: 'sales',
+            pinHash,
+          },
+          id,
+        )
+      } catch (error) {
+        if (isDuplicateKeyError(error)) throw new ConflictError('Nomor sudah dipakai akun lain')
+        throw error
+      }
+      return get(id)
     },
 
     async startable(): Promise<WaSessionRow[]> {

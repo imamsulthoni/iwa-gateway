@@ -1,7 +1,13 @@
 import { and, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm'
 
 import type { Database } from '../../db/client.js'
-import { users, waSessions, type WaSessionRow } from '../../db/schema.js'
+import {
+  userSessions,
+  users,
+  waSessions,
+  type UserRow,
+  type WaSessionRow,
+} from '../../db/schema.js'
 
 export type SessionWithOwner = WaSessionRow & { salesName: string | null }
 
@@ -33,6 +39,42 @@ export function createSessionsRepository(db: Database) {
 
     async deleteUser(id: string): Promise<void> {
       await db.delete(users).where(eq(users.id, id))
+    },
+
+    async findUserByPhone(phoneNumber: string): Promise<UserRow | null> {
+      const [row] = await db.select().from(users).where(eq(users.phoneNumber, phoneNumber)).limit(1)
+      return row ?? null
+    },
+
+    async findOwnedSession(userId: string): Promise<WaSessionRow | null> {
+      const [row] = await db
+        .select()
+        .from(waSessions)
+        .where(eq(waSessions.ownerUserId, userId))
+        .limit(1)
+      return row ?? null
+    },
+
+    async updateUser(id: string, values: { name?: string; pinHash?: string }): Promise<void> {
+      await db
+        .update(users)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(users.id, id))
+    },
+
+    async revokeUserTokens(userId: string): Promise<void> {
+      await db.delete(userSessions).where(eq(userSessions.userId, userId))
+    },
+
+    /** Akun sales baru dan penautannya ke sesi dibuat atomik agar tidak ada user yatim. */
+    async insertOwner(user: typeof users.$inferInsert, sessionId: string): Promise<void> {
+      await db.transaction(async (tx) => {
+        await tx.insert(users).values(user)
+        await tx
+          .update(waSessions)
+          .set({ ownerUserId: user.id, updatedAt: new Date() })
+          .where(eq(waSessions.id, sessionId))
+      })
     },
 
     async findById(id: string): Promise<SessionWithOwner | null> {

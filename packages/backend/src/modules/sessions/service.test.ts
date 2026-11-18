@@ -1,14 +1,25 @@
 import { describe, expect, it } from 'vitest'
 
+import type { UserRow } from '../../db/schema.js'
 import { ConflictError, NotFoundError, SalesLimitReachedError, ValidationError } from '../errors.js'
 import { hashSessionToken, verifySessionToken } from '../auth/session-token.js'
+import { verifyPin } from '../auth/pin.js'
 import type { SessionsRepository, SessionWithOwner } from './repository.js'
 import { createSessionsService, toSessionDto } from './service.js'
 
-function createMemoryRepository(): SessionsRepository {
-  const rows = new Map<string, SessionWithOwner>()
+type MemoryRepository = SessionsRepository & {
+  users: Map<string, UserRow>
+  revokedUserIds: string[]
+}
 
-  const repo: SessionsRepository = {
+function createMemoryRepository(): MemoryRepository {
+  const rows = new Map<string, SessionWithOwner>()
+  const users = new Map<string, UserRow>()
+  const revokedUserIds: string[] = []
+
+  const repo: MemoryRepository = {
+    users,
+    revokedUserIds,
     async insert(values) {
       const now = new Date()
       rows.set(values.id, {
@@ -34,12 +45,52 @@ function createMemoryRepository(): SessionsRepository {
       })
     },
     async insertWithOwner(user, session) {
+      const now = new Date()
+      users.set(user.id, {
+        id: user.id,
+        name: user.name,
+        phoneNumber: user.phoneNumber,
+        role: user.role ?? 'sales',
+        pinHash: user.pinHash,
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      })
       await repo.insert({ ...session, ownerUserId: user.id })
       const row = rows.get(session.id)
       if (row) rows.set(session.id, { ...row, salesName: user.name })
     },
-    async deleteUser() {
+    async deleteUser(id) {
+      users.delete(id)
       // User disimpan terpisah di DB nyata; service selalu menghapus sesi lebih dulu.
+    },
+    async findUserByPhone(phoneNumber) {
+      return [...users.values()].find((user) => user.phoneNumber === phoneNumber) ?? null
+    },
+    async findOwnedSession(userId) {
+      return [...rows.values()].find((row) => row.ownerUserId === userId) ?? null
+    },
+    async updateUser(id, values) {
+      const user = users.get(id)
+      if (user) users.set(id, { ...user, ...values, updatedAt: new Date() })
+    },
+    async revokeUserTokens(userId) {
+      revokedUserIds.push(userId)
+    },
+    async insertOwner(user, sessionId) {
+      const now = new Date()
+      users.set(user.id, {
+        id: user.id,
+        name: user.name,
+        phoneNumber: user.phoneNumber,
+        role: user.role ?? 'sales',
+        pinHash: user.pinHash,
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      const row = rows.get(sessionId)
+      if (row) rows.set(sessionId, { ...row, ownerUserId: user.id, salesName: user.name })
     },
     async findById(id) {
       return rows.get(id) ?? null
@@ -58,7 +109,11 @@ function createMemoryRepository(): SessionsRepository {
     async update(id, values) {
       const row = rows.get(id)
       if (!row) return
-      rows.set(id, { ...row, ...values, updatedAt: new Date() })
+      const salesName =
+        'ownerUserId' in values
+          ? (users.get(values.ownerUserId ?? '')?.name ?? null)
+          : row.salesName
+      rows.set(id, { ...row, ...values, salesName, updatedAt: new Date() })
     },
     async remove(id) {
       rows.delete(id)
@@ -193,5 +248,104 @@ describe('sessions service', () => {
     expect((await service.updateStatus(session.id, 'connecting')).status).toBe('connecting')
     await service.remove(session.id)
     await expect(service.get(session.id)).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('reset PIN mengganti hash dan mencabut token sales', async () => {
+    const repo = createMemoryRepository()
+    const service = createService(repo)
+    const { session } = await service.create({
+      label: 'Sales A',
+      salesName: 'Budi',
+      phoneNumber: '628123456789',
+      pin: '123456',
+    })
+    const userId = session.ownerUserId ?? ''
+
+    expect(verifyPin('123456', repo.users.get(userId)?.pinHash ?? '')).toBe(true)
+
+    await service.resetSalesPin(session.id, '654321')
+
+    expect(verifyPin('654321', repo.users.get(userId)?.pinHash ?? '')).toBe(true)
+    expect(verifyPin('123456', repo.users.get(userId)?.pinHash ?? '')).toBe(false)
+    expect(repo.revokedUserIds).toContain(userId)
+  })
+
+  it('reset PIN menolak sesi tanpa akun sales', async () => {
+    const service = createService()
+    const { session } = await service.create({ label: 'A', publicId: 'a' })
+
+    await expect(service.resetSalesPin(session.id, '654321')).rejects.toBeInstanceOf(ConflictError)
+  })
+
+  it('menautkan sales baru ke sesi lama', async () => {
+    const repo = createMemoryRepository()
+    const service = createService(repo)
+    const { session } = await service.create({
+      label: 'Lama',
+      publicId: 'lama',
+      phoneNumber: '628123456789',
+    })
+
+    expect(session.salesName).toBeNull()
+
+    const updated = await service.attachSales(session.id, { salesName: 'Rani', pin: '123456' })
+
+    expect(updated.salesName).toBe('Rani')
+    expect(updated.ownerUserId).not.toBeNull()
+    expect(verifyPin('123456', repo.users.get(updated.ownerUserId ?? '')?.pinHash ?? '')).toBe(true)
+  })
+
+  it('menautkan sales memakai ulang akun dengan nomor yang sama', async () => {
+    const repo = createMemoryRepository()
+    const service = createService(repo)
+    const now = new Date()
+    repo.users.set('user-lama', {
+      id: 'user-lama',
+      name: 'Lama',
+      phoneNumber: '628123456789',
+      role: 'sales',
+      pinHash: 'scrypt$x$y',
+      active: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const { session } = await service.create({
+      label: 'Lama',
+      publicId: 'lama',
+      phoneNumber: '628123456789',
+    })
+
+    const updated = await service.attachSales(session.id, { salesName: 'Rani', pin: '654321' })
+
+    expect(updated.ownerUserId).toBe('user-lama')
+    expect(updated.salesName).toBe('Rani')
+    expect(verifyPin('654321', repo.users.get('user-lama')?.pinHash ?? '')).toBe(true)
+    expect(repo.revokedUserIds).toContain('user-lama')
+  })
+
+  it('menautkan sales menolak sesi ber-owner, kuota penuh, dan tanpa nomor', async () => {
+    const owned = createService()
+    const existing = await owned.create({
+      label: 'Sales A',
+      salesName: 'Budi',
+      phoneNumber: '628123456789',
+      pin: '123456',
+    })
+
+    await expect(
+      owned.attachSales(existing.session.id, { salesName: 'Rani', pin: '654321' }),
+    ).rejects.toBeInstanceOf(ConflictError)
+
+    const full = createService(createMemoryRepository(), { maxSales: 1, salesCount: 1 })
+    const legacy = await full.create({ label: 'Lama', publicId: 'lama', phoneNumber: '628987654321' })
+    await expect(
+      full.attachSales(legacy.session.id, { salesName: 'Rani', pin: '654321' }),
+    ).rejects.toBeInstanceOf(SalesLimitReachedError)
+
+    const noPhone = createService()
+    const tanpaNomor = await noPhone.create({ label: 'Tanpa nomor', publicId: 'tanpa-nomor' })
+    await expect(
+      noPhone.attachSales(tanpaNomor.session.id, { salesName: 'Rani', pin: '654321' }),
+    ).rejects.toBeInstanceOf(ValidationError)
   })
 })
