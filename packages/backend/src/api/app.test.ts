@@ -44,6 +44,22 @@ const SESSION: WaSessionRow = {
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 }
 
+const TEST_ENV: AppDependencies['env'] = {
+  NODE_ENV: 'test',
+  PORT: 3000,
+  DATABASE_URL: 'mysql://x',
+  REDIS_URL: 'redis://x',
+  AUTH_ENC_KEY: Buffer.alloc(32).toString('base64'),
+  LOG_LEVEL: 'silent',
+  APP_TIMEZONE: 'Asia/Jakarta',
+  CORS_ORIGIN: 'http://localhost:5173',
+  BROWSER_NAME: 'test',
+  SESSION_LOCK_TTL_MS: 30000,
+  RATE_LIMIT_PER_MIN: 60,
+  BROADCAST_AUTO_PAUSE_RATIO: 0.2,
+  WEBHOOK_ALLOW_HTTP_PRIVATE: false,
+}
+
 function createTestApp(overrides: Partial<AppDependencies> = {}) {
   const redis = {
     incr: vi.fn(async () => 1),
@@ -137,21 +153,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
   } as unknown as AuthService
 
   const deps: AppDependencies = {
-    env: {
-      NODE_ENV: 'test',
-      PORT: 3000,
-      DATABASE_URL: 'mysql://x',
-      REDIS_URL: 'redis://x',
-      AUTH_ENC_KEY: Buffer.alloc(32).toString('base64'),
-      LOG_LEVEL: 'silent',
-      APP_TIMEZONE: 'Asia/Jakarta',
-      CORS_ORIGIN: 'http://localhost:5173',
-      BROWSER_NAME: 'test',
-      SESSION_LOCK_TTL_MS: 30000,
-      RATE_LIMIT_PER_MIN: 60,
-      BROADCAST_AUTO_PAUSE_RATIO: 0.2,
-      WEBHOOK_ALLOW_HTTP_PRIVATE: false,
-    },
+    env: TEST_ENV,
     logger: createLogger('silent'),
     redis,
     db,
@@ -550,6 +552,52 @@ describe('API Hono', () => {
     expect(limited.headers.get('retry-after')).toBe('60')
 
     const other = await app.request('/stats', { headers: { 'x-api-key': 'key-b' } })
+    expect(other.status).toBe(200)
+  })
+
+  it('rate limit sales memakai kuota per user', async () => {
+    const counts = new Map<string, number>()
+    const redis = {
+      incr: vi.fn(async (key: string) => {
+        const next = (counts.get(key) ?? 0) + 1
+        counts.set(key, next)
+        return next
+      }),
+      expire: vi.fn(async () => 1),
+    } as unknown as RedisClient
+
+    const userAuth = {
+      authenticate: vi.fn(async (token: string) => {
+        if (token === USER_TOKEN) return AUTH_USER
+        if (token === 'token-sales-b') {
+          return { ...AUTH_USER, id: 'user-2', name: 'Sales B', phoneNumber: '628987654321' }
+        }
+        return null
+      }),
+    } as unknown as AuthService
+
+    const { app } = createTestApp({
+      redis,
+      userAuth,
+      env: { ...TEST_ENV, RATE_LIMIT_PER_MIN: 2 },
+    })
+
+    for (let i = 0; i < 2; i += 1) {
+      const response = await app.request('/sessions', {
+        headers: { authorization: `Bearer ${USER_TOKEN}` },
+      })
+      expect(response.status).toBe(200)
+    }
+
+    const limited = await app.request('/sessions', {
+      headers: { authorization: `Bearer ${USER_TOKEN}` },
+    })
+    expect(limited.status).toBe(429)
+    expect(limited.headers.get('retry-after')).toBe('60')
+
+    const other = await app.request('/sessions', {
+      headers: { authorization: 'Bearer token-sales-b' },
+    })
     expect(other.status).toBe(200)
   })
 

@@ -19,11 +19,17 @@ function clientIp(c: Parameters<typeof getConnInfo>[0]): string {
 export function rateLimitMiddleware(redis: Redis, limitPerMinute: number) {
   return createMiddleware<AppBindings>(async (c, next) => {
     const window = Math.floor(Date.now() / 60_000)
-    const apiKeyId = c.get('apiKeyId')
+    const actor = c.get('actor')
     const keys: string[] = []
-    if (apiKeyId) keys.push(`rl:key:${apiKeyId}:${window}`)
-    const sessionId = apiKeyId ? c.req.param('id') : undefined
-    if (sessionId) keys.push(`rl:sess:${sessionId}:${window}`)
+    if (actor?.mode === 'admin') {
+      keys.push(`rl:key:${actor.apiKeyId}:${window}`)
+      const sessionId = c.req.param('id')
+      if (sessionId) keys.push(`rl:sess:${sessionId}:${window}`)
+    } else if (actor?.mode === 'sales') {
+      keys.push(`rl:user:${actor.user.id}:${window}`)
+    } else {
+      keys.push(`rl:ip:${clientIp(c)}:${window}`)
+    }
 
     for (const key of keys) {
       const count = await redis.incr(key)

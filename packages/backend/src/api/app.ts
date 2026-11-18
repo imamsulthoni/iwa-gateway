@@ -114,9 +114,9 @@ export function createApp(deps: AppDependencies) {
     ),
   )
 
-  app.use('/sessions', anyAuth, rateLimit)
+  // Pola wildcard Hono juga cocok dengan path tanpa segmen tambahan, jadi satu
+// pola per prefix cukup dan mencegah middleware/rate limit berjalan dua kali.
   app.use('/sessions/*', anyAuth, rateLimit)
-  app.use('/messages', anyAuth, requireAdmin, rateLimit)
   app.use('/messages/*', anyAuth, requireAdmin, rateLimit)
 
   app.route('/sessions', createSessionsRoute(deps.sessions, deps.broadcasts, deps.redis))
@@ -125,9 +125,7 @@ export function createApp(deps: AppDependencies) {
 
   // Inbox dan kirim pesan menerima admin maupun sales; broadcast dan webhook
   // tetap khusus admin.
-  app.use('/v1/broadcasts', anyAuth, requireAdmin, rateLimit)
   app.use('/v1/broadcasts/*', anyAuth, requireAdmin, rateLimit)
-  app.use('/v1/webhooks', anyAuth, requireAdmin, rateLimit)
   app.use('/v1/webhooks/*', anyAuth, requireAdmin, rateLimit)
   app.use('/v1/sessions/:id/conversations', anyAuth, rateLimit)
   app.use('/v1/conversations/:id/messages', anyAuth, rateLimit)
