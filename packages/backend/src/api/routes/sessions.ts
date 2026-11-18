@@ -22,6 +22,7 @@ import type { SessionsService } from '../../modules/sessions/service.js'
 import { toSessionDto } from '../../modules/sessions/service.js'
 import { publishSessionControl } from '../../infra/session-control.js'
 import type { AppBindings } from '../app.js'
+import { ensureSessionAccess, requireAdmin } from '../middleware/auth.js'
 import { idParamSchema, openApiError } from '../openapi.js'
 
 const EMPTY_BROADCAST: BroadcastCurrentDto = {
@@ -39,13 +40,14 @@ const EMPTY_BROADCAST: BroadcastCurrentDto = {
 }
 
 const apiKeySecurity = [{ ApiKey: [] }]
+const anyAuthSecurity: Record<string, string[]>[] = [{ ApiKey: [] }, { UserToken: [] }]
 
 const listSessionsRoute = createRoute({
   method: 'get',
   path: '/',
   tags: ['Sessions'],
   summary: 'Daftar sesi WhatsApp',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   responses: {
     200: {
       description: 'Maksimal 50 sesi terbaru',
@@ -87,7 +89,7 @@ const getSessionRoute = createRoute({
   path: '/{id}',
   tags: ['Sessions'],
   summary: 'Detail satu sesi',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -199,7 +201,7 @@ const sessionStatusRoute = createRoute({
   path: '/{id}/status',
   tags: ['Sessions'],
   summary: 'Status ringkas sesi',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -218,7 +220,7 @@ const sessionQrRoute = createRoute({
   path: '/{id}/qr',
   tags: ['Sessions'],
   summary: 'QR terakhir sesi',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -237,7 +239,7 @@ const sessionLiveRoute = createRoute({
   path: '/{id}/live',
   tags: ['Sessions'],
   summary: 'Gabungan state dashboard sesi',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -256,7 +258,7 @@ const pairingCodeRoute = createRoute({
   path: '/{id}/pairing',
   tags: ['Sessions'],
   summary: 'Pairing code terakhir sesi',
-  security: apiKeySecurity,
+  security: anyAuthSecurity,
   request: { params: idParamSchema },
   responses: {
     200: {
@@ -310,6 +312,7 @@ export function createSessionsRoute(
   })
 
   router.openapi(createSessionRoute, async (c) => {
+    requireAdmin(c)
     const input = c.req.valid('json')
     if (input.mode === 'pairing' && !input.phoneNumber) {
       return c.json(
@@ -321,22 +324,27 @@ export function createSessionsRoute(
     return c.json({ token, session: toSessionDto(session) }, 201)
   })
 
-  router.openapi(getSessionRoute, async (c) =>
-    c.json(toSessionDto(await sessions.get(c.req.param('id'))), 200),
-  )
+  router.openapi(getSessionRoute, async (c) => {
+    const session = await sessions.get(c.req.param('id'))
+    ensureSessionAccess(c, session)
+    return c.json(toSessionDto(session), 200)
+  })
 
   router.openapi(deleteSessionRoute, async (c) => {
+    requireAdmin(c)
     await sessions.remove(c.req.param('id'))
     return c.body(null, 204)
   })
 
   router.openapi(loginSessionRoute, async (c) => {
+    requireAdmin(c)
     const session = await sessions.updateStatus(c.req.param('id'), 'connecting')
     await publishSessionControl(redis, { sessionId: session.id, action: 'start' })
     return c.json(toSessionDto(session), 200)
   })
 
   router.openapi(cancelSessionRoute, async (c) => {
+    requireAdmin(c)
     const session = await sessions.get(c.req.param('id'))
     if (session.status === 'connected' || session.status === 'logged_out') {
       return c.json(apiErrorBody('CONFLICT', 'Sesi tidak sedang dalam proses pairing'), 409)
@@ -351,18 +359,21 @@ export function createSessionsRoute(
   })
 
   router.openapi(logoutSessionRoute, async (c) => {
+    requireAdmin(c)
     const session = await sessions.updateStatus(c.req.param('id'), 'logged_out', { lastQr: null })
     await publishSessionControl(redis, { sessionId: session.id, action: 'stop', clearAuth: true })
     return c.json(toSessionDto(session), 200)
   })
 
   router.openapi(rotateSessionTokenRoute, async (c) => {
+    requireAdmin(c)
     const { session, token } = await sessions.rotateToken(c.req.param('id'))
     return c.json({ token, session: toSessionDto(session) }, 200)
   })
 
   router.openapi(sessionStatusRoute, async (c) => {
     const session = await sessions.get(c.req.param('id'))
+    ensureSessionAccess(c, session)
     return c.json(
       {
         status: session.status,
@@ -377,6 +388,7 @@ export function createSessionsRoute(
 
   router.openapi(sessionQrRoute, async (c) => {
     const session = await sessions.get(c.req.param('id'))
+    ensureSessionAccess(c, session)
     return c.json({ qr: session.lastQr, status: session.status }, 200)
   })
 
@@ -384,6 +396,7 @@ export function createSessionsRoute(
   // polling terpisah ke /sessions/:id, /status, /qr, dan /broadcast/current).
   router.openapi(sessionLiveRoute, async (c) => {
     const session = await sessions.get(c.req.param('id'))
+    ensureSessionAccess(c, session)
     const [broadcast, pairingCode] = await Promise.all([
       broadcasts.current(session.id),
       redis.get(`wa:pairing:code:${session.id}`),
@@ -399,12 +412,14 @@ export function createSessionsRoute(
 
   router.openapi(pairingCodeRoute, async (c) => {
     const session = await sessions.get(c.req.param('id'))
+    ensureSessionAccess(c, session)
     const code = await redis.get(`wa:pairing:code:${session.id}`)
     const payload: PairingResponseDto = { code, status: session.status }
     return c.json(payload, 200)
   })
 
   router.openapi(requestPairingCodeRoute, async (c) => {
+    requireAdmin(c)
     const sessionId = c.req.param('id')
     const input = c.req.valid('json')
     await sessions.setPhoneNumber(sessionId, input.phoneNumber)

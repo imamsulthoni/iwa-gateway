@@ -5,7 +5,7 @@ import { apiErrorBody } from '@wa/shared'
 import type { ApiKeyAuthenticator } from '../../modules/auth/api-key.js'
 import type { AuthService, AuthUser } from '../../modules/auth/service.js'
 import { verifySessionToken } from '../../modules/auth/session-token.js'
-import { NotFoundError } from '../../modules/errors.js'
+import { ForbiddenError, NotFoundError, UnauthorizedError } from '../../modules/errors.js'
 import type { SessionsService } from '../../modules/sessions/service.js'
 import type { AppBindings } from '../app.js'
 
@@ -105,26 +105,19 @@ export function requireAdminMiddleware() {
   })
 }
 
-export function requireAdmin(c: Context<AppBindings>): Response | null {
+export function requireAdmin(c: Context<AppBindings>): void {
   const actor = c.get('actor')
-  if (!actor) {
-    return c.json(apiErrorBody('UNAUTHORIZED', 'Autentikasi wajib dikirim'), 401)
-  }
-  if (actor.mode !== 'admin') {
-    return c.json(apiErrorBody('FORBIDDEN', 'Akses khusus admin'), 403)
-  }
-  return null
+  if (!actor) throw new UnauthorizedError('Autentikasi wajib dikirim')
+  if (actor.mode !== 'admin') throw new ForbiddenError('Akses khusus admin')
 }
 
 export function ensureSessionAccess(
   c: Context<AppBindings>,
   session: { ownerUserId: string | null },
-): Response | null {
+): void {
   const actor = c.get('actor')
-  if (!actor) {
-    return c.json(apiErrorBody('UNAUTHORIZED', 'Autentikasi wajib dikirim'), 401)
-  }
-  if (actor.mode === 'admin') return null
-  if (session.ownerUserId !== null && session.ownerUserId === actor.user.id) return null
-  return c.json(apiErrorBody('FORBIDDEN', 'Akses ke sesi ini ditolak'), 403)
+  if (!actor) throw new UnauthorizedError('Autentikasi wajib dikirim')
+  if (actor.mode === 'admin') return
+  if (session.ownerUserId !== null && session.ownerUserId === actor.user.id) return
+  throw new ForbiddenError('Akses ke sesi ini ditolak')
 }

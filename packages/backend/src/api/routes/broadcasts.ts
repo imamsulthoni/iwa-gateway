@@ -15,6 +15,7 @@ import type { BroadcastsService } from '../../modules/broadcasts/service.js'
 import { ValidationError } from '../../modules/errors.js'
 import type { SessionsService } from '../../modules/sessions/service.js'
 import type { AppBindings } from '../app.js'
+import { requireAdmin } from '../middleware/auth.js'
 import { idParamSchema, openApiError } from '../openapi.js'
 
 const startBroadcastRoute = createRoute({
@@ -84,6 +85,7 @@ export function createBroadcastsRoute(broadcasts: BroadcastsService, queues: Que
   const router = new OpenAPIHono<AppBindings>()
 
   router.openapi(startBroadcastRoute, async (c) => {
+    requireAdmin(c)
     const sessionId = c.req.param('id')
     const input = c.req.valid('json')
     const { broadcast, duplicate } = await broadcasts.create(sessionId, input)
@@ -99,6 +101,7 @@ export function createBroadcastsRoute(broadcasts: BroadcastsService, queues: Que
   })
 
   router.openapi(currentBroadcastRoute, async (c) => {
+    requireAdmin(c)
     const current = await broadcasts.current(c.req.param('id'))
     if (!current) {
       return c.json(
@@ -122,6 +125,7 @@ export function createBroadcastsRoute(broadcasts: BroadcastsService, queues: Que
   })
 
   router.openapi(cancelBroadcastRoute, async (c) => {
+    requireAdmin(c)
     const broadcast = await broadcasts.cancel(c.req.param('id'))
     return c.json({ broadcastId: broadcast.id, status: broadcast.status }, 200)
   })

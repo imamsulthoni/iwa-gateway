@@ -36,7 +36,7 @@ const SESSION: WaSessionRow = {
   tokenRotatedAt: null,
   salesId: null,
   agentId: null,
-  ownerUserId: null,
+  ownerUserId: AUTH_USER.id,
   dailySendLimit: 200,
   authFormat: 'v7',
   pairingMethod: 'qr',
@@ -599,6 +599,109 @@ describe('API Hono', () => {
       headers: { authorization: 'Bearer token-sales-b' },
     })
     expect(other.status).toBe(200)
+  })
+
+  it('sales ditolak 403 di seluruh endpoint admin sesi', async () => {
+    const { app } = createTestApp()
+    const headers = { authorization: `Bearer ${USER_TOKEN}`, 'content-type': 'application/json' }
+    const broadcastBody = JSON.stringify({
+      recipients: [{ to: '628123456789' }],
+      text: 'Halo',
+      minDelay: 10,
+      maxDelay: 20,
+      clientRef: 'b1',
+    })
+
+    const requests = [
+      app.request('/sessions', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ label: 'Sales Baru' }),
+      }),
+      app.request(`/sessions/${SESSION_ID}`, { method: 'DELETE', headers }),
+      app.request(`/sessions/${SESSION_ID}/token`, { method: 'POST', headers }),
+      app.request(`/sessions/${SESSION_ID}/login`, { method: 'POST', headers }),
+      app.request(`/sessions/${SESSION_ID}/cancel`, { method: 'POST', headers }),
+      app.request(`/sessions/${SESSION_ID}/logout`, { method: 'POST', headers }),
+      app.request(`/sessions/${SESSION_ID}/pairing`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ phoneNumber: '628123456789' }),
+      }),
+      app.request(`/sessions/${SESSION_ID}/broadcast`, {
+        method: 'POST',
+        headers,
+        body: broadcastBody,
+      }),
+    ]
+
+    for (const response of await Promise.all(requests)) {
+      expect(response.status).toBe(403)
+      expect(await response.json()).toMatchObject({ error: { code: 'FORBIDDEN' } })
+    }
+  })
+
+  it('sales hanya bisa membaca sesi miliknya', async () => {
+    const { app } = createTestApp()
+    const headers = { authorization: `Bearer ${USER_TOKEN}` }
+
+    for (const path of [
+      `/sessions/${SESSION_ID}`,
+      `/sessions/${SESSION_ID}/status`,
+      `/sessions/${SESSION_ID}/qr`,
+      `/sessions/${SESSION_ID}/live`,
+      `/sessions/${SESSION_ID}/pairing`,
+    ]) {
+      const response = await app.request(path, { headers })
+      expect(response.status).toBe(200)
+    }
+  })
+
+  it('sales ditolak 403 saat membaca sesi milik sales lain atau sesi lama', async () => {
+    const otherSession = { ...SESSION, ownerUserId: 'user-2' }
+    const { app } = createTestApp({
+      sessions: {
+        get: vi.fn(async () => otherSession),
+        getByPublicId: vi.fn(async () => otherSession),
+      } as unknown as SessionsService,
+    })
+    const headers = { authorization: `Bearer ${USER_TOKEN}` }
+
+    for (const path of [
+      `/sessions/${SESSION_ID}`,
+      `/sessions/${SESSION_ID}/status`,
+      `/sessions/${SESSION_ID}/qr`,
+      `/sessions/${SESSION_ID}/live`,
+      `/sessions/${SESSION_ID}/pairing`,
+    ]) {
+      const response = await app.request(path, { headers })
+      expect(response.status).toBe(403)
+      const body = (await response.json()) as { error: { message: string } }
+      expect(body.error.message).not.toContain(otherSession.publicId)
+      expect(body.error.message).not.toContain('user-2')
+    }
+  })
+
+  it('admin tetap bisa membaca semua sesi', async () => {
+    const otherSession = { ...SESSION, ownerUserId: 'user-2' }
+    const { app } = createTestApp({
+      sessions: {
+        get: vi.fn(async () => otherSession),
+        getByPublicId: vi.fn(async () => otherSession),
+      } as unknown as SessionsService,
+    })
+    const headers = { 'x-api-key': 'valid-key' }
+
+    for (const path of [
+      `/sessions/${SESSION_ID}`,
+      `/sessions/${SESSION_ID}/status`,
+      `/sessions/${SESSION_ID}/qr`,
+      `/sessions/${SESSION_ID}/live`,
+      `/sessions/${SESSION_ID}/pairing`,
+    ]) {
+      const response = await app.request(path, { headers })
+      expect(response.status).toBe(200)
+    }
   })
 
   it('GET /docs menyajikan referensi Scalar sebagai HTML', async () => {

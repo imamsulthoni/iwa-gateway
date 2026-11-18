@@ -32,6 +32,12 @@ export class UnauthorizedError extends DomainError {
   }
 }
 
+export class ForbiddenError extends DomainError {
+  constructor(message = 'Akses ditolak') {
+    super(message, 'FORBIDDEN')
+  }
+}
+
 /** Nomor sudah terdaftar tetapi belum punya sesi WhatsApp yang ditautkan. */
 export class NoSessionError extends DomainError {
   constructor(message = 'Nomor ini belum memiliki sesi WhatsApp') {

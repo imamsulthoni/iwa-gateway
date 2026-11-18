@@ -2,8 +2,10 @@ import { Hono } from 'hono'
 import { createMiddleware } from 'hono/factory'
 import { describe, expect, it } from 'vitest'
 
+import { createLogger } from '../../infra/logger.js'
 import type { AppBindings } from '../app.js'
 import { ensureSessionAccess, requireAdmin, type Actor } from './auth.js'
+import { handleError } from './error.js'
 
 const OWNER: Actor = {
   mode: 'sales',
@@ -47,14 +49,16 @@ function createTestApp(actor: Actor | undefined) {
   )
 
   app.get('/admin', (c) => {
-    const denied = requireAdmin(c)
-    return denied ?? c.json({ ok: true })
+    requireAdmin(c)
+    return c.json({ ok: true })
   })
 
   app.get('/session', (c) => {
-    const denied = ensureSessionAccess(c, SESSION)
-    return denied ?? c.json({ ok: true })
+    ensureSessionAccess(c, SESSION)
+    return c.json({ ok: true })
   })
+
+  app.onError((error, c) => handleError(error, c, createLogger('silent')))
 
   return app
 }
@@ -105,8 +109,8 @@ describe('ensureSessionAccess', () => {
     const app = createTestApp(OWNER)
     // Sesi Fase 1 memiliki owner_user_id NULL dan hanya boleh diakses admin.
     app.get('/legacy', (c) => {
-      const denied = ensureSessionAccess(c, { ownerUserId: null })
-      return denied ?? c.json({ ok: true })
+      ensureSessionAccess(c, { ownerUserId: null })
+      return c.json({ ok: true })
     })
 
     const response = await app.request('/legacy')
