@@ -25,7 +25,7 @@ function createMemoryRepository(): SessionsRepository {
         tokenRotatedAt: null,
         salesId: values.salesId ?? null,
         agentId: values.agentId ?? null,
-        ownerUserId: null,
+        ownerUserId: values.ownerUserId ?? null,
         dailySendLimit: values.dailySendLimit ?? 200,
         authFormat: 'v7',
         pairingMethod: 'qr',
@@ -42,8 +42,10 @@ function createMemoryRepository(): SessionsRepository {
     async findByPhone(phoneNumber) {
       return [...rows.values()].find((row) => row.phoneNumber === phoneNumber) ?? null
     },
-    async list(limit = 50) {
-      return [...rows.values()].slice(0, limit)
+    async list(limit = 50, ownerUserId?: string) {
+      return [...rows.values()]
+        .filter((row) => ownerUserId === undefined || row.ownerUserId === ownerUserId)
+        .slice(0, limit)
     },
     async update(id, values) {
       const row = rows.get(id)
@@ -110,6 +112,17 @@ describe('sessions service', () => {
     expect(verifySessionToken(created.token, rotated.session.tokenHash ?? '')).toBe(false)
     expect(verifySessionToken(rotated.token, rotated.session.tokenHash ?? '')).toBe(true)
     expect(rotated.session.tokenRotatedAt).not.toBeNull()
+  })
+
+  it('memfilter daftar sesi berdasarkan owner sales', async () => {
+    const repo = createMemoryRepository()
+    await repo.insert({ id: '1', publicId: 'a', label: 'A', ownerUserId: 'user-1' })
+    await repo.insert({ id: '2', publicId: 'b', label: 'B', ownerUserId: 'user-2' })
+    const service = createSessionsService(repo)
+
+    expect((await service.list(50, 'user-1')).map((row) => row.publicId)).toEqual(['a'])
+    expect((await service.list(50, 'user-2')).map((row) => row.publicId)).toEqual(['b'])
+    expect(await service.list(50)).toHaveLength(2)
   })
 
   it('mengubah status dan menghapus sesi', async () => {

@@ -59,8 +59,8 @@ export function createSessionsService(repo: SessionsRepository) {
       return row
     },
 
-    async list(limit = 50): Promise<WaSessionRow[]> {
-      return repo.list(limit)
+    async list(limit = 50, ownerUserId?: string): Promise<WaSessionRow[]> {
+      return repo.list(limit, ownerUserId)
     },
 
     async create(values: CreateSessionValues): Promise<{ session: WaSessionRow; token: string }> {

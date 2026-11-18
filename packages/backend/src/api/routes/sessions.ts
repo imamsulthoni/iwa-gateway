@@ -307,7 +307,9 @@ export function createSessionsRoute(
   const router = new OpenAPIHono<AppBindings>()
 
   router.openapi(listSessionsRoute, async (c) => {
-    const rows = await sessions.list(50)
+    const actor = c.get('actor')
+    const ownerUserId = actor?.mode === 'sales' ? actor.user.id : undefined
+    const rows = await sessions.list(50, ownerUserId)
     return c.json({ items: rows.map(toSessionDto), nextCursor: null }, 200)
   })
 

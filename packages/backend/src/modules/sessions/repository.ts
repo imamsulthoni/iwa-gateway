@@ -34,8 +34,11 @@ export function createSessionsRepository(db: Database) {
       return row ?? null
     },
 
-    async list(limit = 50): Promise<WaSessionRow[]> {
-      return db.select().from(waSessions).orderBy(desc(waSessions.createdAt)).limit(limit)
+    async list(limit = 50, ownerUserId?: string): Promise<WaSessionRow[]> {
+      const query = ownerUserId
+        ? db.select().from(waSessions).where(eq(waSessions.ownerUserId, ownerUserId))
+        : db.select().from(waSessions)
+      return query.orderBy(desc(waSessions.createdAt)).limit(limit)
     },
 
     async update(id: string, values: Partial<typeof waSessions.$inferInsert>): Promise<void> {

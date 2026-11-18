@@ -765,6 +765,18 @@ describe('API Hono', () => {
     expect(sales.status).toBe(200)
   })
 
+  it('GET /sessions memakai filter owner untuk sales dan tanpa filter untuk admin', async () => {
+    const { app, sessions } = createTestApp()
+
+    await app.request('/sessions', { headers: { 'x-api-key': 'valid-key' } })
+    expect(sessions.list).toHaveBeenLastCalledWith(50, undefined)
+
+    await app.request('/sessions', {
+      headers: { authorization: `Bearer ${USER_TOKEN}` },
+    })
+    expect(sessions.list).toHaveBeenLastCalledWith(50, 'user-1')
+  })
+
   it('token login sales yang kedaluwarsa atau dicabut ditolak 401', async () => {
     const { app } = createTestApp({
       userAuth: {
