@@ -1,0 +1,74 @@
+name: wa-gateway
+
+services:
+  api:
+    build: { context: ., target: backend }
+    image: wa-backend:local
+    restart: unless-stopped
+    environment: &backend-env
+      NODE_ENV: production
+      PORT: '8467'
+      DATABASE_URL: mysql://wa:${MYSQL_PASSWORD:?}@mysql:3306/wa_bot
+      REDIS_URL: ${REDIS_URL:?}
+      AUTH_ENC_KEY: ${AUTH_ENC_KEY:?}
+      CORS_ORIGIN: ${PUBLIC_ORIGIN:?}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Jakarta}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    stop_grace_period: 20s # shutdown handler repo ini butuh sampai 10 detik
+
+  worker:
+    image: wa-backend:local
+    command: ['node', 'packages/backend/dist/worker.js']
+    restart: unless-stopped
+    environment: *backend-env
+    depends_on:
+      api: { condition: service_started }
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    stop_grace_period: 20s
+
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        VITE_API_BASE_URL: ${PUBLIC_ORIGIN:?}
+    restart: unless-stopped
+    ports: ['8080:80']
+    depends_on:
+      api: { condition: service_started }
+
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?}
+      MYSQL_DATABASE: wa_bot
+      MYSQL_USER: wa
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?}
+    # hanya untuk bootstrap migrate/seed, lalu hapus baris ini
+    ports: ['127.0.0.1:3306:3306']
+    volumes: ['mysql_data:/var/lib/mysql']
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-uwa', '-p${MYSQL_PASSWORD}']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes: ['redis_data:/data']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  mysql_data:
+  redis_data:
