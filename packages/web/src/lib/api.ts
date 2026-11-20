@@ -15,7 +15,7 @@ export class ApiError extends Error {
 }
 
 // Login sendiri memang bisa 401; jangan hapus form atau redirect saat PIN salah.
-const SKIP_401_HANDLING = new Set(['/auth/login'])
+const SKIP_401_HANDLING = new Set(['/v1/auth/login'])
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
@@ -29,7 +29,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const response = await fetch(`${getEnv().apiBaseUrl}${path}`, { ...init, headers })
 
-  if (response.status === 401 && !SKIP_401_HANDLING.has(path) && !path.startsWith('/stats')) {
+  if (response.status === 401 && !SKIP_401_HANDLING.has(path) && !path.startsWith('/v1/stats')) {
     clearAuth()
     if (typeof window !== 'undefined') window.location.assign('/app/login')
     throw new ApiError(401, 'UNAUTHORIZED', 'Sesi berakhir, silakan login ulang')
@@ -67,26 +67,26 @@ export const api = {
 }
 
 export async function verifyApiKey(apiKey: string): Promise<boolean> {
-  const response = await fetch(`${getEnv().apiBaseUrl}/stats`, {
+  const response = await fetch(`${getEnv().apiBaseUrl}/v1/stats`, {
     headers: { 'x-api-key': apiKey },
   })
   return response.ok
 }
 
 export function login(phoneNumber: string, pin: string): Promise<LoginResponseDto> {
-  return request<LoginResponseDto>('/auth/login', {
+  return request<LoginResponseDto>('/v1/auth/login', {
     method: 'POST',
     body: JSON.stringify({ phoneNumber, pin }),
   })
 }
 
 export function fetchMe(): Promise<AuthMeDto> {
-  return request<AuthMeDto>('/auth/me')
+  return request<AuthMeDto>('/v1/auth/me')
 }
 
 export async function logoutUser(): Promise<void> {
   try {
-    await request<void>('/auth/logout', { method: 'POST' })
+    await request<void>('/v1/auth/logout', { method: 'POST' })
   } finally {
     clearAuth()
   }

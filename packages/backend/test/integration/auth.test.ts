@@ -72,7 +72,7 @@ describeIntegration('integrasi alur auth sales', () => {
   })
 
   function login(phoneNumber: string, pin: string) {
-    return app.request('/auth/login', {
+    return app.request('/v1/auth/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ phoneNumber, pin }),
@@ -106,13 +106,13 @@ describeIntegration('integrasi alur auth sales', () => {
     const token = await loginToken(phoneA, '123456')
     const headers = { authorization: `Bearer ${token}` }
 
-    expect((await app.request(`/sessions/${a.session.id}`, { headers })).status).toBe(200)
-    expect((await app.request(`/sessions/${b.session.id}`, { headers })).status).toBe(403)
+    expect((await app.request(`/v1/sessions/${a.session.id}`, { headers })).status).toBe(200)
+    expect((await app.request(`/v1/sessions/${b.session.id}`, { headers })).status).toBe(403)
 
-    expect((await app.request('/auth/logout', { method: 'POST', headers })).status).toBe(204)
-    expect((await app.request(`/sessions/${a.session.id}`, { headers })).status).toBe(401)
+    expect((await app.request('/v1/auth/logout', { method: 'POST', headers })).status).toBe(204)
+    expect((await app.request(`/v1/sessions/${a.session.id}`, { headers })).status).toBe(401)
 
-    const adminDelete = await app.request(`/sessions/${a.session.id}`, {
+    const adminDelete = await app.request(`/v1/sessions/${a.session.id}`, {
       method: 'DELETE',
       headers: { 'x-api-key': API_KEY },
     })
@@ -130,7 +130,7 @@ describeIntegration('integrasi alur auth sales', () => {
     })
     const token = await loginToken(phone, '123456')
 
-    const reset = await app.request(`/sessions/${session.id}/sales/pin`, {
+    const reset = await app.request(`/v1/sessions/${session.id}/sales/pin`, {
       method: 'POST',
       headers: { 'x-api-key': API_KEY, 'content-type': 'application/json' },
       body: JSON.stringify({ pin: '654321' }),
@@ -138,7 +138,7 @@ describeIntegration('integrasi alur auth sales', () => {
     expect(reset.status).toBe(200)
 
     expect(
-      (await app.request(`/sessions/${session.id}`, { headers: { authorization: `Bearer ${token}` } }))
+      (await app.request(`/v1/sessions/${session.id}`, { headers: { authorization: `Bearer ${token}` } }))
         .status,
     ).toBe(401)
     expect((await login(phone, '123456')).status).toBe(401)
@@ -150,14 +150,14 @@ describeIntegration('integrasi alur auth sales', () => {
     const { session } = await sessions.create({ label: 'Lama', phoneNumber: phone })
     expect(session.salesName).toBeNull()
 
-    const denied = await app.request(`/sessions/${session.id}/sales`, {
+    const denied = await app.request(`/v1/sessions/${session.id}/sales`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ salesName: 'Rani', pin: '123456' }),
     })
     expect(denied.status).toBe(401)
 
-    const attached = await app.request(`/sessions/${session.id}/sales`, {
+    const attached = await app.request(`/v1/sessions/${session.id}/sales`, {
       method: 'PATCH',
       headers: { 'x-api-key': API_KEY, 'content-type': 'application/json' },
       body: JSON.stringify({ salesName: 'Rani', pin: '123456' }),
@@ -167,7 +167,7 @@ describeIntegration('integrasi alur auth sales', () => {
 
     const token = await loginToken(phone, '123456')
     expect(
-      (await app.request(`/sessions/${session.id}`, { headers: { authorization: `Bearer ${token}` } }))
+      (await app.request(`/v1/sessions/${session.id}`, { headers: { authorization: `Bearer ${token}` } }))
         .status,
     ).toBe(200)
   })

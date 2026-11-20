@@ -70,7 +70,7 @@ function HistoryPage() {
       try {
         const query = new URLSearchParams({ limit: '50', direction: 'out' })
         if (filterSessionId) query.set('sessionId', filterSessionId)
-        const page = await api.get<MessageListDto>(`/messages?${query.toString()}`)
+        const page = await api.get<MessageListDto>(`/v1/messages?${query.toString()}`)
         setRows(page.items)
         setLoaded(true)
       } catch (cause) {
@@ -101,7 +101,7 @@ function HistoryPage() {
     if (!deleteId) return
     setDeleting(true)
     try {
-      await api.delete(`/messages/${deleteId}`)
+      await api.delete(`/v1/messages/${deleteId}`)
       setRows((previous) => previous.filter((row) => row.id !== deleteId))
       setDeleteId(null)
     } catch (cause) {
@@ -115,7 +115,7 @@ function HistoryPage() {
     setRetryingId(id)
     setError(null)
     try {
-      const result = await api.post<RetryMessageResponseDto>(`/messages/${id}/retry`)
+      const result = await api.post<RetryMessageResponseDto>(`/v1/messages/${id}/retry`)
       setRows((previous) => previous.map((row) => (row.id === id ? result.message : row)))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Gagal mengirim ulang pesan')

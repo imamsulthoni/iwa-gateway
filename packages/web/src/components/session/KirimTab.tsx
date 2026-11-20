@@ -38,7 +38,7 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
     async () => {
       if (!result) return null
       const page = await api.get<MessageListDto>(
-        `/sessions/${session.id}/messages?limit=20&direction=out`,
+        `/v1/sessions/${session.id}/messages?limit=20&direction=out`,
       )
       return page.items.find((item) => item.id === result.message.id) ?? null
     },
@@ -68,7 +68,7 @@ export function KirimTab({ session, onChanged }: KirimTabProps) {
     setError(null)
     try {
       const response = await api.post<SendMessageResponseDto>(
-        `/sessions/${session.id}/messages`,
+        `/v1/sessions/${session.id}/messages`,
         {
           to: to.replace(/\D/g, ''),
           clientRef: clientRef.trim() || newClientRef(),

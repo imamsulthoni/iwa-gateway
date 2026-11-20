@@ -25,7 +25,7 @@ const STATUS_OPTIONS = [{ value: 'all', label: 'Semua status' }].concat(
 function NumbersPage() {
   const navigate = useNavigate()
   const admin = isAdmin()
-  const sessions = usePolling(() => api.get<SessionListDto>('/sessions'), 10_000, true)
+  const sessions = usePolling(() => api.get<SessionListDto>('/v1/sessions'), 10_000, true)
   const [createOpen, setCreateOpen] = useState(false)
   const [tokenResult, setTokenResult] = useState<SessionTokenDto | null>(null)
   const [query, setQuery] = useState('')
@@ -47,7 +47,7 @@ function NumbersPage() {
     setDeleting(true)
     setDeleteError(null)
     try {
-      await api.delete(`/sessions/${deleteTarget.id}`)
+      await api.delete(`/v1/sessions/${deleteTarget.id}`)
       setDeleteTarget(null)
       refresh()
     } catch (cause) {

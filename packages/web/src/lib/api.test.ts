@@ -47,7 +47,7 @@ describe('klien API web', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(api.get('/sessions')).resolves.toEqual({ items: [] })
+    await expect(api.get('/v1/sessions')).resolves.toEqual({ items: [] })
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     const headers = new Headers(init.headers)
     expect(headers.get('x-api-key')).toBe('wa_key')
@@ -61,7 +61,7 @@ describe('klien API web', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    await api.get('/sessions')
+    await api.get('/v1/sessions')
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     const headers = new Headers(init.headers)
     expect(headers.get('authorization')).toBe('Bearer tok_123')
@@ -79,7 +79,7 @@ describe('klien API web', () => {
       ),
     )
 
-    await expect(api.get('/sessions')).rejects.toBeInstanceOf(ApiError)
+    await expect(api.get('/v1/sessions')).rejects.toBeInstanceOf(ApiError)
     expect(getApiKey()).toBeNull()
   })
 
@@ -90,7 +90,7 @@ describe('klien API web', () => {
       vi.fn(async () => new Response('{}', { status: 401 })),
     )
 
-    await expect(api.get('/sessions')).rejects.toMatchObject({ status: 401 })
+    await expect(api.get('/v1/sessions')).rejects.toMatchObject({ status: 401 })
     expect(getAuth()).toBeNull()
   })
 
@@ -106,7 +106,7 @@ describe('klien API web', () => {
       ),
     )
 
-    await expect(api.get('/settings')).rejects.toMatchObject({ status: 403 })
+    await expect(api.get('/v1/settings')).rejects.toMatchObject({ status: 403 })
     expect(getAuth()).toEqual({ mode: 'sales', token: 'tok_123', user: SALES })
   })
 
@@ -122,7 +122,7 @@ describe('klien API web', () => {
       ),
     )
 
-    await expect(api.post('/sessions', {})).rejects.toMatchObject({
+    await expect(api.post('/v1/sessions', {})).rejects.toMatchObject({
       status: 422,
       code: 'VALIDATION_ERROR',
       message: 'Data tidak valid',
@@ -142,7 +142,7 @@ describe('klien API web', () => {
 
     await expect(login('628123456789', '1234')).resolves.toMatchObject({ token: 'tok' })
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toContain('/auth/login')
+    expect(url).toContain('/v1/auth/login')
     expect(init.body).toBe(JSON.stringify({ phoneNumber: '628123456789', pin: '1234' }))
     expect(new Headers(init.headers).get('authorization')).toBeNull()
   })

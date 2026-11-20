@@ -51,7 +51,7 @@ export function BroadcastTab({ session, broadcast, defaultDelay, onRefresh }: Br
     broadcast?.status === 'pending' ||
     broadcast?.status === 'scheduled'
   const current = usePolling<BroadcastCurrentDto>(
-    () => api.get<BroadcastCurrentDto>(`/sessions/${session.id}/broadcast/current`),
+    () => api.get<BroadcastCurrentDto>(`/v1/sessions/${session.id}/broadcast/current`),
     3_000,
     live,
   )
@@ -94,7 +94,7 @@ export function BroadcastTab({ session, broadcast, defaultDelay, onRefresh }: Br
   async function cancel() {
     setCancelError(null)
     try {
-      await api.post(`/sessions/${session.id}/broadcast/cancel`)
+      await api.post(`/v1/sessions/${session.id}/broadcast/cancel`)
       current.refresh()
       onRefresh()
     } catch (cause) {

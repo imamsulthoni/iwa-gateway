@@ -32,7 +32,7 @@ export function RiwayatTab({ session }: RiwayatTabProps) {
       const query = new URLSearchParams({ limit: '20', direction: 'out' })
       if (nextCursor) query.set('cursor', nextCursor)
       const page = await api.get<MessageListDto>(
-        `/sessions/${session.id}/messages?${query.toString()}`,
+        `/v1/sessions/${session.id}/messages?${query.toString()}`,
       )
       setItems((previous) => (nextCursor ? [...previous, ...page.items] : page.items))
       setCursor(page.nextCursor)
@@ -52,7 +52,7 @@ export function RiwayatTab({ session }: RiwayatTabProps) {
     setRetryingId(id)
     setError(null)
     try {
-      const result = await api.post<RetryMessageResponseDto>(`/messages/${id}/retry`)
+      const result = await api.post<RetryMessageResponseDto>(`/v1/messages/${id}/retry`)
       setItems((previous) => previous.map((item) => (item.id === id ? result.message : item)))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Gagal mengirim ulang pesan')

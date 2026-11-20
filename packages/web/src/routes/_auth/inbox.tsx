@@ -48,7 +48,7 @@ function mergeLatest(current: RoomMessageDto[], incoming: RoomMessageDto[]): Roo
 }
 
 function InboxPage() {
-  const sessions = usePolling<SessionListDto>(() => api.get<SessionListDto>('/sessions'), 20_000)
+  const sessions = usePolling<SessionListDto>(() => api.get<SessionListDto>('/v1/sessions'), 20_000)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<RoomMessageDto[]>([])

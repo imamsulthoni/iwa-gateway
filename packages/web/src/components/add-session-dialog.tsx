@@ -52,7 +52,7 @@ export function AddSessionDialog({ open, onClose, onCreated }: AddSessionDialogP
     setBusy(true)
     setError(null)
     try {
-      const result = await api.post<SessionTokenDto>('/sessions', {
+      const result = await api.post<SessionTokenDto>('/v1/sessions', {
         label: publicId.trim(),
         publicId: publicId.trim(),
         mode: 'qr',

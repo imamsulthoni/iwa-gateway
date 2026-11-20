@@ -63,7 +63,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   })).filter((group) => group.items.length > 0)
   const health = usePolling<HealthDto>(() => api.get<HealthDto>('/'), 20_000, true)
   const sessions = usePolling<SessionListDto>(
-    () => api.get<SessionListDto>('/sessions'),
+    () => api.get<SessionListDto>('/v1/sessions'),
     20_000,
     true,
   )

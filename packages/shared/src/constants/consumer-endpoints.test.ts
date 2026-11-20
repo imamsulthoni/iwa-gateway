@@ -30,13 +30,14 @@ describe('CONSUMER_ENDPOINTS', () => {
     }
   })
 
-  it('tidak memuat endpoint dashboard internal', () => {
+  it('hanya memuat path berprefix /v1 tanpa endpoint dashboard internal', () => {
     const paths = CONSUMER_ENDPOINTS.map((endpoint) => endpoint.path)
 
-    for (const forbidden of ['/auth', '/settings', '/stats', '/messages']) {
-      expect(paths).not.toContain(forbidden)
+    for (const path of paths) {
+      expect(path.startsWith('/v1/')).toBe(true)
     }
-    expect(paths.some((path) => path.startsWith('/auth/'))).toBe(false)
-    expect(paths.some((path) => path.startsWith('/messages/'))).toBe(false)
+    for (const internal of ['/v1/auth/login', '/v1/auth/me', '/v1/settings', '/v1/stats']) {
+      expect(paths).not.toContain(internal)
+    }
   })
 })

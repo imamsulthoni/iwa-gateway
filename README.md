@@ -140,7 +140,9 @@ logs/*.log {
 
 Referensi interaktif: `GET /openapi.json` (OpenAPI 3.1) dan `GET /docs` (Scalar). Versi markdown untuk reviewer/integrator: [`API-CONTRACT.md`](./API-CONTRACT.md).
 
-Auth: `x-api-key` (API key admin) untuk endpoint admin, atau `Authorization: Bearer <token login sales>` untuk sales (login nomor WhatsApp + PIN lewat `POST /auth/login`). Endpoint pesan per sesi menerima API key, token login sales, atau `Authorization: Bearer <token sesi>`. Endpoint sales otomatis dibatasi ke sesi & inbox miliknya (403 di luar itu).
+Semua endpoint API berprefix `/v1`; endpoint infra (`/`, `/openapi.json`, `/docs`) tidak berprefix.
+
+Auth: `x-api-key` (API key admin) untuk endpoint admin, atau `Authorization: Bearer <token login sales>` untuk sales (login nomor WhatsApp + PIN lewat `POST /v1/auth/login`). Endpoint pesan per sesi menerima API key, token login sales, atau `Authorization: Bearer <token sesi>`. Endpoint sales otomatis dibatasi ke sesi & inbox miliknya (403 di luar itu).
 
 - Format error: `{ "error": { "code": "snake_case", "message": "..." } }`
 - Pagination: `limit` (default 20, maksimum 100) + `cursor` opak → `{ "items": [...], "nextCursor": "..." }`
@@ -152,55 +154,55 @@ Auth: `x-api-key` (API key admin) untuk endpoint admin, atau `Authorization: Bea
 
 ### Endpoint
 
-| Method   | Endpoint                          | Fungsi                                                              |
-| -------- | --------------------------------- | ------------------------------------------------------------------- |
-| `GET`    | `/`                               | Nama, versi, status dependensi, dan metrik                          |
-| `GET`    | `/openapi.json`                   | Dokumen OpenAPI 3.1                                                 |
-| `GET`    | `/docs`                           | Dokumentasi interaktif (Scalar)                                     |
-| `POST`   | `/auth/login`                     | Login sales (nomor WhatsApp + PIN), rate limit ketat                |
-| `GET`    | `/auth/me`                        | Identitas aktor: admin atau sales                                   |
-| `POST`   | `/auth/logout`                    | Cabut token login sales                                             |
-| `GET`    | `/settings`                       | `maxSales`, jumlah sales aktif, default delay (admin)               |
-| `PATCH`  | `/settings`                       | Ubah batas sales dan default delay broadcast (admin)                |
-| `GET`    | `/stats`                          | Sesi terhubung, pesan hari ini, total pesan, broadcast              |
-| `GET`    | `/sessions`                       | Daftar sesi (sales: hanya miliknya)                                 |
-| `POST`   | `/sessions`                       | Buat sesi + akun sales + token sekali tampil                        |
-| `GET`    | `/sessions/:id`                   | Detail sesi                                                         |
-| `DELETE` | `/sessions/:id`                   | Hapus sesi + auth state (cascade)                                   |
-| `GET`    | `/sessions/:id/status`            | Status ringkas sesi + label UI                                      |
-| `GET`    | `/sessions/:id/live`              | Gabungan state dashboard: sesi, QR, pairing, broadcast, delay       |
-| `GET`    | `/sessions/:id/qr`                | QR sebagai data-URL                                                 |
-| `GET`    | `/sessions/:id/pairing`           | Kode pairing terakhir                                               |
-| `POST`   | `/sessions/:id/pairing`           | Dinonaktifkan (pairing hanya lewat QR)                              |
-| `POST`   | `/sessions/:id/cancel`            | Batalkan proses pairing (admin atau sales pemilik sesi)             |
-| `POST`   | `/sessions/:id/login`             | Mulai/login ulang koneksi (admin atau sales pemilik sesi)           |
-| `POST`   | `/sessions/:id/logout`            | Logout sesi dan hapus auth tersimpan                                |
-| `POST`   | `/sessions/:id/token`             | Rotasi token sesi (tampil sekali)                                   |
-| `PATCH`  | `/sessions/:id/sales`             | Tautkan akun sales ke sesi lama (admin)                             |
-| `POST`   | `/sessions/:id/sales/pin`         | Reset PIN sales + cabut token login lama (admin)                    |
-| `POST`   | `/sessions/:id/messages`          | Kirim pesan teks — API key, token sesi, atau token sales            |
-| `GET`    | `/sessions/:id/messages`          | Riwayat pesan per sesi — API key, token sesi, atau token sales      |
-| `POST`   | `/sessions/:id/broadcast`         | Buat dan mulai broadcast (admin atau sales pemilik sesi)            |
-| `GET`    | `/sessions/:id/broadcast/current` | Job broadcast berjalan/terakhir (admin atau sales pemilik sesi)     |
-| `POST`   | `/sessions/:id/broadcast/cancel`  | Batalkan broadcast berjalan (admin atau sales pemilik sesi)         |
-| `GET`    | `/messages`                       | Riwayat lintas sesi (`limit`, `sessionId`)                          |
-| `DELETE` | `/messages/:id`                   | Soft delete satu entri riwayat                                      |
-| `POST`   | `/messages/:id/retry`             | Kirim ulang pesan berstatus `failed`                                |
-| `GET`    | `/v1/sessions/:id/events`         | Stream SSE: status sesi, QR, pesan masuk, status pesan              |
-| `GET`    | `/v1/sessions/:id/conversations`  | Daftar room chat sesi, urut `lastMessageAt` terbaru (cursor)        |
-| `GET`    | `/v1/conversations/:id/messages`  | Riwayat pesan satu room (cursor)                                    |
-| `POST`   | `/v1/conversations/:id/read`      | Tandai room dibaca: reset unread dan status pesan masuk jadi `read` |
-| `POST`   | `/v1/messages`                    | Kirim pesan teks (`sessionId`, `to`, `text`, `clientRef`)           |
-| `POST`   | `/v1/broadcasts`                  | Broadcast teks, opsional `scheduledAt` (ISO-8601 UTC)               |
-| `GET`    | `/v1/broadcasts/:id`              | Status, progres, dan status per penerima                            |
-| `POST`   | `/v1/broadcasts/:id/start`        | Mulai broadcast terjadwal atau lanjutkan yang dijeda                |
-| `POST`   | `/v1/broadcasts/:id/pause`        | Jeda broadcast; penerima tersisa tetap `pending`                    |
-| `GET`    | `/v1/webhooks`                    | Daftar endpoint webhook (tanpa secret)                              |
-| `POST`   | `/v1/webhooks`                    | Daftarkan endpoint + event; secret tampil sekali                    |
-| `PATCH`  | `/v1/webhooks/:id`                | Ubah URL, event, atau status aktif                                  |
-| `DELETE` | `/v1/webhooks/:id`                | Hapus endpoint beserta log delivery                                 |
-| `POST`   | `/v1/webhooks/:id/rotate-secret`  | Rotasi secret (tampil sekali)                                       |
-| `GET`    | `/v1/webhooks/:id/deliveries`     | Log delivery (`limit`, `cursor`, filter `status`)                   |
+| Method   | Endpoint                             | Fungsi                                                              |
+| -------- | ------------------------------------ | ------------------------------------------------------------------- |
+| `GET`    | `/`                                  | Nama, versi, status dependensi, dan metrik                          |
+| `GET`    | `/openapi.json`                      | Dokumen OpenAPI 3.1                                                 |
+| `GET`    | `/docs`                              | Dokumentasi interaktif (Scalar)                                     |
+| `POST`   | `/v1/auth/login`                     | Login sales (nomor WhatsApp + PIN), rate limit ketat                |
+| `GET`    | `/v1/auth/me`                        | Identitas aktor: admin atau sales                                   |
+| `POST`   | `/v1/auth/logout`                    | Cabut token login sales                                             |
+| `GET`    | `/v1/settings`                       | `maxSales`, jumlah sales aktif, default delay (admin)               |
+| `PATCH`  | `/v1/settings`                       | Ubah batas sales dan default delay broadcast (admin)                |
+| `GET`    | `/v1/stats`                          | Sesi terhubung, pesan hari ini, total pesan, broadcast              |
+| `GET`    | `/v1/sessions`                       | Daftar sesi (sales: hanya miliknya)                                 |
+| `POST`   | `/v1/sessions`                       | Buat sesi + akun sales + token sekali tampil                        |
+| `GET`    | `/v1/sessions/:id`                   | Detail sesi                                                         |
+| `DELETE` | `/v1/sessions/:id`                   | Hapus sesi + auth state (cascade)                                   |
+| `GET`    | `/v1/sessions/:id/status`            | Status ringkas sesi + label UI                                      |
+| `GET`    | `/v1/sessions/:id/live`              | Gabungan state dashboard: sesi, QR, pairing, broadcast, delay       |
+| `GET`    | `/v1/sessions/:id/qr`                | QR sebagai data-URL                                                 |
+| `GET`    | `/v1/sessions/:id/pairing`           | Kode pairing terakhir                                               |
+| `POST`   | `/v1/sessions/:id/pairing`           | Dinonaktifkan (pairing hanya lewat QR)                              |
+| `POST`   | `/v1/sessions/:id/cancel`            | Batalkan proses pairing (admin atau sales pemilik sesi)             |
+| `POST`   | `/v1/sessions/:id/login`             | Mulai/login ulang koneksi (admin atau sales pemilik sesi)           |
+| `POST`   | `/v1/sessions/:id/logout`            | Logout sesi dan hapus auth tersimpan                                |
+| `POST`   | `/v1/sessions/:id/token`             | Rotasi token sesi (tampil sekali)                                   |
+| `PATCH`  | `/v1/sessions/:id/sales`             | Tautkan akun sales ke sesi lama (admin)                             |
+| `POST`   | `/v1/sessions/:id/sales/pin`         | Reset PIN sales + cabut token login lama (admin)                    |
+| `POST`   | `/v1/sessions/:id/messages`          | Kirim pesan teks — API key, token sesi, atau token sales            |
+| `GET`    | `/v1/sessions/:id/messages`          | Riwayat pesan per sesi — API key, token sesi, atau token sales      |
+| `POST`   | `/v1/sessions/:id/broadcast`         | Buat dan mulai broadcast (admin atau sales pemilik sesi)            |
+| `GET`    | `/v1/sessions/:id/broadcast/current` | Job broadcast berjalan/terakhir (admin atau sales pemilik sesi)     |
+| `POST`   | `/v1/sessions/:id/broadcast/cancel`  | Batalkan broadcast berjalan (admin atau sales pemilik sesi)         |
+| `GET`    | `/v1/messages`                       | Riwayat lintas sesi (`limit`, `sessionId`)                          |
+| `DELETE` | `/v1/messages/:id`                   | Soft delete satu entri riwayat                                      |
+| `POST`   | `/v1/messages/:id/retry`             | Kirim ulang pesan berstatus `failed`                                |
+| `GET`    | `/v1/sessions/:id/events`            | Stream SSE: status sesi, QR, pesan masuk, status pesan              |
+| `GET`    | `/v1/sessions/:id/conversations`     | Daftar room chat sesi, urut `lastMessageAt` terbaru (cursor)        |
+| `GET`    | `/v1/conversations/:id/messages`     | Riwayat pesan satu room (cursor)                                    |
+| `POST`   | `/v1/conversations/:id/read`         | Tandai room dibaca: reset unread dan status pesan masuk jadi `read` |
+| `POST`   | `/v1/messages`                       | Kirim pesan teks (`sessionId`, `to`, `text`, `clientRef`)           |
+| `POST`   | `/v1/broadcasts`                     | Broadcast teks, opsional `scheduledAt` (ISO-8601 UTC)               |
+| `GET`    | `/v1/broadcasts/:id`                 | Status, progres, dan status per penerima                            |
+| `POST`   | `/v1/broadcasts/:id/start`           | Mulai broadcast terjadwal atau lanjutkan yang dijeda                |
+| `POST`   | `/v1/broadcasts/:id/pause`           | Jeda broadcast; penerima tersisa tetap `pending`                    |
+| `GET`    | `/v1/webhooks`                       | Daftar endpoint webhook (tanpa secret)                              |
+| `POST`   | `/v1/webhooks`                       | Daftarkan endpoint + event; secret tampil sekali                    |
+| `PATCH`  | `/v1/webhooks/:id`                   | Ubah URL, event, atau status aktif                                  |
+| `DELETE` | `/v1/webhooks/:id`                   | Hapus endpoint beserta log delivery                                 |
+| `POST`   | `/v1/webhooks/:id/rotate-secret`     | Rotasi secret (tampil sekali)                                       |
+| `GET`    | `/v1/webhooks/:id/deliveries`        | Log delivery (`limit`, `cursor`, filter `status`)                   |
 
 `:id` sesi adalah `public_id` (slug 1–32 karakter `[A-Za-z0-9_-]`); `:id` conversation, broadcast, dan webhook adalah UUID.
 
@@ -209,7 +211,7 @@ Auth: `x-api-key` (API key admin) untuk endpoint admin, atau `Authorization: Bea
 - **Admin** masuk dengan API key. Admin membuat nomor sekaligus akun sales (nama, nomor WhatsApp, PIN), mengatur batas jumlah sales di Pengaturan, melihat semua nomor/riwayat, dan mengelola webhook.
 - **Sales** masuk dengan nomor WhatsApp + PIN. Menu yang tersedia hanya Nomor dan Inbox; daftar nomor, detail, inbox, SSE, kirim pesan, broadcast, dan riwayat pesan dibatasi ke sesinya sendiri. Sales tidak bisa menambah, menghapus, pairing ulang, logout nomor, mereset PIN, atau mengirim ulang pesan gagal.
 - Login gagal selalu `Nomor atau PIN salah`; nomor yang belum punya sesi membalas `NO_SESSION` (403). Reset PIN lewat detail nomor mencabut token login lama.
-- Sesi lama (`owner_user_id` kosong) hanya bisa diakses admin sampai ditautkan lewat `PATCH /sessions/:id/sales`.
+- Sesi lama (`owner_user_id` kosong) hanya bisa diakses admin sampai ditautkan lewat `PATCH /v1/sessions/:id/sales`.
 
 ### Webhook keluar
 

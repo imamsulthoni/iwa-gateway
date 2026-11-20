@@ -30,21 +30,21 @@ export type ConsumerEndpoint = {
 export const CONSUMER_ENDPOINTS = [
   {
     method: 'GET',
-    path: '/sessions',
+    path: '/v1/sessions',
     group: 'numbers',
     summary: 'Daftar nomor; ambil publicId yang berstatus connected.',
     auth: 'x-api-key',
   },
   {
     method: 'GET',
-    path: '/sessions/{id}',
+    path: '/v1/sessions/{id}',
     group: 'numbers',
     summary: 'Detail satu nomor.',
     auth: 'x-api-key',
   },
   {
     method: 'GET',
-    path: '/sessions/{id}/status',
+    path: '/v1/sessions/{id}/status',
     group: 'numbers',
     summary: 'Status ringkas nomor.',
     auth: 'x-api-key',
@@ -79,7 +79,7 @@ export const CONSUMER_ENDPOINTS = [
   },
   {
     method: 'GET',
-    path: '/sessions/{id}/messages',
+    path: '/v1/sessions/{id}/messages',
     group: 'conversations',
     summary: 'Riwayat pesan per nomor sebagai alternatif.',
     auth: 'x-api-key',

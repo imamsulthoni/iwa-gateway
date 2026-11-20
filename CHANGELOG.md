@@ -9,11 +9,11 @@ Fase 2 (F2-M0 sampai F2-M3): inbox/room chat, SSE, webhook, opt-out, dan broadca
 
 ### Added
 
-- Autentikasi admin/sales: `users`, `user_sessions` (token opaque 7 hari, disimpan sebagai hash), login nomor WhatsApp + PIN (`POST /auth/login`, scrypt + salt), `/auth/me`, `/auth/logout`, rate limit 5 percobaan / 5 menit per IP dan nomor.
-- Otorisasi per role: API key admin atau Bearer sales, scoping sesi/inbox/SSE, `GET /sessions` difilter owner, endpoint admin menolak sales `403`.
-- Pengaturan server-side `max_sales` (`GET`/`PATCH /settings`, fallback 10) dan pembuatan akun sales bersama sesi dalam satu transaksi.
+- Autentikasi admin/sales: `users`, `user_sessions` (token opaque 7 hari, disimpan sebagai hash), login nomor WhatsApp + PIN (`POST /v1/auth/login`, scrypt + salt), `/v1/auth/me`, `/v1/auth/logout`, rate limit 5 percobaan / 5 menit per IP dan nomor.
+- Otorisasi per role: API key admin atau Bearer sales, scoping sesi/inbox/SSE, `GET /v1/sessions` difilter owner, endpoint admin menolak sales `403`.
+- Pengaturan server-side `max_sales` (`GET`/`PATCH /v1/settings`, fallback 10) dan pembuatan akun sales bersama sesi dalam satu transaksi.
 - `salesName` pada `SessionDto` dan riwayat pesan lintas sesi; UI sales read-only untuk Nomor/Inbox, guard halaman admin, dan kartu batas sales.
-- Reset PIN sales (`POST /sessions/{id}/sales/pin`) dan penautan akun sales ke sesi lama (`PATCH /sessions/{id}/sales`).
+- Reset PIN sales (`POST /v1/sessions/{id}/sales/pin`) dan penautan akun sales ke sesi lama (`PATCH /v1/sessions/{id}/sales`).
 - Inbox dan room chat per JID: pesan masuk `notify` (teks dan label non-teks seperti `image`/`document`) tersimpan idempoten lewat `(session_id, wa_message_id)`, percakapan di-upsert dengan LID kanonis + PN alternatif, unread count, dan `POST /v1/conversations/:id/read`.
 - SSE `GET /v1/sessions/:id/events` lewat Redis pub/sub dengan envelope `id`/`event`/`data`, heartbeat 15 detik, dan auth `x-api-key` melalui `fetch` streaming.
 - Webhook keluar: CRUD endpoint, secret sekali tampil + rotasi, outbox `webhook_deliveries`, dispatcher `SELECT ... FOR UPDATE SKIP LOCKED`, HMAC `sha256=`, `X-Event-Id` stabil, timeout 10 detik, retry 3 percobaan (jeda 10 lalu 20 detik), dan log delivery.
@@ -27,13 +27,13 @@ Fase 2 (F2-M0 sampai F2-M3): inbox/room chat, SSE, webhook, opt-out, dan broadca
 
 - Breaking change: field idempotensi `referenceId` menjadi `clientRef` pada API pesan dan broadcast (kolom `reference_id` di-rename menjadi `client_ref`, data lama tetap terbaca).
 - Skema target 12 tabel: `conversations`, `opt_outs`, `webhook_endpoints`, `webhook_deliveries`; `broadcasts.template` → `text`; status broadcast/recipient diperluas.
-- Endpoint Fase 2 memakai prefiks `/v1`; endpoint Fase 1 tetap tanpa prefiks.
+- Breaking change: semua endpoint API kini berprefix `/v1` (termasuk sesi, pesan, stats, settings, auth); endpoint infra `/`, `/openapi.json`, dan `/docs` tetap tanpa prefix. Path lama tanpa `/v1` dihapus, tanpa alias.
 
 ### Security
 
 - Secret webhook tidak pernah dikembalikan pada list/update, hanya saat create/rotate; header `X-Signature` memakai HMAC-SHA256 body.
 - URL webhook wajib HTTPS (loopback hanya untuk uji lokal) dan endpoint `/v1` memakai rate limit per API key.
-- PIN sales hanya diterima di body `POST /auth/login` dan endpoint admin; disimpan sebagai hash scrypt dan tidak pernah masuk response/log. Token login dan token sesi disimpan sebagai hash; logout/reset PIN mencabut token lama.
+- PIN sales hanya diterima di body `POST /v1/auth/login` dan endpoint admin; disimpan sebagai hash scrypt dan tidak pernah masuk response/log. Token login dan token sesi disimpan sebagai hash; logout/reset PIN mencabut token lama.
 - Sales tidak bisa mengakses data sales lain (`403`), termasuk sesi, inbox, SSE, riwayat lintas sesi, webhook, dan settings.
 
 ### Migrasi

@@ -97,20 +97,20 @@ export function createApp(deps: AppDependencies) {
 
   app.route('/', createHealthRoute({ db: deps.db, redis: deps.redis }))
 
-  // Login sales publik; /auth/me dan /auth/logout menerima API key atau token login.
-  app.use('/auth/login', loginRateLimitMiddleware(deps.redis))
-  app.route('/auth', createAuthRoute({ apiKey: deps.auth, auth: deps.userAuth }))
+  // Login sales publik; /v1/auth/me dan /v1/auth/logout menerima API key atau token login.
+  app.use('/v1/auth/login', loginRateLimitMiddleware(deps.redis))
+  app.route('/v1/auth', createAuthRoute({ apiKey: deps.auth, auth: deps.userAuth }))
 
-  app.use('/stats', anyAuth, requireAdmin, rateLimit)
-  app.route('/', createStatsRoute(deps.stats))
+  app.use('/v1/stats', anyAuth, requireAdmin, rateLimit)
+  app.route('/v1', createStatsRoute(deps.stats))
 
-  app.use('/settings', anyAuth, requireAdmin, rateLimit)
-  app.route('/', createSettingsRoute(deps.settings))
+  app.use('/v1/settings', anyAuth, requireAdmin, rateLimit)
+  app.route('/v1', createSettingsRoute(deps.settings))
 
   // Endpoint pesan per sesi menerima API key, token sesi, atau token login sales.
   const sessionRateLimit = sessionRateLimitMiddleware(deps.redis, deps.env.RATE_LIMIT_PER_MIN)
   app.route(
-    '/sessions',
+    '/v1/sessions',
     createSessionMessagesRoute(
       deps.sessions,
       deps.messages,
@@ -123,18 +123,23 @@ export function createApp(deps: AppDependencies) {
 
   // Pola wildcard Hono juga cocok dengan path tanpa segmen tambahan, jadi satu
   // pola per prefix cukup dan mencegah middleware/rate limit berjalan dua kali.
-  app.use('/sessions/*', anyAuth, rateLimit)
-  app.use('/messages/*', anyAuth, requireAdmin, rateLimit)
+  app.use('/v1/sessions/*', anyAuth, rateLimit)
+  // POST /v1/messages (kirim) menerima sales; GET /v1/messages (riwayat lintas
+  // sesi) khusus admin. Wildcard tidak dipakai agar method tidak tercampur.
+  app.use('/v1/messages', anyAuth, rateLimit)
+  app.on('GET', '/v1/messages', requireAdmin)
+  app.use('/v1/messages/:id', anyAuth, requireAdmin, rateLimit)
+  app.use('/v1/messages/:id/retry', anyAuth, requireAdmin, rateLimit)
 
   app.route(
-    '/sessions',
+    '/v1/sessions',
     createSessionsRoute(deps.sessions, deps.broadcasts, deps.redis, deps.settings),
   )
   app.route(
-    '/sessions',
+    '/v1/sessions',
     createBroadcastsRoute(deps.broadcasts, deps.sessions, deps.queues, deps.settings),
   )
-  app.route('/messages', createMessagesRoute(deps.messages, deps.queues))
+  app.route('/v1/messages', createMessagesRoute(deps.messages, deps.queues))
 
   // Kirim pesan dan broadcast menerima admin maupun sales (dibatasi ke sesi
   // miliknya); webhook tetap khusus admin.
@@ -144,7 +149,6 @@ export function createApp(deps: AppDependencies) {
   app.use('/v1/conversations/:id/messages', anyAuth, rateLimit)
   app.use('/v1/conversations/:id/read', anyAuth, rateLimit)
   app.use('/v1/sessions/:id/events', anyAuth, rateLimit)
-  app.use('/v1/messages', anyAuth, rateLimit)
 
   app.route(
     '/v1',

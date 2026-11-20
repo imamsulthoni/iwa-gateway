@@ -120,6 +120,10 @@ function DocsPage() {
                 {apiBaseUrl}
               </code>
             </div>
+            <p className="text-small text-ink-soft">
+              Semua endpoint API memakai prefix <code className="font-data">/v1</code>; base URL di
+              atas tidak termasuk prefix tersebut.
+            </p>
             <nav className="flex flex-wrap gap-1.5 lg:hidden">
               {NAV.map((item) => (
                 <a
