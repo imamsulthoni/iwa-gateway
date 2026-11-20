@@ -95,7 +95,7 @@ export const CONSUMER_ENDPOINTS = [
     method: 'POST',
     path: '/v1/broadcasts',
     group: 'broadcasts',
-    summary: 'Buat broadcast teks, opsional scheduledAt (ISO-8601 UTC).',
+    summary: 'Buat broadcast teks; minDelay, maxDelay, dan scheduledAt opsional.',
     auth: 'x-api-key',
   },
   {

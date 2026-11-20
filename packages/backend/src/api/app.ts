@@ -130,7 +130,10 @@ export function createApp(deps: AppDependencies) {
     '/sessions',
     createSessionsRoute(deps.sessions, deps.broadcasts, deps.redis, deps.settings),
   )
-  app.route('/sessions', createBroadcastsRoute(deps.broadcasts, deps.sessions, deps.queues))
+  app.route(
+    '/sessions',
+    createBroadcastsRoute(deps.broadcasts, deps.sessions, deps.queues, deps.settings),
+  )
   app.route('/messages', createMessagesRoute(deps.messages, deps.queues))
 
   // Kirim pesan dan broadcast menerima admin maupun sales (dibatasi ke sesi
@@ -148,7 +151,10 @@ export function createApp(deps: AppDependencies) {
     createV1MessagesRoute(deps.messages, deps.conversations, deps.sessions, deps.queues),
   )
   app.route('/v1', createConversationsRoute(deps.conversations, deps.sessions))
-  app.route('/v1', createBroadcastsV1Route(deps.broadcasts, deps.sessions, deps.queues))
+  app.route(
+    '/v1',
+    createBroadcastsV1Route(deps.broadcasts, deps.sessions, deps.queues, deps.settings),
+  )
   app.route('/v1', createWebhooksRoute(deps.webhooks))
   app.route('/v1', createEventsRoute(deps.sessions, deps.redis, deps.logger))
 

@@ -13,7 +13,7 @@ export const sendMessageSchema = z.object({
 export type SendMessageInput = z.infer<typeof sendMessageSchema>
 
 export const sendMessageV1Schema = sendMessageSchema.extend({
-  sessionId: z.string().min(1).max(32),
+  sessionId: z.string().min(1).max(64).describe('ID internal sesi (wa_session.id)'),
 })
 
 export type SendMessageV1Input = z.infer<typeof sendMessageV1Schema>

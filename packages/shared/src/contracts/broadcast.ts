@@ -11,18 +11,25 @@ export const broadcastRecipientInputSchema = z.object({
 const broadcastInputSchema = z.object({
   recipients: z.array(broadcastRecipientInputSchema).min(1).max(1000),
   text: z.string().min(1).max(4096),
-  minDelay: z.number().int().min(MIN_DELAY_SECONDS).max(MAX_DELAY_SECONDS),
-  maxDelay: z.number().int().min(MIN_DELAY_SECONDS).max(MAX_DELAY_SECONDS),
+  minDelay: z.number().int().min(MIN_DELAY_SECONDS).max(MAX_DELAY_SECONDS).optional(),
+  maxDelay: z.number().int().min(MIN_DELAY_SECONDS).max(MAX_DELAY_SECONDS).optional(),
   clientRef: z.string().min(1).max(191),
 })
 
+function isValidOptionalDelayRange(value: { minDelay?: number; maxDelay?: number }): boolean {
+  if (value.minDelay === undefined && value.maxDelay === undefined) return true
+  if (value.minDelay === undefined || value.maxDelay === undefined) return false
+  return isValidDelayRange(value.minDelay, value.maxDelay)
+}
+
 const delayRangeRefinement = {
-  message: 'Delay harus 10-600 detik dan max tidak boleh kurang dari min',
+  message:
+    'Delay harus 10-600 detik, minDelay dan maxDelay wajib dikirim berpasangan, dan max tidak boleh kurang dari min',
   path: ['maxDelay'],
 }
 
 export const createBroadcastSchema = broadcastInputSchema.refine(
-  (value) => isValidDelayRange(value.minDelay, value.maxDelay),
+  isValidOptionalDelayRange,
   delayRangeRefinement,
 )
 
@@ -30,15 +37,10 @@ export type CreateBroadcastInput = z.infer<typeof createBroadcastSchema>
 
 export const broadcastV1Schema = broadcastInputSchema
   .extend({
-    sessionId: z
-      .string()
-      .regex(
-        /^[A-Za-z0-9_-]{1,32}$/,
-        'sessionId hanya boleh huruf, angka, _ dan -, maksimal 32 karakter',
-      ),
+    sessionId: z.string().min(1).max(64).describe('ID internal sesi (wa_session.id)'),
     scheduledAt: z.iso.datetime().optional(),
   })
-  .refine((value) => isValidDelayRange(value.minDelay, value.maxDelay), delayRangeRefinement)
+  .refine(isValidOptionalDelayRange, delayRangeRefinement)
 
 export type BroadcastV1Input = z.infer<typeof broadcastV1Schema>
 

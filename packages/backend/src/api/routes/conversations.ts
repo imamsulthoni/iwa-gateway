@@ -81,7 +81,7 @@ export function createConversationsRoute(
   const router = new OpenAPIHono<AppBindings>()
 
   router.openapi(listConversationsRoute, async (c) => {
-    const session = await sessions.getByPublicId(c.req.param('id'))
+    const session = await sessions.get(c.req.param('id'))
     ensureSessionAccess(c, session)
     const query = c.req.valid('query')
     const page = await conversations.listRooms(session.id, query.limit, query.cursor)

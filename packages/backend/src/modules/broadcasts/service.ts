@@ -21,6 +21,11 @@ export type RecipientInput = {
 
 export const OPT_OUT_SKIP_REASON = 'opted_out'
 
+export type BroadcastDelays = { minDelay: number; maxDelay: number }
+
+export type ResolvedBroadcastInput = Omit<CreateBroadcastInput, 'minDelay' | 'maxDelay'> &
+  BroadcastDelays
+
 // Broadcast final tidak lagi dianggap "berjalan", jadi tidak ditampilkan di
 // dashboard setelah selesai.
 const FINISHED_BROADCAST_STATUSES = new Set<BroadcastRow['status']>([
@@ -99,7 +104,7 @@ export function createBroadcastsService(repo: BroadcastsRepository, optOuts: Opt
 
     async create(
       sessionId: string,
-      input: CreateBroadcastInput,
+      input: ResolvedBroadcastInput,
       scheduledAt: Date | null = null,
     ): Promise<{ broadcast: BroadcastRow; duplicate: boolean }> {
       if (!isValidDelayRange(input.minDelay, input.maxDelay)) {

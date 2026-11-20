@@ -241,7 +241,7 @@ export function createV1MessagesRoute(
 
   router.openapi(sendMessageV1Route, async (c) => {
     const input = c.req.valid('json')
-    const session = await sessions.getByPublicId(input.sessionId)
+    const session = await sessions.get(input.sessionId)
     ensureSessionAccess(c, session)
 
     if (session.status !== 'connected') {
@@ -262,7 +262,7 @@ export function createV1MessagesRoute(
       session.id,
       toUserJid(input.to),
     )
-    const { sessionId: _publicId, ...body } = input
+    const { sessionId: _sessionId, ...body } = input
     const result = await messages.createOutgoing({
       ...body,
       sessionId: session.id,

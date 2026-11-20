@@ -71,15 +71,14 @@ function InboxPage() {
   useEffect(() => {
     if (sessionId) return
     const first = sessions.data?.items[0]
-    if (first) setSessionId(first.publicId)
+    if (first) setSessionId(first.id)
   }, [sessionId, sessions.data])
 
   useEffect(() => {
     if (conversationId) return
-    const internalId = sessions.data?.items.find((item) => item.publicId === sessionId)?.id
-    const first = rooms.data?.items.find((room) => room.sessionId === internalId)
+    const first = rooms.data?.items.find((room) => room.sessionId === sessionId)
     if (first) setConversationId(first.id)
-  }, [conversationId, rooms.data, sessionId, sessions.data])
+  }, [conversationId, rooms.data, sessionId])
 
   const loadLatest = useCallback(async (id: string) => {
     const page = await api.get<RoomMessageListDto>(`/v1/conversations/${id}/messages?limit=50`)
@@ -133,7 +132,7 @@ function InboxPage() {
     }
   })
 
-  const selectedSession = sessions.data?.items.find((item) => item.publicId === sessionId)
+  const selectedSession = sessions.data?.items.find((item) => item.id === sessionId)
   const noNumbers = (sessions.data?.items.length ?? 1) === 0
   const roomItems = (rooms.data?.items ?? []).filter(
     (room) => room.sessionId === selectedSession?.id,
@@ -201,7 +200,7 @@ function InboxPage() {
                 setConversationId(null)
               }}
               options={(sessions.data?.items ?? []).map((item) => ({
-                value: item.publicId,
+                value: item.id,
                 label: `${item.salesName ?? item.label} · ${item.status}`,
               }))}
             />

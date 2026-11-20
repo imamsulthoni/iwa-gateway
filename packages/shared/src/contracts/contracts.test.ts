@@ -187,9 +187,24 @@ describe('kontrak broadcast', () => {
     ).toBe(false)
   })
 
+  it('delay opsional, tetapi harus dikirim berpasangan', () => {
+    const body = {
+      recipients: [{ to: '62812345678' }],
+      text: 'Halo',
+      clientRef: 'b1',
+    }
+
+    expect(createBroadcastSchema.safeParse(body).success).toBe(true)
+    expect(createBroadcastSchema.safeParse({ ...body, minDelay: 10 }).success).toBe(false)
+    expect(createBroadcastSchema.safeParse({ ...body, maxDelay: 20 }).success).toBe(false)
+    expect(createBroadcastSchema.safeParse({ ...body, minDelay: 10, maxDelay: 20 }).success).toBe(
+      true,
+    )
+  })
+
   it('menerima jadwal UTC opsional pada broadcast v1', () => {
     const body = {
-      sessionId: 'sales-a',
+      sessionId: '01a1ddfa-295a-7557-9bd3-00293fdc047b',
       recipients: [{ to: '62812345678' }],
       text: 'Halo',
       minDelay: 10,
@@ -203,6 +218,7 @@ describe('kontrak broadcast', () => {
     expect(broadcastV1Schema.safeParse({ ...body, scheduledAt: '20 Nov 2026 10:00' }).success).toBe(
       false,
     )
+    expect(broadcastV1Schema.safeParse({ ...body, sessionId: 'x'.repeat(65) }).success).toBe(false)
   })
 })
 

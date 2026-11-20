@@ -39,7 +39,7 @@ export function createEventsRoute(sessions: SessionsService, redis: Redis, logge
   })
 
   router.get('/sessions/:id/events', async (c) => {
-    const session = await sessions.getByPublicId(c.req.param('id'))
+    const session = await sessions.get(c.req.param('id'))
     ensureSessionAccess(c, session)
 
     return streamSSE(c, async (stream) => {

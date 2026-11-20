@@ -14,11 +14,32 @@ import { enqueue } from '../../infra/queue.js'
 import type { BroadcastsService } from '../../modules/broadcasts/service.js'
 import { ValidationError } from '../../modules/errors.js'
 import type { SessionsService } from '../../modules/sessions/service.js'
+import type { SettingsService } from '../../modules/settings/service.js'
 import type { AppBindings } from '../app.js'
 import { ensureSessionAccess } from '../middleware/auth.js'
 import { idParamSchema, openApiError } from '../openapi.js'
 
 const adminOrSalesSecurity: Record<string, string[]>[] = [{ ApiKey: [] }, { UserToken: [] }]
+
+type DelayInput = { minDelay?: number; maxDelay?: number }
+
+/**
+ * Delay opsional: bila keduanya kosong pakai default pengaturan, bila hanya
+ * salah satu terisi tolak agar pengirim tidak salah asumsi.
+ */
+async function resolveDelays(
+  input: DelayInput,
+  settings: Pick<SettingsService, 'getSettings'>,
+): Promise<{ minDelay: number; maxDelay: number }> {
+  if (input.minDelay === undefined && input.maxDelay === undefined) {
+    const { defaultMinDelay, defaultMaxDelay } = await settings.getSettings()
+    return { minDelay: defaultMinDelay, maxDelay: defaultMaxDelay }
+  }
+  if (input.minDelay === undefined || input.maxDelay === undefined) {
+    throw new ValidationError('minDelay dan maxDelay harus dikirim berpasangan')
+  }
+  return { minDelay: input.minDelay, maxDelay: input.maxDelay }
+}
 
 const startBroadcastRoute = createRoute({
   method: 'post',
@@ -87,6 +108,7 @@ export function createBroadcastsRoute(
   broadcasts: BroadcastsService,
   sessions: SessionsService,
   queues: QueueRegistry,
+  settings: Pick<SettingsService, 'getSettings'>,
 ) {
   const router = new OpenAPIHono<AppBindings>()
 
@@ -94,7 +116,8 @@ export function createBroadcastsRoute(
     const sessionId = c.req.param('id')
     ensureSessionAccess(c, await sessions.get(sessionId))
     const input = c.req.valid('json')
-    const { broadcast, duplicate } = await broadcasts.create(sessionId, input)
+    const delays = await resolveDelays(input, settings)
+    const { broadcast, duplicate } = await broadcasts.create(sessionId, { ...input, ...delays })
     if (!duplicate) {
       await enqueue(
         queues.broadcast,
@@ -233,19 +256,25 @@ export function createBroadcastsV1Route(
   broadcasts: BroadcastsService,
   sessions: SessionsService,
   queues: QueueRegistry,
+  settings: Pick<SettingsService, 'getSettings'>,
 ) {
   const router = new OpenAPIHono<AppBindings>()
 
   router.openapi(createBroadcastV1Route, async (c) => {
     const input = c.req.valid('json')
-    const session = await sessions.getByPublicId(input.sessionId)
+    const session = await sessions.get(input.sessionId)
     ensureSessionAccess(c, session)
     const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : null
     if (scheduledAt && scheduledAt.getTime() <= Date.now()) {
       throw new ValidationError('Waktu jadwal harus di masa depan')
     }
 
-    const { broadcast, duplicate } = await broadcasts.create(session.id, input, scheduledAt)
+    const delays = await resolveDelays(input, settings)
+    const { broadcast, duplicate } = await broadcasts.create(
+      session.id,
+      { ...input, ...delays },
+      scheduledAt,
+    )
     if (!duplicate) {
       await enqueue(
         queues.broadcast,
