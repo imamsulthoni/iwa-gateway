@@ -51,3 +51,24 @@ export function Chip({ className, children, ...props }: ChipProps) {
     </span>
   )
 }
+
+type FilterChipProps = ComponentProps<'button'> & {
+  active?: boolean
+}
+
+export function FilterChip({ active = false, className, ...props }: FilterChipProps) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center rounded-pill px-2.5 py-[5px]',
+        'font-data text-[8.5px] tracking-[0.3px] uppercase transition outline-none',
+        'focus-visible:ring-2 focus-visible:ring-ink/15',
+        active ? 'bg-ink text-white' : 'bg-bg text-ink-soft hover:text-ink',
+        className,
+      )}
+      {...props}
+    />
+  )
+}

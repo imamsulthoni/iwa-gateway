@@ -1,13 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { RefreshCw, Send } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { Badge, Banner, Button, PageHeader, Select, Textarea, cn } from '../../design-system'
+import { ConversationList } from '../../components/inbox/ConversationList'
+import { MessageThread } from '../../components/inbox/MessageThread'
+import type { InboxRoom } from '../../components/inbox/model'
+import { Banner, Button, PageHeader } from '../../design-system'
 import { api } from '../../lib/api'
 import { newClientRef } from '../../lib/client-ref'
 import { useSessionEvents } from '../../lib/events'
 import { formatPhone, usePolling } from '../../lib/format'
 import type {
+  ConversationDto,
   ConversationListDto,
   RoomMessageDto,
   RoomMessageListDto,
@@ -18,28 +22,13 @@ export const Route = createFileRoute('/_auth/inbox')({
   component: InboxPage,
 })
 
-const TYPE_LABELS: Record<string, string> = {
-  image: 'Gambar',
-  video: 'Video',
-  audio: 'Audio',
-  document: 'Dokumen',
-  sticker: 'Stiker',
-  location: 'Lokasi',
-  contact: 'Kontak',
-  poll: 'Polling',
-  reaction: 'Reaksi',
-  unknown: 'Pesan',
-}
+const SESSION_POLL_MS = 20_000
+const ROOM_POLL_MS = 15_000
+const MESSAGE_POLL_MS = 10_000
 
-function label(row: RoomMessageDto): string {
-  if (row.type === 'text') return row.body ?? ''
-  return TYPE_LABELS[row.type] ?? row.type
-}
-
-function clock(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
-  return new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(date)
+type RoomFeed = {
+  sessionPublicId: string
+  items: ConversationDto[]
 }
 
 function mergeLatest(current: RoomMessageDto[], incoming: RoomMessageDto[]): RoomMessageDto[] {
@@ -48,8 +37,30 @@ function mergeLatest(current: RoomMessageDto[], incoming: RoomMessageDto[]): Roo
 }
 
 function InboxPage() {
-  const sessions = usePolling<SessionListDto>(() => api.get<SessionListDto>('/sessions'), 20_000)
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const sessions = usePolling<SessionListDto>(
+    () => api.get<SessionListDto>('/sessions'),
+    SESSION_POLL_MS,
+  )
+  const connectedSessions = useMemo(
+    () => (sessions.data?.items ?? []).filter((item) => item.status === 'connected'),
+    [sessions.data],
+  )
+  const feeds = usePolling<RoomFeed[]>(
+    async () => {
+      const pages = await Promise.all(
+        connectedSessions.map(async (session) => ({
+          sessionPublicId: session.publicId,
+          page: await api.get<ConversationListDto>(
+            `/v1/sessions/${session.publicId}/conversations?limit=50`,
+          ),
+        })),
+      )
+      return pages.map(({ sessionPublicId, page }) => ({ sessionPublicId, items: page.items }))
+    },
+    ROOM_POLL_MS,
+    connectedSessions.length > 0,
+  )
+
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<RoomMessageDto[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
@@ -58,28 +69,55 @@ function InboxPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState('all')
 
-  const rooms = usePolling<ConversationListDto>(
-    () =>
-      sessionId
-        ? api.get<ConversationListDto>(`/v1/sessions/${sessionId}/conversations?limit=50`)
-        : Promise.resolve({ items: [], nextCursor: null }),
-    15_000,
-    Boolean(sessionId),
-  )
+  const rooms = useMemo<InboxRoom[]>(() => {
+    const statusById = new Map((sessions.data?.items ?? []).map((item) => [item.id, item.status]))
+    return (feeds.data ?? [])
+      .flatMap((feed) =>
+        feed.items.map((item) => {
+          const address = item.waJidAlt ?? item.waJid
+          return {
+            id: item.id,
+            sessionPublicId: feed.sessionPublicId,
+            sessionStatus: statusById.get(item.sessionId) ?? 'disconnected',
+            address: formatPhone(address),
+            waJid: address,
+            lastMessageAt: item.lastMessageAt,
+            unreadCount: item.unreadCount,
+          }
+        }),
+      )
+      .sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? ''))
+  }, [feeds.data, sessions.data])
+
+  const visibleRooms = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return rooms.filter((room) => {
+      if (filter === 'unread' && room.unreadCount === 0) return false
+      if (filter !== 'all' && filter !== 'unread' && room.sessionPublicId !== filter) return false
+      if (!needle) return true
+      return `${room.address} ${room.waJid} ${room.sessionPublicId}`.toLowerCase().includes(needle)
+    })
+  }, [filter, query, rooms])
+
+  const filters = useMemo(() => {
+    const sessionIds = [...new Set(rooms.map((room) => room.sessionPublicId))]
+    return [
+      { value: 'all', label: 'SEMUA' },
+      { value: 'unread', label: 'BELUM DIBACA' },
+      ...sessionIds.map((id) => ({ value: id, label: id })),
+    ]
+  }, [rooms])
+
+  const selectedRoom = rooms.find((room) => room.id === conversationId) ?? null
+  const unreadTotal = rooms.reduce((total, room) => total + room.unreadCount, 0)
 
   useEffect(() => {
-    if (sessionId) return
-    const first = sessions.data?.items[0]
-    if (first) setSessionId(first.publicId)
-  }, [sessionId, sessions.data])
-
-  useEffect(() => {
-    if (conversationId) return
-    const internalId = sessions.data?.items.find((item) => item.publicId === sessionId)?.id
-    const first = rooms.data?.items.find((room) => room.sessionId === internalId)
-    if (first) setConversationId(first.id)
-  }, [conversationId, rooms.data, sessionId, sessions.data])
+    if (conversationId && rooms.some((room) => room.id === conversationId)) return
+    setConversationId(rooms[0]?.id ?? null)
+  }, [conversationId, rooms])
 
   const loadLatest = useCallback(async (id: string) => {
     const page = await api.get<RoomMessageListDto>(`/v1/conversations/${id}/messages?limit=50`)
@@ -91,6 +129,7 @@ function InboxPage() {
     if (!conversationId) {
       setMessages([])
       setNextCursor(null)
+      setLoading(false)
       return
     }
     setMessages([])
@@ -104,7 +143,7 @@ function InboxPage() {
 
     const timer = setInterval(() => {
       void loadLatest(conversationId).catch(() => undefined)
-    }, 10_000)
+    }, MESSAGE_POLL_MS)
     return () => clearInterval(timer)
   }, [conversationId, loadLatest])
 
@@ -112,13 +151,13 @@ function InboxPage() {
     if (!conversationId) return
     void api
       .post(`/v1/conversations/${conversationId}/read`)
-      .then(() => rooms.refresh())
+      .then(() => feeds.refresh())
       .catch(() => undefined)
-  }, [conversationId, rooms.refresh])
+  }, [conversationId, feeds.refresh])
 
-  useSessionEvents(sessionId, (event) => {
+  useSessionEvents(selectedRoom?.sessionPublicId ?? null, (event) => {
     if (event.event === 'message.received') {
-      rooms.refresh()
+      feeds.refresh()
       if (event.data.message.conversationId === conversationId) {
         void loadLatest(event.data.message.conversationId).catch(() => undefined)
       }
@@ -132,15 +171,6 @@ function InboxPage() {
       )
     }
   })
-
-  const selectedSession = sessions.data?.items.find((item) => item.publicId === sessionId)
-  const noNumbers = (sessions.data?.items.length ?? 1) === 0
-  const roomItems = (rooms.data?.items ?? []).filter(
-    (room) => room.sessionId === selectedSession?.id,
-  )
-  const selectedRoom = roomItems.find((room) => room.id === conversationId)
-  const waAddress = selectedRoom?.waJidAlt ?? selectedRoom?.waJid ?? null
-  const threads = [...messages].reverse()
 
   async function loadMore() {
     if (!conversationId || !nextCursor) return
@@ -163,19 +193,20 @@ function InboxPage() {
 
   async function send() {
     const text = draft.trim()
-    if (!sessionId || !selectedRoom || !waAddress || !text) return
+    if (!selectedRoom || !text) return
+
     setSending(true)
     setError(null)
     try {
       await api.post('/v1/messages', {
-        sessionId,
-        to: waAddress,
+        sessionId: selectedRoom.sessionPublicId,
+        to: selectedRoom.waJid,
         text,
         clientRef: newClientRef(),
       })
       setDraft('')
       await loadLatest(selectedRoom.id)
-      rooms.refresh()
+      feeds.refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Gagal mengirim pesan')
     } finally {
@@ -183,175 +214,74 @@ function InboxPage() {
     }
   }
 
+  function refreshAll() {
+    sessions.refresh()
+    feeds.refresh()
+    if (conversationId) void loadLatest(conversationId).catch(() => undefined)
+  }
+
+  const connectedCount = connectedSessions.length
+  const noNumbers = !sessions.loading && connectedCount === 0
+  const listEmpty = noNumbers
+    ? 'Belum ada nomor WhatsApp untuk akun ini. Hubungi admin.'
+    : rooms.length === 0
+      ? 'Belum ada percakapan. Pesan masuk akan muncul di sini.'
+      : 'Tidak ada percakapan yang cocok.'
+
   return (
-    <div className="flex h-[calc(100vh-52px)] flex-col gap-5">
+    <div className="flex h-[calc(100vh-52px)] flex-col gap-6">
       <PageHeader
-        eyebrow="INBOX / ROOMS"
-        title="Inbox"
-        description="Percakapan teks per nomor WhatsApp. Media hanya dicatat jenisnya."
+        eyebrow="INBOX / PERCAKAPAN"
+        title="Kotak masuk"
+        description={`Percakapan masuk dari ${connectedCount} nomor terhubung.`}
         actions={
           <>
-            <Select
-              label="Pilih sesi"
-              size="sm"
-              className="w-[190px]"
-              value={sessionId ?? ''}
-              onChange={(next) => {
-                setSessionId(next)
-                setConversationId(null)
-              }}
-              options={(sessions.data?.items ?? []).map((item) => ({
-                value: item.publicId,
-                label: `${item.salesName ?? item.label} · ${item.status}`,
-              }))}
-            />
-            <Button
-              variant="secondary"
-              onClick={() => {
-                rooms.refresh()
-                if (conversationId) void loadLatest(conversationId)
-              }}
-            >
+            <p className="font-data text-[9.5px] text-ink-faint">{unreadTotal} belum dibaca</p>
+            <Button variant="secondary" size="sm" onClick={refreshAll}>
               <RefreshCw className="size-3.5" aria-hidden />
-              Refresh
+              Segarkan
             </Button>
           </>
         }
       />
 
-      {(error ?? rooms.error) ? <Banner tone="danger">{error ?? rooms.error}</Banner> : null}
+      {(error ?? feeds.error ?? sessions.error) ? (
+        <Banner tone="danger">{error ?? feeds.error ?? sessions.error}</Banner>
+      ) : null}
 
       <div className="flex min-h-0 flex-1 gap-4">
-        <section className="flex w-[300px] shrink-0 flex-col rounded-card border border-line bg-surface">
-          <div className="flex items-center justify-between px-4 py-3.5">
-            <p className="text-body font-semibold text-ink">Room chat</p>
-            <p className="font-data text-[9.5px] text-ink-faint">
-              {selectedSession?.publicId ?? '—'}
-            </p>
-          </div>
-          <div className="h-px bg-line" />
-          <div className="min-h-0 flex-1 overflow-auto">
-            {sessionId && rooms.loading && !rooms.data ? (
-              <p className="px-4 py-10 text-center text-small text-ink-faint">Memuat room...</p>
-            ) : null}
-            {noNumbers ? (
-              <p className="px-4 py-10 text-center text-small text-ink-faint">
-                Belum ada nomor WhatsApp untuk akun ini. Hubungi admin.
-              </p>
-            ) : null}
-            {rooms.data && roomItems.length === 0 ? (
-              <p className="px-4 py-10 text-center text-small text-ink-faint">
-                Belum ada percakapan. Pesan masuk akan muncul di sini.
-              </p>
-            ) : null}
-            {roomItems.map((room) => (
-              <button
-                key={room.id}
-                type="button"
-                onClick={() => setConversationId(room.id)}
-                className={cn(
-                  'flex w-full flex-col gap-1 border-b border-line px-4 py-3 text-left transition last:border-0 hover:bg-surface-soft',
-                  room.id === conversationId && 'bg-surface-soft',
-                )}
-              >
-                <span className="flex items-center justify-between gap-2">
-                  <span className="truncate text-body font-medium text-ink">
-                    {formatPhone(room.waJidAlt ?? room.waJid)}
-                  </span>
-                  {room.unreadCount > 0 ? <Badge tone="warning">{room.unreadCount}</Badge> : null}
-                </span>
-                <span className="font-data text-[9px] text-ink-faint">
-                  {room.lastMessageAt ? clock(room.lastMessageAt) : '—'} · {room.waJid}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
+        <ConversationList
+          rooms={visibleRooms}
+          total={rooms.length}
+          selectedId={conversationId}
+          onSelect={setConversationId}
+          query={query}
+          onQuery={setQuery}
+          filter={filter}
+          onFilter={setFilter}
+          filters={filters}
+          unreadTotal={unreadTotal}
+          loading={sessions.loading || (connectedCount > 0 && feeds.loading && !feeds.data)}
+          emptyText={listEmpty}
+        />
 
-        <section className="flex min-w-0 flex-1 flex-col rounded-card border border-line bg-surface">
-          {selectedRoom ? (
-            <>
-              <div className="flex items-center justify-between px-4 py-3.5">
-                <div>
-                  <p className="text-body font-semibold text-ink">{formatPhone(waAddress)}</p>
-                  <p className="font-data text-[9px] text-ink-faint">{selectedRoom.waJid}</p>
-                </div>
-                <Badge tone={selectedRoom.unreadCount > 0 ? 'warning' : 'neutral'}>
-                  {selectedRoom.unreadCount > 0
-                    ? `${selectedRoom.unreadCount} belum dibaca`
-                    : 'Dibaca'}
-                </Badge>
-              </div>
-              <div className="h-px bg-line" />
-
-              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto px-4 py-4">
-                {nextCursor ? (
-                  <Button
-                    variant="secondary"
-                    className="mx-auto h-7 px-3 text-[11px]"
-                    disabled={loadingMore}
-                    onClick={() => void loadMore()}
-                  >
-                    {loadingMore ? 'Memuat...' : 'Muat lebih'}
-                  </Button>
-                ) : null}
-                {loading && messages.length === 0 ? (
-                  <p className="py-10 text-center text-small text-ink-faint">Memuat pesan...</p>
-                ) : null}
-                {!loading && messages.length === 0 ? (
-                  <p className="py-10 text-center text-small text-ink-faint">
-                    Belum ada pesan di room ini.
-                  </p>
-                ) : null}
-                {threads.map((row) => (
-                  <div
-                    key={row.id}
-                    className={cn('flex flex-col gap-0.5', row.direction === 'out' && 'items-end')}
-                  >
-                    <div
-                      className={cn(
-                        'max-w-[70%] rounded-lg px-3 py-2 text-small',
-                        row.direction === 'out' ? 'bg-ink text-white' : 'bg-surface-soft text-ink',
-                      )}
-                    >
-                      {label(row) || '—'}
-                    </div>
-                    <span className="font-data text-[8.5px] text-ink-faint">
-                      {clock(row.createdAt)} · {row.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex items-end gap-2 border-t border-line p-3">
-                <Textarea
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                      event.preventDefault()
-                      void send()
-                    }
-                  }}
-                  placeholder="Tulis balasan..."
-                  aria-label="Tulis balasan"
-                  className="min-h-[42px] flex-1 resize-none"
-                  rows={2}
-                />
-                <Button disabled={sending || !draft.trim()} onClick={() => void send()}>
-                  <Send className="size-3.5" aria-hidden />
-                  {sending ? 'Mengirim...' : 'Kirim'}
-                </Button>
-              </div>
-            </>
-          ) : (
-            <p className="m-auto px-6 text-center text-small text-ink-faint">
-              {noNumbers
-                ? 'Belum ada nomor untuk akun ini. Hubungi admin.'
-                : 'Pilih room chat untuk melihat percakapan.'}
-            </p>
-          )}
-        </section>
+        <MessageThread
+          room={selectedRoom}
+          messages={messages}
+          loading={loading}
+          loadingMore={loadingMore}
+          hasMore={Boolean(nextCursor)}
+          onLoadMore={() => void loadMore()}
+          draft={draft}
+          onDraft={setDraft}
+          onSend={() => void send()}
+          sending={sending}
+          emptyText={
+            noNumbers
+              ? 'Belum ada nomor untuk akun ini. Hubungi admin.'
+              : 'Pilih percakapan untuk melihat isi chat.'
+          }
+        />
       </div>
     </div>
   )
