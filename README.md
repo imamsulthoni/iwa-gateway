@@ -1,4 +1,4 @@
-# WA Bot Service
+# WA Bot Console
 
 Monorepo layanan WhatsApp berbasis Baileys: API Hono, worker BullMQ, MySQL 8, Redis 7, dan dashboard React 19 + TanStack Router. Mencakup pengelolaan nomor (QR/pairing code), pengiriman pesan teks, broadcast teks dengan jeda acak, batas harian, penjadwalan, serta pause/resume, inbox room chat per JID dengan SSE real-time, webhook keluar (HMAC + retry), opt-out global per nomor, riwayat pesan, dan statistik.
 
@@ -49,14 +49,14 @@ Hanya ada satu file env: `.env` di root. Jangan membuat env di dalam `packages/`
 | ---------------------------- | ------------------------------------------ | ------------------------------ |
 | `NODE_ENV`                   | `development`                              | semua                          |
 | `PORT`                       | `8467`                                     | api                            |
-| `DATABASE_URL`               | `mysql://wa:wa@localhost:3306/wa_bot`      | api, worker, drizzle, seed     |
-| `DATABASE_URL_TEST`          | `mysql://wa:wa@localhost:3306/wa_bot_test` | test integrasi                 |
+| `DATABASE_URL`               | `mysql://wbc:root@localhost:3306/wa_console`      | api, worker, drizzle, seed     |
+| `DATABASE_URL_TEST`          | `mysql://wbc:root@localhost:3306/wa_console_test` | test integrasi                 |
 | `REDIS_URL`                  | `redis://localhost:6379`                   | api, worker                    |
 | `AUTH_ENC_KEY`               | base64 32 byte                             | worker (enkripsi auth state)   |
 | `LOG_LEVEL`                  | `info`                                     | api, worker                    |
 | `APP_TIMEZONE`               | `Asia/Jakarta`                             | api, worker                    |
 | `CORS_ORIGIN`                | `http://localhost:8468`                    | api                            |
-| `BROWSER_NAME`               | `WA Bot Service`                           | worker                         |
+| `BROWSER_NAME`               | `WA Bot Console`                           | worker                         |
 | `SESSION_LOCK_TTL_MS`        | `30000`                                    | worker                         |
 | `RATE_LIMIT_PER_MIN`         | `240`                                      | api                            |
 | `BROADCAST_AUTO_PAUSE_RATIO` | `0.2`                                      | worker (auto-pause broadcast)  |

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { EnvValidationError, validateEnv } from './env.js'
 
 const VALID = {
-  DATABASE_URL: 'mysql://wa:wa@localhost:3306/wa_bot',
+  DATABASE_URL: 'mysql://wbc:root@localhost:3306/wa_console',
   REDIS_URL: 'redis://localhost:6379',
   AUTH_ENC_KEY: Buffer.alloc(32).toString('base64'),
 }

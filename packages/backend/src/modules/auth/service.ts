@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import type { UserRole } from '@wa/shared'
+import type { UserRole } from '@wbc/shared'
 
 import type { UserRow } from '../../db/schema.js'
 import { NoSessionError, UnauthorizedError } from '../errors.js'

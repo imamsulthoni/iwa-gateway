@@ -24,8 +24,8 @@ import { createBroadcastRunProcessor } from '../../src/worker/processors/broadca
 import type { SessionManager } from '../../src/worker/session-manager.js'
 import { RUN_INTEGRATION, resetTestDb, setupTestDb } from './setup.js'
 
-vi.mock('@wa/shared', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@wa/shared')>()
+vi.mock('@wbc/shared', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@wbc/shared')>()
   return { ...actual, pickDelayMs: () => 0 }
 })
 

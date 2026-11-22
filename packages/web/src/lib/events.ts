@@ -1,4 +1,4 @@
-import { sseEventSchema, type SseEvent } from '@wa/shared'
+import { sseEventSchema, type SseEvent } from '@wbc/shared'
 import { useEffect, useRef } from 'react'
 
 import { getAuth } from './auth'

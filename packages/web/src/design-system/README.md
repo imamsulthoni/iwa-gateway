@@ -1,4 +1,4 @@
-# Design System — WA Platform Console
+# Design System — WA Bot Console
 
 Sumber: pen.dev `wa-bot-platform.pen`, frame **Design System — Foundations** (v1.0) dan **Design System — Components**.
 

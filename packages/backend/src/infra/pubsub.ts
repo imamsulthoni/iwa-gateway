@@ -1,4 +1,4 @@
-import { sseEventSchema, type SseEvent } from '@wa/shared'
+import { sseEventSchema, type SseEvent } from '@wbc/shared'
 import type { Redis } from 'ioredis'
 
 const SESSION_EVENTS_PREFIX = 'wa:events:'

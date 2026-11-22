@@ -1,4 +1,4 @@
-import { MESSAGE_STATUS_LABELS } from '@wa/shared'
+import { MESSAGE_STATUS_LABELS } from '@wbc/shared'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { ListFilter, RefreshCw, RotateCcw, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'

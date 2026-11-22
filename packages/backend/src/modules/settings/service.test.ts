@@ -1,4 +1,4 @@
-import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@wa/shared'
+import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@wbc/shared'
 import { describe, expect, it } from 'vitest'
 
 import {

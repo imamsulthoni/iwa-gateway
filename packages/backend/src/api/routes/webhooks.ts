@@ -8,7 +8,7 @@ import {
   webhookEndpointListSchema,
   webhookEndpointSchema,
   webhookSecretSchema,
-} from '@wa/shared'
+} from '@wbc/shared'
 
 import type { WebhooksService } from '../../modules/webhooks/service.js'
 import type { AppBindings } from '../app.js'

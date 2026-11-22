@@ -1,4 +1,4 @@
-# API Contract — wa-bot-service API
+# API Contract — WA Bot Console
 
 > Dokumen ini dihasilkan dari skema OpenAPI yang sama dengan `GET /openapi.json` (3.1.0), versi API `0.1.0`. Sumber kebenaran runtime: `packages/backend/src/api/routes/*` dan `packages/shared/src/contracts/*`.
 

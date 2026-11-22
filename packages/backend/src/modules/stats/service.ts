@@ -1,4 +1,4 @@
-import type { StatsDto } from '@wa/shared'
+import type { StatsDto } from '@wbc/shared'
 
 import type { BroadcastsRepository } from '../broadcasts/repository.js'
 import type { MessagesRepository } from '../messages/repository.js'

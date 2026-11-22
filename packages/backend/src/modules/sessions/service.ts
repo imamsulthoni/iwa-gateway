@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 
-import { publicIdSchema, type SessionDto } from '@wa/shared'
+import { publicIdSchema, type SessionDto } from '@wbc/shared'
 
 import { newId } from '../../db/id.js'
 import type { WaSessionRow } from '../../db/schema.js'

@@ -1,4 +1,4 @@
-import { CONSUMER_ENDPOINTS } from '@wa/shared'
+import { CONSUMER_ENDPOINTS } from '@wbc/shared'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { WaSessionRow } from '../db/schema.js'
@@ -258,7 +258,7 @@ describe('API Hono', () => {
     const response = await app.request('/')
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({
-      name: 'wa-bot-service',
+      name: 'WA Bot Console',
       version: '0.1.0',
       status: 'ok',
       checks: { database: true, redis: true },

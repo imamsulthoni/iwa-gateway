@@ -1,5 +1,5 @@
 import { OpenAPIHono, type Hook } from '@hono/zod-openapi'
-import { apiErrorSchema } from '@wa/shared'
+import { apiErrorSchema } from '@wbc/shared'
 import { z } from 'zod'
 
 import { ValidationError } from '../modules/errors.js'

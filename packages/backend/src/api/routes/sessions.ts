@@ -16,7 +16,7 @@ import {
   type BroadcastCurrentDto,
   type SessionLiveDto,
   type PairingResponseDto,
-} from '@wa/shared'
+} from '@wbc/shared'
 import type { Redis } from 'ioredis'
 
 import type { BroadcastsService } from '../../modules/broadcasts/service.js'

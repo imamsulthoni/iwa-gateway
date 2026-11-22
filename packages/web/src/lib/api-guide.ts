@@ -1,4 +1,4 @@
-import type { ConsumerEndpoint, ConsumerEndpointGroup } from '@wa/shared'
+import type { ConsumerEndpoint, ConsumerEndpointGroup } from '@wbc/shared'
 
 export type CodeSample = {
   id: 'fetch' | 'axios' | 'curl'
@@ -35,7 +35,7 @@ export const AUTH_GUIDE = {
   title: 'Autentikasi',
   detail:
     'Semua endpoint consumer memakai header x-api-key. Key dibuat admin lewat perintah di bawah; key hanya boleh disimpan di server aplikasi consumer, jangan pernah ditempel di frontend.',
-  createKeyCommand: 'pnpm --filter @wa/backend db:seed:key',
+  createKeyCommand: 'pnpm --filter @wbc/backend db:seed:key',
   samples: [
     {
       id: 'curl',

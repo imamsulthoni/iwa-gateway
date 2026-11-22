@@ -4,7 +4,7 @@ import {
   MAX_DELAY_SECONDS,
   MIN_DELAY_SECONDS,
   isValidDelayRange,
-} from '@wa/shared'
+} from '@wbc/shared'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import {
   CircleCheck,
@@ -452,7 +452,7 @@ function SettingsPage() {
       <div className="mt-4 h-px w-full bg-line" />
       <div className="flex items-center justify-between gap-3 pt-[13px]">
         <p className="font-data text-[9px] tracking-[0.8px] text-ink-faint">
-          WA PLATFORM · {info?.version ?? 'v—'}
+          WA BOT CONSOLE · {info?.version ?? 'v—'}
         </p>
         <p className="font-data text-[9px] text-ink-soft">Dokumentasi API ↗</p>
       </div>

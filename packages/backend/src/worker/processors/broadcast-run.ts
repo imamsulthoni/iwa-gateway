@@ -1,5 +1,5 @@
 import type { Job } from 'bullmq'
-import { BROADCAST_AUTO_PAUSE_MIN_RECIPIENTS, pickDelayMs } from '@wa/shared'
+import { BROADCAST_AUTO_PAUSE_MIN_RECIPIENTS, pickDelayMs } from '@wbc/shared'
 import { BufferJSON } from '@whiskeysockets/baileys'
 
 import type { BroadcastRunJob } from '../../infra/queue.js'

@@ -6,7 +6,7 @@ import {
   broadcastV1Schema,
   createBroadcastResponseSchema,
   createBroadcastSchema,
-} from '@wa/shared'
+} from '@wbc/shared'
 
 import { newId } from '../../db/id.js'
 import type { QueueRegistry } from '../../infra/queue.js'

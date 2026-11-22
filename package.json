@@ -1,5 +1,5 @@
 {
-  "name": "wa-bot-service",
+  "name": "wa-bot-console",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,21 +8,21 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "pnpm -r --parallel --filter @wa/backend --filter @wa/web dev",
+    "dev": "pnpm -r --parallel --filter @wbc/backend --filter @wbc/web dev",
     "build": "pnpm -r build",
     "start:api": "node packages/backend/dist/api.js",
     "start:worker": "node packages/backend/dist/worker.js",
-    "start:web": "pnpm --filter @wa/web preview",
+    "start:web": "pnpm --filter @wbc/web preview",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "test:integration": "RUN_INTEGRATION=1 vitest run",
-    "db:generate": "pnpm --filter @wa/backend db:generate",
-    "db:migrate": "pnpm --filter @wa/backend db:migrate",
-    "db:studio": "pnpm --filter @wa/backend db:studio",
-    "db:seed:key": "pnpm --filter @wa/backend db:seed:key"
+    "db:generate": "pnpm --filter @wbc/backend db:generate",
+    "db:migrate": "pnpm --filter @wbc/backend db:migrate",
+    "db:studio": "pnpm --filter @wbc/backend db:studio",
+    "db:seed:key": "pnpm --filter @wbc/backend db:seed:key"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

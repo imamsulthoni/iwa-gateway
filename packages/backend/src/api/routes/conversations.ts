@@ -5,7 +5,7 @@ import {
   conversationSchema,
   roomMessageListSchema,
   roomMessageQuerySchema,
-} from '@wa/shared'
+} from '@wbc/shared'
 
 import type { ConversationsService } from '../../modules/conversations/service.js'
 import type { SessionsService } from '../../modules/sessions/service.js'

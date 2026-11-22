@@ -1,5 +1,5 @@
 import { createMiddleware } from 'hono/factory'
-import { apiErrorBody } from '@wa/shared'
+import { apiErrorBody } from '@wbc/shared'
 
 import type { ApiKeyAuthenticator } from '../../modules/auth/api-key.js'
 import type { AppBindings } from '../app.js'

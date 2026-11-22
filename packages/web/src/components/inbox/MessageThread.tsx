@@ -1,4 +1,4 @@
-import { SESSION_STATUS_LABELS } from '@wa/shared'
+import { SESSION_STATUS_LABELS } from '@wbc/shared'
 import { Send } from 'lucide-react'
 import type { ReactNode } from 'react'
 

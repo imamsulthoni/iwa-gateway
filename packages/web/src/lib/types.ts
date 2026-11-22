@@ -29,4 +29,4 @@ export type {
   WebhookEndpointCreatedDto,
   WebhookEndpointDto,
   WebhookEndpointListDto,
-} from '@wa/shared'
+} from '@wbc/shared'

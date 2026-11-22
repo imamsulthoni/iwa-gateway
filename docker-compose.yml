@@ -1,26 +1,28 @@
+name: wa-bot-console
+
 services:
   mysql:
     image: mysql:8.0
-    container_name: wa-bot-mysql
+    container_name: wa-console-mysql
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: wa_bot
-      MYSQL_USER: wa
-      MYSQL_PASSWORD: wa
+      MYSQL_DATABASE: wa_console
+      MYSQL_USER: wbc
+      MYSQL_PASSWORD: root
     ports:
       - '3306:3306'
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-uwa', '-pwa']
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-uwbc', '-proot']
       interval: 5s
       timeout: 5s
       retries: 20
 
   redis:
     image: redis:7-alpine
-    container_name: wa-bot-redis
+    container_name: wa-console-redis
     restart: unless-stopped
     command: ['redis-server', '--appendonly', 'yes']
     ports:

@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net'
 
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import type { WebhookPayload } from '@wa/shared'
+import type { WebhookPayload } from '@wbc/shared'
 
 import { webhookDeliveries } from '../../src/db/schema.js'
 import { createLogger } from '../../src/infra/logger.js'

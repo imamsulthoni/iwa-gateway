@@ -1,4 +1,4 @@
-import type { UserDto } from '@wa/shared'
+import type { UserDto } from '@wbc/shared'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import {

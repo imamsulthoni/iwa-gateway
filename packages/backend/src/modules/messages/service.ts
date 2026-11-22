@@ -1,4 +1,4 @@
-import type { MessageDirection, MessageDto, MessageStatus, RoomMessageDto } from '@wa/shared'
+import type { MessageDirection, MessageDto, MessageStatus, RoomMessageDto } from '@wbc/shared'
 
 import { newId } from '../../db/id.js'
 import type { MessageRow } from '../../db/schema.js'

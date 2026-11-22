@@ -8,8 +8,8 @@ import type { SessionsService } from '../../modules/sessions/service.js'
 import type { SessionManager } from '../session-manager.js'
 import { createBroadcastRunProcessor } from './broadcast-run.js'
 
-vi.mock('@wa/shared', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@wa/shared')>()
+vi.mock('@wbc/shared', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@wbc/shared')>()
   return { ...actual, pickDelayMs: () => 0 }
 })
 

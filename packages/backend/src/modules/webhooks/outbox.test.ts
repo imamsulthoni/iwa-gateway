@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { WebhookPayload } from '@wa/shared'
+import type { WebhookPayload } from '@wbc/shared'
 
 import type { WebhookEndpointRow } from '../../db/schema.js'
 import { createWebhookOutbox } from './outbox.js'

@@ -8,7 +8,7 @@ import {
   sendMessageResponseSchema,
   sendMessageSchema,
   sendMessageV1Schema,
-} from '@wa/shared'
+} from '@wbc/shared'
 import type { MiddlewareHandler } from 'hono'
 
 import type { ApiKeyAuthenticator } from '../../modules/auth/api-key.js'

@@ -4,7 +4,7 @@ import {
   type BroadcastV1ResponseDto,
   type CreateBroadcastInput,
   type WebhookPayload,
-} from '@wa/shared'
+} from '@wbc/shared'
 
 import { newId } from '../../db/id.js'
 import type { BroadcastRecipientRow, BroadcastRow } from '../../db/schema.js'

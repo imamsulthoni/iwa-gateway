@@ -1,4 +1,4 @@
-import type { WebhookPayload } from '@wa/shared'
+import type { WebhookPayload } from '@wbc/shared'
 
 import { newId } from '../../db/id.js'
 import type { WebhooksRepository } from './repository.js'

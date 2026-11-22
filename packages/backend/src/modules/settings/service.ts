@@ -1,4 +1,4 @@
-import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS, isValidDelayRange } from '@wa/shared'
+import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS, isValidDelayRange } from '@wbc/shared'
 
 import {
   DEFAULT_MAX_DELAY_KEY,

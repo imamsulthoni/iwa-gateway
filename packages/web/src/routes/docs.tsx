@@ -1,5 +1,5 @@
-import type { ConsumerEndpoint, ConsumerEndpointMethod } from '@wa/shared'
-import { CONSUMER_ENDPOINTS } from '@wa/shared'
+import type { ConsumerEndpoint, ConsumerEndpointMethod } from '@wbc/shared'
+import { CONSUMER_ENDPOINTS } from '@wbc/shared'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { ArrowUpRight, BookOpen, MessageCircle } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -81,7 +81,7 @@ function DocsPage() {
             </span>
             <span className="flex flex-col gap-px">
               <span className="font-data text-[11px] leading-none font-bold tracking-[1.4px] whitespace-nowrap text-ink">
-                WA PLATFORM
+                WA BOT CONSOLE
               </span>
               <span className="font-data text-[9.5px] leading-none tracking-[0.4px] whitespace-nowrap text-ink-faint">
                 panduan integrasi

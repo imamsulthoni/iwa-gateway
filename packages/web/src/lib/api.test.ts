@@ -1,4 +1,4 @@
-import type { UserDto } from '@wa/shared'
+import type { UserDto } from '@wbc/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, api, login, verifyApiKey } from './api.js'

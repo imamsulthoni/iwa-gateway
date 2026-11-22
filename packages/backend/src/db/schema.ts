@@ -8,7 +8,7 @@ import {
   USER_ROLES,
   type WebhookEventType,
   type WebhookPayload,
-} from '@wa/shared'
+} from '@wbc/shared'
 import { sql } from 'drizzle-orm'
 import {
   bigint,

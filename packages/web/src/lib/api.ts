@@ -1,4 +1,4 @@
-import type { ApiErrorBody, AuthMeDto, LoginResponseDto } from '@wa/shared'
+import type { ApiErrorBody, AuthMeDto, LoginResponseDto } from '@wbc/shared'
 
 import { clearAuth, getAuth } from './auth'
 import { getEnv } from './env'

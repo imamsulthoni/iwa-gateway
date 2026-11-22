@@ -5,7 +5,7 @@ import {
 } from '@whiskeysockets/baileys'
 import type { Redis } from 'ioredis'
 import QRCode from 'qrcode'
-import type { SseEvent, WebhookPayload } from '@wa/shared'
+import type { SseEvent, WebhookPayload } from '@wbc/shared'
 
 import { useDbAuthState, type DbAuthState } from '../baileys/auth-store.js'
 import { createGetMessage } from '../baileys/message-retry.js'

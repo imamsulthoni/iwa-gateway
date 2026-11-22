@@ -15,7 +15,7 @@ export const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   APP_TIMEZONE: z.string().min(1).default('Asia/Jakarta'),
   CORS_ORIGIN: z.string().min(1).default('http://localhost:5173'),
-  BROWSER_NAME: z.string().min(1).default('WA Bot Service'),
+  BROWSER_NAME: z.string().min(1).default('WA Bot Console'),
   SESSION_LOCK_TTL_MS: z.coerce.number().int().positive().default(30000),
   RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(240),
   BROADCAST_AUTO_PAUSE_RATIO: z.coerce.number().min(0).max(1).default(0.2),

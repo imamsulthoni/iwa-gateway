@@ -3,7 +3,7 @@ import {
   MESSAGE_STATUS_LABELS,
   RECIPIENT_STATUS_LABELS,
   SESSION_STATUS_LABELS,
-} from '@wa/shared'
+} from '@wbc/shared'
 
 const LABELS: Record<string, string> = {
   ...SESSION_STATUS_LABELS,

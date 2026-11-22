@@ -1,4 +1,4 @@
-import type { ConversationDto, RoomMessageDto } from '@wa/shared'
+import type { ConversationDto, RoomMessageDto } from '@wbc/shared'
 
 import type { ConversationRow } from '../../db/schema.js'
 import { NotFoundError } from '../errors.js'

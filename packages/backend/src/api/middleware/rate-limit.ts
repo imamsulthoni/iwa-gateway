@@ -1,6 +1,6 @@
 import { getConnInfo } from '@hono/node-server/conninfo'
 import { createMiddleware } from 'hono/factory'
-import { apiErrorBody } from '@wa/shared'
+import { apiErrorBody } from '@wbc/shared'
 import type { Redis } from 'ioredis'
 
 import type { AppBindings } from '../app.js'

@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi'
-import { statsSchema } from '@wa/shared'
+import { statsSchema } from '@wbc/shared'
 
 import type { StatsService } from '../../modules/stats/service.js'
 import type { AppBindings } from '../app.js'

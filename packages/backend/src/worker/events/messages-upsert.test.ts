@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Redis } from 'ioredis'
 
-import type { SseEvent } from '@wa/shared'
+import type { SseEvent } from '@wbc/shared'
 
 import type { MessagesService } from '../../modules/messages/service.js'
 import type { OptOutsService } from '../../modules/opt-outs/service.js'

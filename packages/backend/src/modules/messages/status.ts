@@ -1,4 +1,4 @@
-import { MESSAGE_STATUS_RANK, type MessageStatus } from '@wa/shared'
+import { MESSAGE_STATUS_RANK, type MessageStatus } from '@wbc/shared'
 
 export function mapBaileysStatus(value: number | string | null | undefined): MessageStatus | null {
   if (value === null || value === undefined) {

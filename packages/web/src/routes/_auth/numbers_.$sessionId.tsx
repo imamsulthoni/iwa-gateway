@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@wa/shared'
+import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@wbc/shared'
 import { ArrowLeft, KeyRound, LogOut, RefreshCw } from 'lucide-react'
 import { useRef, useState } from 'react'
 

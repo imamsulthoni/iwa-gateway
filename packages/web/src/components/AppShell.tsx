@@ -90,7 +90,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </span>
           <span className="flex flex-col gap-px">
             <span className="font-data text-[11px] leading-none font-bold tracking-[1.4px] text-ink">
-              WA PLATFORM
+              WA BOT CONSOLE
             </span>
             <span className="font-data text-[9.5px] leading-none tracking-[0.4px] text-ink-faint">
               admin console

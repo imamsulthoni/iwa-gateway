@@ -1,5 +1,5 @@
 import { BufferJSON, type proto, type WAMessage } from '@whiskeysockets/baileys'
-import type { SseEvent, WebhookPayload } from '@wa/shared'
+import type { SseEvent, WebhookPayload } from '@wbc/shared'
 import type { Redis } from 'ioredis'
 
 import { isIgnoredJid, resolveConversationJid } from '../../baileys/jid.js'

@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi'
-import { settingsSchema, updateSettingsSchema } from '@wa/shared'
+import { settingsSchema, updateSettingsSchema } from '@wbc/shared'
 
 import type { SettingsService } from '../../modules/settings/service.js'
 import type { AppBindings } from '../app.js'

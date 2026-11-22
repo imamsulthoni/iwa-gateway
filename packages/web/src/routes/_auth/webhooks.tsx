@@ -1,4 +1,4 @@
-import { WEBHOOK_EVENT_TYPES } from '@wa/shared'
+import { WEBHOOK_EVENT_TYPES } from '@wbc/shared'
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { KeyRound, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'

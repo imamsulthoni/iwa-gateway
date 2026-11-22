@@ -1,4 +1,4 @@
-import { SESSION_STATUS_LABELS } from '@wa/shared'
+import { SESSION_STATUS_LABELS } from '@wbc/shared'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Info, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'

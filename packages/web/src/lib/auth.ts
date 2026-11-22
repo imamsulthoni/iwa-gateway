@@ -1,4 +1,4 @@
-import type { UserDto, UserRole } from '@wa/shared'
+import type { UserDto, UserRole } from '@wbc/shared'
 
 export type AuthState =
   { mode: 'admin'; apiKey: string } | { mode: 'sales'; token: string; user: UserDto }

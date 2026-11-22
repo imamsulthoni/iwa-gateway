@@ -1,4 +1,4 @@
-import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@wa/shared'
+import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@wbc/shared'
 import { Link, createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { ArrowUpRight, ChevronDown, Megaphone, RefreshCw } from 'lucide-react'
 import { useMemo } from 'react'
@@ -249,7 +249,7 @@ function OverviewPage() {
 
           <div className="mt-4 flex items-end gap-2">
             <p className="text-[22px] font-semibold tracking-[-0.6px] text-ink">
-              {health.data?.name ?? 'wa-bot-service'}
+              {health.data?.name ?? 'WA Bot Console'}
             </p>
             <p className="pb-0.5 font-data text-[10.5px] text-ink-faint">
               {health.data?.version ?? 'v—'}

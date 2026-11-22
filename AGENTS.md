@@ -30,7 +30,7 @@ Aturan wajib untuk agent coding (OpenCode, Claude Code, Cursor, dll.) yang beker
 - TypeScript strict, ESM (`type: module`, `NodeNext`). Tidak ada `console.log` sisa debug di `src/`.
 - Named exports saja — tidak ada `export default` di `backend` dan `shared`.
 - Service mengikuti pola factory: `export function create<Nama>Service(repo)` plus `export type <Nama>Service = ReturnType<typeof create<Nama>Service>`.
-- Dependenksi dikelompokkan: package internal workspace (`@wa/*`) dan package eksternal lebih dulu, import relatif sesudahnya, dipisah baris kosong — biarkan ESLint/prettier yang memformat.
+- Dependenksi dikelompokkan: package internal workspace (`@wbc/*`) dan package eksternal lebih dulu, import relatif sesudahnya, dipisah baris kosong — biarkan ESLint/prettier yang memformat.
 - Penamaan file: kebab-case untuk util/route (`auth-store.ts`, `add-session-dialog.tsx`), factory mengikuti nama domain.
 - Error domain lewat modul `modules/errors.ts`; jangan lempar `Error` generik dari service.
 

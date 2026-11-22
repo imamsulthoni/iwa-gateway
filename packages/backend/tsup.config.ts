@@ -10,5 +10,5 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   splitting: false,
-  noExternal: ['@wa/shared'],
+  noExternal: ['@wbc/shared'],
 })

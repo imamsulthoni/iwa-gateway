@@ -1,5 +1,5 @@
 import { createMiddleware } from 'hono/factory'
-import { apiErrorBody } from '@wa/shared'
+import { apiErrorBody } from '@wbc/shared'
 
 import { verifySessionToken } from '../../modules/auth/session-token.js'
 import { NotFoundError } from '../../modules/errors.js'

@@ -1,4 +1,4 @@
-import { MESSAGE_STATUS_LABELS } from '@wa/shared'
+import { MESSAGE_STATUS_LABELS } from '@wbc/shared'
 import { ArrowUpRight, Copy, QrCode, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'

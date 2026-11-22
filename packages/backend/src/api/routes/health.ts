@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi'
-import { healthSchema } from '@wa/shared'
+import { healthSchema } from '@wbc/shared'
 import { sql } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
 

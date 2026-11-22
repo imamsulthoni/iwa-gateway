@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { apiErrorBody, type ErrorCode } from '@wa/shared'
+import { apiErrorBody, type ErrorCode } from '@wbc/shared'
 
 import type { AppLogger } from '../../infra/logger.js'
 import { DomainError, ValidationError } from '../../modules/errors.js'

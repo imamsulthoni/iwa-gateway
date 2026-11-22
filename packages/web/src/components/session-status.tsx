@@ -1,4 +1,4 @@
-import { SESSION_STATUS_LABELS } from '@wa/shared'
+import { SESSION_STATUS_LABELS } from '@wbc/shared'
 
 import { Badge } from '../design-system'
 import type { BadgeTone } from '../design-system'

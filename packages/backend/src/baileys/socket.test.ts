@@ -23,11 +23,11 @@ describe('factory socket', () => {
         warn: vi.fn(),
         error: vi.fn(),
       } as never,
-      browserName: 'WA Bot Service',
+      browserName: 'WA Bot Console',
       msgRetryCounterCache: { get: vi.fn(), set: vi.fn(), del: vi.fn(), flushAll: vi.fn() },
     })
 
-    expect(ubuntu).toHaveBeenCalledWith('WA Bot Service')
+    expect(ubuntu).toHaveBeenCalledWith('WA Bot Console')
     const options = makeWASocket.mock.calls[0]?.[0] as {
       markOnlineOnConnect: boolean
       syncFullHistory: boolean

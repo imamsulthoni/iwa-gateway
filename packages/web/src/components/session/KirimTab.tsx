@@ -1,4 +1,4 @@
-import { MESSAGE_STATUS_LABELS } from '@wa/shared'
+import { MESSAGE_STATUS_LABELS } from '@wbc/shared'
 import { CheckCheck, Send } from 'lucide-react'
 import { useEffect, useState } from 'react'
 

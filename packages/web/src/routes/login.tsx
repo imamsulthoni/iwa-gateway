@@ -89,7 +89,7 @@ function LoginPage() {
           </span>
           <span className="flex flex-col gap-px">
             <span className="font-data text-[11px] leading-none font-bold tracking-[1.4px] text-white">
-              WA PLATFORM
+              WA BOT CONSOLE
             </span>
             <span className="font-data text-[9.5px] leading-none tracking-[0.4px] text-inverse-muted">
               admin console
@@ -100,7 +100,7 @@ function LoginPage() {
         <div className="flex-1" />
 
         <p className="font-data text-[9.5px] tracking-[2px] text-inverse-muted uppercase">
-          OPS CONSOLE / WHATSAPP
+          WA BOT CONSOLE / WHATSAPP
         </p>
         <div className="mt-3.5 h-[3px] w-14 rounded-pill bg-linear-to-r from-accent-lime to-accent-green" />
         <h2 className="mt-6 max-w-[460px] text-[46px] leading-[1.08] font-medium tracking-[-1.8px] text-white">
@@ -128,7 +128,7 @@ function LoginPage() {
 
         <div className="flex items-center justify-between">
           <p className="font-data text-label tracking-[0.8px] text-inverse-faint">
-            WA PLATFORM · v1.4.2
+            WA BOT CONSOLE · v1.4.2
           </p>
           <p className="font-data text-label text-inverse-faint">data pelanggan tidak disimpan</p>
         </div>

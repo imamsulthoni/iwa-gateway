@@ -6,8 +6,8 @@ import type {
   WebhookDeliveryDto,
   WebhookEndpointCreatedDto,
   WebhookEndpointDto,
-} from '@wa/shared'
-import { WEBHOOK_EVENT_TYPES } from '@wa/shared'
+} from '@wbc/shared'
+import { WEBHOOK_EVENT_TYPES } from '@wbc/shared'
 
 import { newId } from '../../db/id.js'
 import type { WebhookDeliveryRow, WebhookEndpointRow } from '../../db/schema.js'

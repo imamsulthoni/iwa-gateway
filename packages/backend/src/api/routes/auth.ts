@@ -6,7 +6,7 @@ import {
   loginResponseSchema,
   loginSchema,
   type AuthMeDto,
-} from '@wa/shared'
+} from '@wbc/shared'
 
 import type { ApiKeyAuthenticator } from '../../modules/auth/api-key.js'
 import type { AuthService, AuthUser } from '../../modules/auth/service.js'
