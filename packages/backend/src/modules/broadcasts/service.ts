@@ -3,23 +3,34 @@ import {
   type BroadcastCurrentDto,
   type BroadcastV1ResponseDto,
   type CreateBroadcastInput,
+  type WebhookPayload,
 } from '@wa/shared'
 
 import { newId } from '../../db/id.js'
 import type { BroadcastRecipientRow, BroadcastRow } from '../../db/schema.js'
+import type { AppLogger } from '../../infra/logger.js'
 import { NotFoundError, ValidationError } from '../errors.js'
 import { phoneFromJid, toUserJid } from '../messages/phone.js'
 import type { OptOutsService } from '../opt-outs/service.js'
+import type { WebhookOutbox } from '../webhooks/outbox.js'
 import type { BroadcastsRepository } from './repository.js'
 
 export type BroadcastsService = ReturnType<typeof createBroadcastsService>
 
+export type BroadcastsServiceDeps = {
+  webhooks?: WebhookOutbox
+  logger?: Pick<AppLogger, 'warn'>
+}
+
 export type RecipientInput = {
   to: string
   name?: string
+  ref?: string
 }
 
 export const OPT_OUT_SKIP_REASON = 'opted_out'
+
+const TERMINAL_STATUSES = new Set<BroadcastRow['status']>(['done', 'paused', 'failed', 'cancelled'])
 
 // Broadcast final tidak lagi dianggap "berjalan", jadi tidak ditampilkan di
 // dashboard setelah selesai.
@@ -31,36 +42,64 @@ const FINISHED_BROADCAST_STATUSES = new Set<BroadcastRow['status']>([
 
 export function prepareRecipients(
   recipients: RecipientInput[],
-): { toJid: string; name: string | null }[] {
+): { toJid: string; name: string | null; ref: string | null }[] {
   const seen = new Set<string>()
+  const seenRefs = new Set<string>()
   return recipients.map((recipient) => {
     const toJid = toUserJid(recipient.to)
     if (seen.has(toJid)) {
       throw new ValidationError(`Nomor ${recipient.to} duplikat dalam daftar penerima`)
     }
     seen.add(toJid)
-    return { toJid, name: recipient.name ?? null }
+    if (recipient.ref !== undefined) {
+      if (seenRefs.has(recipient.ref)) {
+        throw new ValidationError(`Ref ${recipient.ref} duplikat dalam daftar penerima`)
+      }
+      seenRefs.add(recipient.ref)
+    }
+    return { toJid, name: recipient.name ?? null, ref: recipient.ref ?? null }
   })
 }
 
-export function createBroadcastsService(repo: BroadcastsRepository, optOuts: OptOutsService) {
+export function summarize(recipients: BroadcastRecipientRow[]) {
+  const sent = recipients.filter((recipient) => recipient.status === 'sent').length
+  const failed = recipients.filter((recipient) => recipient.status === 'failed').length
+  const skipped = recipients.filter((recipient) => recipient.status === 'skipped').length
+  const optedOut = recipients.filter(
+    (recipient) => recipient.status === 'skipped' && recipient.error === OPT_OUT_SKIP_REASON,
+  ).length
+  return { total: recipients.length, sent, failed, skipped, optedOut }
+}
+
+export function createBroadcastsService(
+  repo: BroadcastsRepository,
+  optOuts: OptOutsService,
+  deps: BroadcastsServiceDeps = {},
+) {
   async function get(id: string): Promise<BroadcastRow> {
     const row = await repo.findById(id)
     if (!row) throw new NotFoundError('Broadcast tidak ditemukan')
     return row
   }
 
+  async function record(payload: WebhookPayload): Promise<void> {
+    if (!deps.webhooks) return
+    try {
+      await deps.webhooks.record(payload)
+    } catch (error) {
+      deps.logger?.warn(
+        { sessionId: payload.session_id, eventType: payload.type, err: error },
+        'Gagal menulis outbox webhook broadcast',
+      )
+    }
+  }
+
   function toCurrent(row: BroadcastRow, recipients: BroadcastRecipientRow[]): BroadcastCurrentDto {
-    const sent = recipients.filter((recipient) => recipient.status === 'sent').length
-    const failed = recipients.filter((recipient) => recipient.status === 'failed').length
-    const skipped = recipients.filter((recipient) => recipient.status === 'skipped').length
-    const optedOut = recipients.filter(
-      (recipient) => recipient.status === 'skipped' && recipient.error === OPT_OUT_SKIP_REASON,
-    ).length
+    const { total, sent, failed, skipped, optedOut } = summarize(recipients)
     return {
       jobId: row.id,
       status: row.status,
-      total: recipients.length,
+      total,
       done: sent + failed + skipped,
       sent,
       failed,
@@ -72,6 +111,7 @@ export function createBroadcastsService(repo: BroadcastsRepository, optOuts: Opt
         id: recipient.id,
         to: recipient.toJid,
         name: recipient.name,
+        ref: recipient.ref,
         status: recipient.status,
         error: recipient.error,
       })),
@@ -88,6 +128,35 @@ export function createBroadcastsService(repo: BroadcastsRepository, optOuts: Opt
       startedAt: row.startedAt?.toISOString() ?? null,
       finishedAt: row.finishedAt?.toISOString() ?? null,
     }
+  }
+
+  async function setStatus(
+    id: string,
+    status: BroadcastRow['status'],
+    patch: Partial<Pick<BroadcastRow, 'scheduledAt' | 'startedAt' | 'finishedAt' | 'pauseReason'>> = {},
+  ): Promise<void> {
+    await repo.updateStatus(id, status, patch)
+    if (!TERMINAL_STATUSES.has(status)) return
+
+    const row = await repo.findById(id)
+    if (!row) return
+    const { total, sent, failed, skipped, optedOut } = summarize(await repo.listRecipients(id))
+    await record({
+      id: newId(),
+      type: 'broadcast.status',
+      session_id: row.sessionId,
+      data: {
+        broadcast_id: row.id,
+        status: status as 'done' | 'paused' | 'failed' | 'cancelled',
+        total,
+        sent,
+        failed,
+        skipped,
+        opted_out: optedOut,
+        pause_reason: row.pauseReason,
+        occurred_at: new Date().toISOString(),
+      },
+    })
   }
 
   return {
@@ -163,7 +232,7 @@ export function createBroadcastsService(repo: BroadcastsRepository, optOuts: Opt
       if (!['scheduled', 'pending', 'running'].includes(row.status)) {
         throw new ValidationError(`Broadcast berstatus ${row.status} tidak bisa dijeda`)
       }
-      await repo.updateStatus(id, 'paused')
+      await setStatus(id, 'paused')
       return get(id)
     },
 
@@ -173,19 +242,11 @@ export function createBroadcastsService(repo: BroadcastsRepository, optOuts: Opt
       if (!['scheduled', 'pending', 'running', 'paused'].includes(row.status)) {
         throw new ValidationError(`Broadcast sudah berstatus ${row.status}`)
       }
-      await repo.updateStatus(row.id, 'cancelled')
+      await setStatus(row.id, 'cancelled')
       return get(row.id)
     },
 
-    async setStatus(
-      id: string,
-      status: BroadcastRow['status'],
-      patch: Partial<
-        Pick<BroadcastRow, 'scheduledAt' | 'startedAt' | 'finishedAt' | 'pauseReason'>
-      > = {},
-    ): Promise<void> {
-      await repo.updateStatus(id, status, patch)
-    },
+    setStatus,
 
     async skipOptedOut(broadcastId: string): Promise<void> {
       const pending = (await repo.listRecipients(broadcastId)).filter(
@@ -208,11 +269,32 @@ export function createBroadcastsService(repo: BroadcastsRepository, optOuts: Opt
     },
 
     async markRecipient(
-      id: number,
+      broadcast: BroadcastRow,
+      recipient: BroadcastRecipientRow,
       status: BroadcastRecipientRow['status'],
-      error: string | null = null,
+      options: { error?: string | null; messageId?: string | null; emit?: boolean } = {},
     ): Promise<void> {
-      await repo.updateRecipient(id, { status, error })
+      const error = options.error ?? null
+      const messageId = options.messageId ?? null
+      await repo.updateRecipient(recipient.id, { status, error, messageId })
+      if (options.emit === false) return
+      if (status !== 'sent' && status !== 'failed' && status !== 'skipped') return
+      await record({
+        id: newId(),
+        type: 'broadcast.recipient',
+        session_id: broadcast.sessionId,
+        data: {
+          broadcast_id: broadcast.id,
+          recipient_id: recipient.id,
+          to: recipient.toJid,
+          phone: phoneFromJid(recipient.toJid),
+          ref: recipient.ref,
+          status,
+          message_id: messageId,
+          error,
+          occurred_at: new Date().toISOString(),
+        },
+      })
     },
 
     async countRunning(): Promise<number> {

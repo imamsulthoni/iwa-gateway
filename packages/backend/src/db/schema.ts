@@ -272,13 +272,17 @@ export const broadcastRecipients = mysqlTable(
       .references(() => broadcasts.id, { onDelete: 'cascade' }),
     toJid: varchar('to_jid', { length: 191 }).notNull(),
     name: varchar('name', { length: 255 }),
+    ref: varchar('ref', { length: 191 }),
     messageId: char('message_id', { length: 36 }),
     status: mysqlEnum('status', [...RECIPIENT_STATUSES])
       .notNull()
       .default('pending'),
     error: text('error'),
   },
-  (table) => [uniqueIndex('broadcast_recipients_to_uq').on(table.broadcastId, table.toJid)],
+  (table) => [
+    uniqueIndex('broadcast_recipients_to_uq').on(table.broadcastId, table.toJid),
+    uniqueIndex('broadcast_recipients_ref_uq').on(table.broadcastId, table.ref),
+  ],
 )
 
 export const webhookEndpoints = mysqlTable('webhook_endpoints', {

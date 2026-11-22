@@ -29,6 +29,13 @@
       "when": 1794976886505,
       "tag": "0003_lethal_blizzard",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1795359464196,
+      "tag": "0004_military_blur",
+      "breakpoints": true
     }
   ]
 }

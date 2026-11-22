@@ -19,6 +19,7 @@ import type { AppLogger } from '../infra/logger.js'
 import { publishSessionEvent } from '../infra/pubsub.js'
 import { createKeyCache } from '../baileys/key-cache.js'
 import type { MessagesService } from '../modules/messages/service.js'
+import { phoneFromJid } from '../modules/messages/phone.js'
 import type { OptOutsService } from '../modules/opt-outs/service.js'
 import type { SessionsRepository } from '../modules/sessions/repository.js'
 import type { WebhookOutbox } from '../modules/webhooks/outbox.js'
@@ -329,6 +330,8 @@ export class SessionManager {
         data: {
           message_id: changed.id,
           client_ref: changed.clientRef,
+          to: changed.toJid,
+          phone: changed.toJid ? phoneFromJid(changed.toJid) : null,
           status: changed.status,
           occurred_at: new Date().toISOString(),
         },

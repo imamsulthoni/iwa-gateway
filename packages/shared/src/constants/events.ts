@@ -1,4 +1,10 @@
-export const WEBHOOK_EVENT_TYPES = ['message.status', 'message.received', 'session.status'] as const
+export const WEBHOOK_EVENT_TYPES = [
+  'message.status',
+  'message.received',
+  'session.status',
+  'broadcast.recipient',
+  'broadcast.status',
+] as const
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number]
 

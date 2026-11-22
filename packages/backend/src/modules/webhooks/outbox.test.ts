@@ -64,4 +64,31 @@ describe('webhook outbox', () => {
     await expect(outbox.record(PAYLOAD)).resolves.toBe(0)
     expect(createDeliveries).toHaveBeenCalledWith([])
   })
+
+  it('mengenali tipe event broadcast', async () => {
+    const payload: WebhookPayload = {
+      id: 'evt-2',
+      type: 'broadcast.recipient',
+      session_id: 's1',
+      data: {
+        broadcast_id: 'b1',
+        recipient_id: 1,
+        to: '628123456789@s.whatsapp.net',
+        phone: '628123456789',
+        ref: 'crm-1',
+        status: 'sent',
+        message_id: 'm1',
+        error: null,
+        occurred_at: '2026-01-01T00:00:00.000Z',
+      },
+    }
+    const { outbox, createDeliveries } = createOutbox([
+      endpoint({ id: 'w1', events: ['broadcast.recipient'] }),
+      endpoint({ id: 'w2', events: ['broadcast.status'] }),
+    ])
+
+    await expect(outbox.record(payload)).resolves.toBe(1)
+    const [values] = createDeliveries.mock.calls[0] as unknown as [{ endpointId: string }[]]
+    expect(values.map((value) => value.endpointId)).toEqual(['w1'])
+  })
 })

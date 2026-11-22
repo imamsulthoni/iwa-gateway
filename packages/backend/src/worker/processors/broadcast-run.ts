@@ -63,7 +63,10 @@ export function createBroadcastRunProcessor(deps: BroadcastRunProcessorDeps) {
       )
       if (sentToday >= session.dailySendLimit) {
         for (const remaining of pending.slice(index)) {
-          await deps.broadcasts.markRecipient(remaining.id, 'failed', 'Batas harian tercapai')
+          await deps.broadcasts.markRecipient(broadcast, remaining, 'failed', {
+            error: 'Batas harian tercapai',
+            emit: false,
+          })
           failed += 1
         }
         break
@@ -80,9 +83,10 @@ export function createBroadcastRunProcessor(deps: BroadcastRunProcessorDeps) {
 
       if (duplicate && message.status !== 'queued') {
         await deps.broadcasts.markRecipient(
-          recipient.id,
+          broadcast,
+          recipient,
           message.status === 'failed' ? 'failed' : 'sent',
-          message.error,
+          { error: message.error, messageId: message.id },
         )
         if (message.status === 'failed') failed += 1
         else sent += 1
@@ -96,12 +100,17 @@ export function createBroadcastRunProcessor(deps: BroadcastRunProcessorDeps) {
           result?.key?.id ?? null,
           result ? JSON.stringify(result, BufferJSON.replacer) : null,
         )
-        await deps.broadcasts.markRecipient(recipient.id, 'sent')
+        await deps.broadcasts.markRecipient(broadcast, recipient, 'sent', {
+          messageId: message.id,
+        })
         sent += 1
       } catch (error) {
         const reason = error instanceof Error ? error.message : 'Gagal mengirim pesan'
         await deps.messages.markFailed(message.id, reason)
-        await deps.broadcasts.markRecipient(recipient.id, 'failed', reason)
+        await deps.broadcasts.markRecipient(broadcast, recipient, 'failed', {
+          error: reason,
+          messageId: message.id,
+        })
         failed += 1
         deps.logger.error({ broadcastId, recipientId: recipient.id, err: error }, 'Penerima gagal')
       }

@@ -19,6 +19,7 @@ export const openApiDocumentConfig = {
       '- Semua waktu ISO-8601 UTC; "hari ini" memakai `APP_TIMEZONE`.',
       '- SSE: `GET /v1/sessions/{id}/events` dibaca dengan `fetch` streaming + header `x-api-key` (bukan `EventSource`). Heartbeat dikirim setiap 15 detik.',
       '- Webhook keluar: header `X-Event-Id` (stabil antar retry) dan `X-Signature: sha256=<HMAC-SHA256 body dengan secret endpoint>`; timeout 10 detik, maksimal 3 percobaan dengan jeda 10 detik lalu 20 detik.',
+      '- Event webhook: `message.status`, `message.received`, `session.status`, `broadcast.recipient`, `broadcast.status`.',
       '',
       'Contoh payload webhook:',
       '',

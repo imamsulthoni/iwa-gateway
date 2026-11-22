@@ -93,3 +93,21 @@ describe('filter arah riwayat', () => {
     expect(listBySession).toHaveBeenCalledWith('s1', 10, undefined, 'in')
   })
 })
+
+describe('status pesan', () => {
+  it('mengembalikan JID tujuan untuk payload webhook', async () => {
+    const repo = {
+      findByWaMessageId: vi.fn(async () => row({ status: 'sent' })),
+      updateStatus: vi.fn(async () => undefined),
+      addStatusEvent: vi.fn(async () => undefined),
+    } as unknown as MessagesRepository
+    const service = createMessagesService(repo)
+
+    await expect(service.applyStatusUpdate('s1', 'wa-1', 3)).resolves.toEqual({
+      id: 'm1',
+      clientRef: 'ref-1',
+      toJid: '628123456789@s.whatsapp.net',
+      status: 'delivered',
+    })
+  })
+})

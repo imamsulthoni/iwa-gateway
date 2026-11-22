@@ -35,6 +35,7 @@ function recipients(count = 2): BroadcastRecipientRow[] {
     broadcastId: 'b1',
     toJid: `6281111111${String(index).padStart(2, '0')}@s.whatsapp.net`,
     name: `P${index}`,
+    ref: `ref-${index}`,
     messageId: null,
     status: 'pending' as const,
     error: null,
@@ -99,6 +100,13 @@ describe('processor broadcast-run', () => {
 
     expect(deps.manager.sendText).toHaveBeenCalledTimes(2)
     expect(deps.broadcasts.markRecipient).toHaveBeenCalledTimes(2)
+    expect(deps.broadcasts.markRecipient).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ id: 'b1' }),
+      expect.objectContaining({ id: 1 }),
+      'sent',
+      { messageId: 'm-628111111100@s.whatsapp.net' },
+    )
     expect(deps.broadcasts.setStatus).toHaveBeenNthCalledWith(1, 'b1', 'running', expect.anything())
     expect(deps.broadcasts.setStatus).toHaveBeenLastCalledWith('b1', 'done', expect.anything())
   })
@@ -116,6 +124,12 @@ describe('processor broadcast-run', () => {
 
     expect(deps.manager.sendText).not.toHaveBeenCalled()
     expect(deps.broadcasts.markRecipient).toHaveBeenCalledTimes(2)
+    expect(deps.broadcasts.markRecipient).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'b1' }),
+      expect.objectContaining({ id: 1 }),
+      'failed',
+      { error: 'Batas harian tercapai', emit: false },
+    )
     expect(deps.broadcasts.setStatus).toHaveBeenLastCalledWith('b1', 'failed', expect.anything())
   })
 
@@ -153,6 +167,13 @@ describe('processor broadcast-run', () => {
     await processor(JOB as never)
 
     expect(deps.manager.sendText).toHaveBeenCalledTimes(20)
+    expect(deps.broadcasts.markRecipient).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ id: 'b1' }),
+      expect.objectContaining({ id: 1 }),
+      'failed',
+      { error: 'gagal', messageId: 'm-628111111100@s.whatsapp.net' },
+    )
     expect(deps.broadcasts.setStatus).toHaveBeenLastCalledWith(
       'b1',
       'paused',
