@@ -7,6 +7,8 @@ import { pageSchema, paginationQuerySchema } from './pagination.js'
 export const webhookMessageStatusDataSchema = z.object({
   message_id: z.string(),
   client_ref: z.string().nullable(),
+  to: z.string().nullable(),
+  phone: z.string().nullable(),
   status: z.enum(MESSAGE_STATUSES),
   occurred_at: z.string(),
 })
@@ -23,6 +25,32 @@ export const webhookMessageReceivedDataSchema = z.object({
 export const webhookSessionStatusDataSchema = z.object({
   status: z.enum(SESSION_STATUSES),
   phone_number: z.string().nullable(),
+  occurred_at: z.string(),
+})
+
+export const BROADCAST_RECIPIENT_EVENT_STATUSES = ['sent', 'failed', 'skipped'] as const
+
+export const webhookBroadcastRecipientDataSchema = z.object({
+  broadcast_id: z.string(),
+  recipient_id: z.number().int().positive(),
+  to: z.string(),
+  phone: z.string().nullable(),
+  ref: z.string().nullable(),
+  status: z.enum(BROADCAST_RECIPIENT_EVENT_STATUSES),
+  message_id: z.string().nullable(),
+  error: z.string().nullable(),
+  occurred_at: z.string(),
+})
+
+export const webhookBroadcastStatusDataSchema = z.object({
+  broadcast_id: z.string(),
+  status: z.enum(['done', 'paused', 'failed', 'cancelled']),
+  total: z.number().int().nonnegative(),
+  sent: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  opted_out: z.number().int().nonnegative(),
+  pause_reason: z.string().nullable(),
   occurred_at: z.string(),
 })
 
@@ -44,6 +72,18 @@ export const webhookPayloadSchema = z.discriminatedUnion('type', [
     type: z.literal('session.status'),
     session_id: z.string(),
     data: webhookSessionStatusDataSchema,
+  }),
+  z.object({
+    id: z.string(),
+    type: z.literal('broadcast.recipient'),
+    session_id: z.string(),
+    data: webhookBroadcastRecipientDataSchema,
+  }),
+  z.object({
+    id: z.string(),
+    type: z.literal('broadcast.status'),
+    session_id: z.string(),
+    data: webhookBroadcastStatusDataSchema,
   }),
 ])
 

@@ -1122,6 +1122,7 @@ describe('API Hono', () => {
     expect(document.components.securitySchemes.UserToken?.type).toBe('http')
     expect(document.info.description).toContain('X-Signature: sha256=')
     expect(document.info.description).toContain('message.received')
+    expect(document.info.description).toContain('broadcast.recipient')
   })
 
   describe('katalog endpoint consumer', () => {

@@ -213,11 +213,19 @@ Auth: `x-api-key` (API key admin) untuk endpoint admin, atau `Authorization: Bea
 
 ### Webhook keluar
 
-- Event: `message.status`, `message.received`, `session.status`.
+| Event | Kapan dikirim |
+| --- | --- |
+| `message.status` | Status pesan keluar berubah. |
+| `message.received` | Pesan masuk tersimpan. |
+| `session.status` | Nomor terhubung, terputus, atau keluar. |
+| `broadcast.recipient` | Satu penerima broadcast `sent`, `failed`, atau `skipped`. |
+| `broadcast.status` | Broadcast terminal: `done`, `paused`, `failed`, atau `cancelled`. |
+
 - URL wajib HTTPS; `http://` hanya diterima untuk `localhost`/loopback, atau ke IP privat (10/8, 172.16/12, 192.168/16) bila `WEBHOOK_ALLOW_HTTP_PRIVATE=true`. Secret 64 karakter hex dibuat server dan hanya muncul saat create/rotate.
 - Header: `X-Event-Id` (id delivery, stabil antar retry) dan `X-Signature: sha256=<HMAC-SHA256(body, secret endpoint)>`.
 - Timeout 10 detik, maksimal 3 percobaan (awal + 2 retry) dengan jeda 10 lalu 20 detik; setelah itu status `failed`. Balasan non-2xx dihitung gagal; delivery ke endpoint nonaktif langsung `failed`.
 - Penerima sebaiknya idempoten berdasarkan `X-Event-Id`.
+- `broadcast.recipient` juga idempoten lewat `(broadcast_id, recipient_id)`. `sent` berarti Baileys berhasil kirim, bukan `delivered`/`read`; sumber kebenaran status broadcast tetap `GET /v1/broadcasts/{id}`.
 
 ```json
 {
@@ -246,6 +254,13 @@ Auth: `x-api-key` (API key admin) untuk endpoint admin, atau `Authorization: Bea
     "occurred_at": "2026-11-17T03:00:00.000Z"
   }
 }
+```
+
+```bash
+curl -X POST http://localhost:8467/v1/webhooks \
+  -H "x-api-key: $API_KEY" \
+  -H "content-type: application/json" \
+  -d '{"url":"https://example.com/hook","events":["broadcast.recipient","broadcast.status"]}'
 ```
 
 ### SSE

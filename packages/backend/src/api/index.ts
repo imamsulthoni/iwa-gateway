@@ -26,6 +26,7 @@ import { createSettingsRepository } from '../modules/settings/repository.js'
 import { createSettingsService } from '../modules/settings/service.js'
 import { createStatsService } from '../modules/stats/service.js'
 import { createWebhooksRepository } from '../modules/webhooks/repository.js'
+import { createWebhookOutbox } from '../modules/webhooks/outbox.js'
 import { createWebhooksService } from '../modules/webhooks/service.js'
 
 const env = validateEnv()
@@ -44,6 +45,7 @@ const optOutsRepo = createOptOutsRepository(database.db)
 const webhooksRepo = createWebhooksRepository(database.db)
 const authRepo = createAuthRepository(database.db)
 const settingsService = createSettingsService(createSettingsRepository(database.db))
+const webhooks = createWebhookOutbox(webhooksRepo)
 
 const app = createApp({
   env,
@@ -55,7 +57,10 @@ const app = createApp({
   sessions: createSessionsService(sessionsRepo, settingsService),
   messages: createMessagesService(messagesRepo),
   conversations: createConversationsService(conversationsRepo),
-  broadcasts: createBroadcastsService(broadcastsRepo, createOptOutsService(optOutsRepo)),
+  broadcasts: createBroadcastsService(broadcastsRepo, createOptOutsService(optOutsRepo), {
+    webhooks,
+    logger,
+  }),
   stats: createStatsService({
     sessions: sessionsRepo,
     messages: messagesRepo,

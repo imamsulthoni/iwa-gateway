@@ -1764,12 +1764,54 @@ data: {...}
 
 ## Webhook keluar
 
-- Event: `message.status`, `message.received`, `session.status`.
+- Event: `message.status`, `message.received`, `session.status`, `broadcast.recipient`, `broadcast.status`.
 - URL wajib HTTPS. `http://` hanya untuk `localhost`/loopback, atau IP privat (10/8, 172.16/12, 192.168/16) bila `WEBHOOK_ALLOW_HTTP_PRIVATE=true`.
 - Secret 64 karakter hex dibuat server, hanya tampil saat create/rotate.
 - Header: `X-Event-Id` (stabil antar retry) dan `X-Signature: sha256=<HMAC-SHA256(body, secret endpoint)>`.
 - Timeout 10 detik, maksimal 3 percobaan (jeda 10 lalu 20 detik), setelah itu `failed`. Balasan non-2xx dianggap gagal; endpoint nonaktif langsung `failed`.
 - Penerima sebaiknya idempoten berdasarkan `X-Event-Id`.
+- `broadcast.recipient` memakai kunci idempotensi `(broadcast_id, recipient_id)`; `payload.id` juga stabil untuk dedupe lintas retry.
+- `message.status` menyertakan `to` (JID) dan `phone` (E.164 tanpa `+`); keduanya `null` bila JID pesan tidak tersedia.
+- `sent` berarti Baileys berhasil mengirim pesan, bukan `delivered`/`read`. Status final per penerima dan ringkasan broadcast tetap diambil dari `GET /v1/broadcasts/{id}`; webhook hanya notifikasi.
+- `broadcast.status` dipancarkan untuk status terminal `done`, `paused`, `failed`, dan `cancelled`; transisi massal seperti skip opt-out atau batas harian tidak memancarkan event per penerima.
+
+```json
+{
+  "id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f63",
+  "type": "broadcast.recipient",
+  "session_id": "01a1ddfa-295a-7557-9bd3-00293fdc047b",
+  "data": {
+    "broadcast_id": "01a1ddfa-295a-7557-9bd3-00293fdc047c",
+    "recipient_id": 42,
+    "to": "628123456789@s.whatsapp.net",
+    "phone": "628123456789",
+    "ref": "crm-8821",
+    "status": "failed",
+    "message_id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f62",
+    "error": "connection closed",
+    "occurred_at": "2026-11-22T03:00:05.000Z"
+  }
+}
+```
+
+```json
+{
+  "id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f65",
+  "type": "broadcast.status",
+  "session_id": "01a1ddfa-295a-7557-9bd3-00293fdc047b",
+  "data": {
+    "broadcast_id": "01a1ddfa-295a-7557-9bd3-00293fdc047c",
+    "status": "done",
+    "total": 2,
+    "sent": 1,
+    "failed": 1,
+    "skipped": 0,
+    "opted_out": 0,
+    "pause_reason": null,
+    "occurred_at": "2026-11-22T03:00:06.000Z"
+  }
+}
+```
 
 ## Catatan implementasi
 

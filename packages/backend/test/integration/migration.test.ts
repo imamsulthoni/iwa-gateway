@@ -226,3 +226,26 @@ describeIntegration('migrasi 0001 dengan data Fase 1', () => {
     expect(await indexes(pool, 'broadcasts')).toContain('broadcasts_session_reference_uq')
   })
 })
+
+describeIntegration('migrasi 0004 ref penerima', () => {
+  let connection: Awaited<ReturnType<typeof createDb>>
+  let pool: PoolConnection
+
+  beforeAll(async () => {
+    connection = createDb(testDatabaseUrl())
+    pool = await connection.pool.getConnection()
+    await dropAllTables(pool)
+    await migrate(connection.db, { migrationsFolder: DRIZZLE_FOLDER })
+  })
+
+  afterAll(async () => {
+    await dropAllTables(pool)
+    pool.release()
+    await connection.pool.end()
+  })
+
+  it('menambah kolom ref dan unique index per broadcast', async () => {
+    expect(await columnNames(pool, 'broadcast_recipients')).toContain('ref')
+    expect(await indexes(pool, 'broadcast_recipients')).toContain('broadcast_recipients_ref_uq')
+  })
+})

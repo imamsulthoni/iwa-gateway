@@ -269,12 +269,63 @@ describe('kontrak webhook', () => {
       data: {
         message_id: 'm1',
         client_ref: 'order-1',
+        to: '628123456789@s.whatsapp.net',
+        phone: '628123456789',
         status: 'delivered',
         occurred_at: '2026-11-16T10:00:00.000Z',
       },
     }
     expect(webhookPayloadSchema.safeParse(payload).success).toBe(true)
     expect(webhookPayloadSchema.safeParse({ ...payload, type: 'optout' }).success).toBe(false)
+  })
+
+  it('memvalidasi payload broadcast penerima dan status', () => {
+    const recipient = {
+      id: 'evt-2',
+      type: 'broadcast.recipient',
+      session_id: 's1',
+      data: {
+        broadcast_id: 'b1',
+        recipient_id: 42,
+        to: '628123456789@s.whatsapp.net',
+        phone: '628123456789',
+        ref: 'crm-8821',
+        status: 'failed',
+        message_id: 'm1',
+        error: 'connection closed',
+        occurred_at: '2026-11-22T03:00:05.000Z',
+      },
+    }
+    const status = {
+      id: 'evt-3',
+      type: 'broadcast.status',
+      session_id: 's1',
+      data: {
+        broadcast_id: 'b1',
+        status: 'paused',
+        total: 2,
+        sent: 1,
+        failed: 0,
+        skipped: 1,
+        opted_out: 1,
+        pause_reason: null,
+        occurred_at: '2026-11-22T03:00:06.000Z',
+      },
+    }
+    expect(webhookPayloadSchema.safeParse(recipient).success).toBe(true)
+    expect(webhookPayloadSchema.safeParse(status).success).toBe(true)
+    expect(
+      webhookPayloadSchema.safeParse({
+        ...recipient,
+        data: { ...recipient.data, status: 'delivered' },
+      }).success,
+    ).toBe(false)
+    expect(
+      webhookPayloadSchema.safeParse({
+        ...status,
+        data: { ...status.data, status: 'running' },
+      }).success,
+    ).toBe(false)
   })
 })
 

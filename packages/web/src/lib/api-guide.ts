@@ -134,7 +134,7 @@ export const WEBHOOK_EVENTS: readonly GuideBlock[] = [
       {
         id: 'fetch',
         label: 'JSON',
-        code: '{\n  "id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f63",\n  "type": "message.status",\n  "session_id": "01a1ddfa-295a-7557-9bd3-00293fdc047b",\n  "data": {\n    "message_id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f62",\n    "client_ref": "followup-2026-11-18-001",\n    "status": "delivered",\n    "occurred_at": "2026-11-18T03:00:05.000Z"\n  }\n}',
+        code: '{\n  "id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f63",\n  "type": "message.status",\n  "session_id": "01a1ddfa-295a-7557-9bd3-00293fdc047b",\n  "data": {\n    "message_id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f62",\n    "client_ref": "followup-2026-11-18-001",\n    "to": "6281234567890@s.whatsapp.net",\n    "phone": "6281234567890",\n    "status": "delivered",\n    "occurred_at": "2026-11-18T03:00:05.000Z"\n  }\n}',
       },
     ],
   },
@@ -149,6 +149,28 @@ export const WEBHOOK_EVENTS: readonly GuideBlock[] = [
       },
     ],
   },
+  {
+    title: 'broadcast.recipient',
+    detail: 'Satu penerima broadcast selesai: sent, failed, atau skipped.',
+    samples: [
+      {
+        id: 'fetch',
+        label: 'JSON',
+        code: '{\n  "id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f63",\n  "type": "broadcast.recipient",\n  "session_id": "01a1ddfa-295a-7557-9bd3-00293fdc047b",\n  "data": {\n    "broadcast_id": "01a1ddfa-295a-7557-9bd3-00293fdc047c",\n    "recipient_id": 42,\n    "to": "628123456789@s.whatsapp.net",\n    "phone": "628123456789",\n    "ref": "crm-8821",\n    "status": "failed",\n    "message_id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f62",\n    "error": "connection closed",\n    "occurred_at": "2026-11-22T03:00:05.000Z"\n  }\n}',
+      },
+    ],
+  },
+  {
+    title: 'broadcast.status',
+    detail: 'Broadcast terminal: done, paused, failed, atau cancelled.',
+    samples: [
+      {
+        id: 'fetch',
+        label: 'JSON',
+        code: '{\n  "id": "0199f0c4-6f0e-7f0a-9a0b-1b2c3d4e5f65",\n  "type": "broadcast.status",\n  "session_id": "01a1ddfa-295a-7557-9bd3-00293fdc047b",\n  "data": {\n    "broadcast_id": "01a1ddfa-295a-7557-9bd3-00293fdc047c",\n    "status": "done",\n    "total": 2,\n    "sent": 1,\n    "failed": 1,\n    "skipped": 0,\n    "opted_out": 0,\n    "pause_reason": null,\n    "occurred_at": "2026-11-22T03:00:06.000Z"\n  }\n}',
+      },
+    ],
+  },
 ]
 
 export const WEBHOOK_DELIVERY = {
@@ -158,6 +180,7 @@ export const WEBHOOK_DELIVERY = {
     'Header X-Signature berisi sha256=<HMAC-SHA256(body mentah, secret endpoint)>.',
     'Timeout 10 detik, maksimal 3 percobaan dengan jeda 10 detik lalu 20 detik.',
     'Balas 2xx secepat mungkin. Proses lanjutan sebaiknya diantrekan di sisi penerima.',
+    'broadcast.recipient idempoten lewat (broadcast_id, recipient_id). sent berarti Baileys berhasil kirim, bukan delivered/read; sumber kebenaran tetap GET /v1/broadcasts/{id}.',
   ],
   verifySample:
     "import { createHmac, timingSafeEqual } from 'node:crypto'\n\nconst expected = `sha256=${createHmac('sha256', process.env.WA_WEBHOOK_SECRET!)\n  .update(rawBody)\n  .digest('hex')}`\nconst valid = timingSafeEqual(Buffer.from(expected), Buffer.from(signature))",

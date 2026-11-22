@@ -48,8 +48,8 @@ const sessions = createSessionsService(
 )
 const messages = createMessagesService(messagesRepo)
 const optOuts = createOptOutsService(optOutsRepo)
-const broadcasts = createBroadcastsService(broadcastsRepo, optOuts)
 const webhooks = createWebhookOutbox(webhooksRepo)
+const broadcasts = createBroadcastsService(broadcastsRepo, optOuts, { webhooks, logger })
 
 const manager = new SessionManager({
   db: database.db,

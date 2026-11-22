@@ -33,6 +33,29 @@ const NAV = [
   { id: 'boundaries', label: 'Batas consumer' },
 ] as const
 
+function slug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+function endpointAnchor(endpoint: ConsumerEndpoint): string {
+  return `ep-${slug(`${endpoint.method} ${endpoint.path}`)}`
+}
+
+const CATALOG_NAV = API_GROUPS.map((group) => ({
+  id: `group-${group.id}`,
+  label: group.label,
+  endpoints: CONSUMER_ENDPOINTS.filter((endpoint) => endpoint.group === group.id).map(
+    (endpoint) => ({
+      id: endpointAnchor(endpoint),
+      method: endpoint.method,
+      path: endpoint.path,
+    }),
+  ),
+})).filter((group) => group.endpoints.length > 0)
+
 const METHOD_TONES: Record<ConsumerEndpointMethod, BadgeTone> = {
   GET: 'info',
   POST: 'success',
@@ -86,18 +109,20 @@ function DocsPage() {
 
       <div className="mx-auto flex max-w-[1180px] gap-10 px-6 py-10">
         <aside className="hidden w-[190px] shrink-0 lg:block">
-          <nav className="sticky top-24 space-y-0.5">
+          <nav className="sticky top-24 max-h-[calc(100vh-8rem)] space-y-0.5 overflow-y-auto pb-4">
             <p className="mb-2 font-data text-label tracking-[1.6px] text-ink-faint uppercase">
               Daftar isi
             </p>
             {NAV.map((item) => (
-              <a
-                key={item.id}
-                href={`#${item.id}`}
-                className="block rounded-control px-2.5 py-1.5 text-small font-medium text-ink-soft transition hover:bg-surface-soft hover:text-ink"
-              >
-                {item.label}
-              </a>
+              <div key={item.id}>
+                <a
+                  href={`#${item.id}`}
+                  className="block rounded-control px-2.5 py-1.5 text-small font-medium text-ink-soft transition hover:bg-surface-soft hover:text-ink"
+                >
+                  {item.label}
+                </a>
+                {item.id === 'catalog' ? <CatalogNav /> : null}
+              </div>
             ))}
           </nav>
         </aside>
@@ -209,7 +234,11 @@ function DocsPage() {
                 )
                 if (endpoints.length === 0) return null
                 return (
-                  <div key={group.id} className="space-y-3">
+                  <div
+                    key={group.id}
+                    id={`group-${group.id}`}
+                    className="scroll-mt-24 space-y-3"
+                  >
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <h3 className="text-body font-semibold text-ink">{group.label}</h3>
                       <p className="text-small text-ink-faint">{group.note}</p>
@@ -218,6 +247,7 @@ function DocsPage() {
                       {endpoints.map((endpoint) => (
                         <EndpointCard
                           key={`${endpoint.method} ${endpoint.path}`}
+                          id={endpointAnchor(endpoint)}
                           endpoint={endpoint}
                           apiBaseUrl={apiBaseUrl}
                         />
@@ -325,6 +355,35 @@ type SectionProps = {
   children: ReactNode
 }
 
+function CatalogNav() {
+  return (
+    <div className="mt-1 mb-2 space-y-3 border-l border-line pl-2.5">
+      {CATALOG_NAV.map((group) => (
+        <div key={group.id} className="space-y-0.5">
+          <a
+            href={`#${group.id}`}
+            className="block rounded-control px-1.5 py-1 text-small font-medium text-ink-soft transition hover:bg-surface-soft hover:text-ink"
+          >
+            {group.label}
+          </a>
+          <div className="space-y-px">
+            {group.endpoints.map((endpoint) => (
+              <a
+                key={endpoint.id}
+                href={`#${endpoint.id}`}
+                className="flex items-center gap-1.5 rounded-control px-1.5 py-1 font-data text-[10px] leading-tight text-ink-faint transition hover:bg-surface-soft hover:text-ink"
+              >
+                <span className="w-8 shrink-0 tracking-[0.04em]">{endpoint.method}</span>
+                <span className="truncate">{endpoint.path}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function Section({ id, eyebrow, title, description, children }: SectionProps) {
   return (
     <section id={id} className="scroll-mt-24 space-y-4">
@@ -341,13 +400,14 @@ function Section({ id, eyebrow, title, description, children }: SectionProps) {
 type EndpointCardProps = {
   endpoint: ConsumerEndpoint
   apiBaseUrl: string
+  id: string
 }
 
-function EndpointCard({ endpoint, apiBaseUrl }: EndpointCardProps) {
+function EndpointCard({ endpoint, apiBaseUrl, id }: EndpointCardProps) {
   const response = endpointResponse(endpoint)
 
   return (
-    <Card className="space-y-3">
+    <Card id={id} className="scroll-mt-24 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={METHOD_TONES[endpoint.method]} dot={false}>
           {endpoint.method}
@@ -357,7 +417,10 @@ function EndpointCard({ endpoint, apiBaseUrl }: EndpointCardProps) {
           {endpoint.auth}
         </span>
       </div>
-      <p className="text-body text-ink-soft">{endpoint.summary}</p>
+      <div className="space-y-0.5">
+        <p className="text-body font-medium text-ink">{endpoint.summary}</p>
+        <p className="text-small leading-[1.6] text-ink-soft">{endpoint.detail}</p>
+      </div>
       <CodeBlock samples={buildCodeSamples(endpoint, apiBaseUrl)} />
       {response ? (
         <div className="space-y-1.5">

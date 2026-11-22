@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { newId } from '../../src/db/id.js'
-import { messages } from '../../src/db/schema.js'
+import { messages, webhookDeliveries } from '../../src/db/schema.js'
 import { validateEnv } from '../../src/infra/env.js'
 import { createLogger } from '../../src/infra/logger.js'
 import { closeQueues, createQueues, enqueue, type QueueRegistry } from '../../src/infra/queue.js'
@@ -18,6 +18,8 @@ import { createOptOutsRepository } from '../../src/modules/opt-outs/repository.j
 import { createOptOutsService } from '../../src/modules/opt-outs/service.js'
 import { createSessionsRepository } from '../../src/modules/sessions/repository.js'
 import { createSessionsService } from '../../src/modules/sessions/service.js'
+import { createWebhookOutbox } from '../../src/modules/webhooks/outbox.js'
+import { createWebhooksRepository } from '../../src/modules/webhooks/repository.js'
 import { createBroadcastRunProcessor } from '../../src/worker/processors/broadcast-run.js'
 import type { SessionManager } from '../../src/worker/session-manager.js'
 import { RUN_INTEGRATION, resetTestDb, setupTestDb } from './setup.js'
@@ -62,7 +64,9 @@ describeIntegration('integrasi broadcast lanjutan', () => {
   }
 
   function broadcastsService(): BroadcastsService {
-    return createBroadcastsService(broadcastsRepo(), createOptOutsService(optOutsRepo()))
+    return createBroadcastsService(broadcastsRepo(), createOptOutsService(optOutsRepo()), {
+      webhooks: createWebhookOutbox(createWebhooksRepository(connection.db)),
+    })
   }
 
   function processor(manager: SessionManager, autoPauseRatio = 0.2) {
@@ -327,5 +331,47 @@ describeIntegration('integrasi broadcast lanjutan', () => {
     expect(detail.status).toBe('paused')
     expect(detail.pauseReason).toContain('Tingkat gagal')
     expect(detail.recipients.filter((recipient) => recipient.status === 'pending')).toHaveLength(1)
+  })
+
+  it('memancarkan webhook penerima dan status broadcast', async () => {
+    const endpointId = newId()
+    await createWebhooksRepository(connection.db).create({
+      id: endpointId,
+      url: 'https://example.com/hook',
+      secret: 'a'.repeat(64),
+      events: ['broadcast.recipient', 'broadcast.status'],
+      active: true,
+    })
+
+    const broadcasts = broadcastsService()
+    const recipientsInput = recipients(2).map((recipient, index) => ({
+      ...recipient,
+      ref: `crm-${index}`,
+    }))
+    const { broadcast } = await broadcasts.create(sessionId, {
+      recipients: recipientsInput,
+      text: 'Halo',
+      minDelay: 10,
+      maxDelay: 20,
+      clientRef: 'bc-webhook',
+    })
+
+    const manager = { sendText: vi.fn(async () => ({ key: { id: 'wa-1' } })) }
+    await processor(manager as unknown as SessionManager)(job(broadcast.id))
+
+    const rows = await connection.db
+      .select()
+      .from(webhookDeliveries)
+      .where(eq(webhookDeliveries.endpointId, endpointId))
+    expect(rows).toHaveLength(3)
+    expect(rows.filter((row) => row.eventType === 'broadcast.recipient')).toHaveLength(2)
+    expect(rows.filter((row) => row.eventType === 'broadcast.status')).toHaveLength(1)
+
+    const recipientRows = await broadcastsRepo().listRecipients(broadcast.id)
+    expect(recipientRows.every((recipient) => recipient.messageId !== null)).toBe(true)
+    const payload = rows.find((row) => row.eventType === 'broadcast.recipient')?.payload as {
+      data: { ref: string | null }
+    }
+    expect(payload.data.ref).not.toBeNull()
   })
 })

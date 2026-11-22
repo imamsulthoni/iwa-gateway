@@ -6,6 +6,7 @@ import { MAX_DELAY_SECONDS, MIN_DELAY_SECONDS, isValidDelayRange } from '../cons
 export const broadcastRecipientInputSchema = z.object({
   to: z.string().min(8).max(32),
   name: z.string().max(255).optional(),
+  ref: z.string().min(1).max(191).optional(),
 })
 
 const broadcastInputSchema = z.object({
@@ -46,6 +47,7 @@ export const broadcastRecipientSchema = z.object({
   id: z.number(),
   to: z.string(),
   name: z.string().nullable(),
+  ref: z.string().nullable(),
   status: z.enum(RECIPIENT_STATUSES),
   error: z.string().nullable(),
 })

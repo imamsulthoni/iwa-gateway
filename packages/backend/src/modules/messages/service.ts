@@ -167,7 +167,12 @@ export function createMessagesService(repo: MessagesRepository) {
       sessionId: string,
       waMessageId: string,
       statusValue: number | string | null | undefined,
-    ): Promise<{ id: string; clientRef: string | null; status: MessageStatus } | null> {
+    ): Promise<{
+      id: string
+      clientRef: string | null
+      toJid: string | null
+      status: MessageStatus
+    } | null> {
       const next = mapBaileysStatus(statusValue)
       if (!next) return null
       const row = await repo.findByWaMessageId(sessionId, waMessageId)
@@ -175,7 +180,7 @@ export function createMessagesService(repo: MessagesRepository) {
       if (!shouldAdvanceStatus(row.status, next)) return null
       await repo.updateStatus(row.id, next)
       await repo.addStatusEvent(row.id, next)
-      return { id: row.id, clientRef: row.clientRef, status: next }
+      return { id: row.id, clientRef: row.clientRef, toJid: row.toJid, status: next }
     },
 
     async retry(id: string): Promise<MessageDto> {
