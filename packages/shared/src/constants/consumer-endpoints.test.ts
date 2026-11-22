@@ -31,12 +31,13 @@ describe('CONSUMER_ENDPOINTS', () => {
   })
 
   it('tidak memuat endpoint dashboard internal', () => {
-    const paths = CONSUMER_ENDPOINTS.map((endpoint) => endpoint.path)
+    const keys = CONSUMER_ENDPOINTS.map((endpoint) => `${endpoint.method} ${endpoint.path}`)
 
-    for (const forbidden of ['/auth', '/settings', '/stats', '/messages']) {
-      expect(paths).not.toContain(forbidden)
+    for (const forbidden of ['/v1/auth', '/v1/settings', '/v1/stats']) {
+      expect(keys.some((key) => key.endsWith(` ${forbidden}`))).toBe(false)
     }
-    expect(paths.some((path) => path.startsWith('/auth/'))).toBe(false)
-    expect(paths.some((path) => path.startsWith('/messages/'))).toBe(false)
+    expect(keys.some((key) => key.includes(' /v1/auth/'))).toBe(false)
+    expect(keys).not.toContain('GET /v1/messages')
+    expect(keys.some((key) => key.includes(' /v1/messages/'))).toBe(false)
   })
 })

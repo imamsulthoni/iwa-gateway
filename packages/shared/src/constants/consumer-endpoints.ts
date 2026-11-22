@@ -31,7 +31,7 @@ export type ConsumerEndpoint = {
 export const CONSUMER_ENDPOINTS = [
   {
     method: 'GET',
-    path: '/sessions',
+    path: '/v1/sessions',
     group: 'numbers',
     summary: 'Daftar nomor; ambil publicId yang berstatus connected.',
     detail:
@@ -40,7 +40,7 @@ export const CONSUMER_ENDPOINTS = [
   },
   {
     method: 'GET',
-    path: '/sessions/{id}',
+    path: '/v1/sessions/{id}',
     group: 'numbers',
     summary: 'Detail satu nomor.',
     detail: 'Berguna untuk cek label, nomor WhatsApp, status koneksi, dan batas kirim harian.',
@@ -48,7 +48,7 @@ export const CONSUMER_ENDPOINTS = [
   },
   {
     method: 'GET',
-    path: '/sessions/{id}/status',
+    path: '/v1/sessions/{id}/status',
     group: 'numbers',
     summary: 'Status ringkas nomor.',
     detail: 'Polling ringan saat hanya butuh status koneksi tanpa detail penuh.',
@@ -90,7 +90,7 @@ export const CONSUMER_ENDPOINTS = [
   },
   {
     method: 'GET',
-    path: '/sessions/{id}/messages',
+    path: '/v1/sessions/{id}/messages',
     group: 'conversations',
     summary: 'Riwayat pesan per nomor sebagai alternatif.',
     detail: 'Berguna untuk sinkronisasi awal atau audit lintas room pada satu nomor.',

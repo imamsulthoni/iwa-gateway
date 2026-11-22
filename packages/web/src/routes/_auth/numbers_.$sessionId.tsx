@@ -56,7 +56,7 @@ function SessionDetailPage() {
 
   const intervalRef = useRef(3_000)
   const live = usePolling<SessionLiveDto>(
-    () => api.get<SessionLiveDto>(`/sessions/${sessionId}/live`),
+    () => api.get<SessionLiveDto>(`/v1/sessions/${sessionId}/live`),
     intervalRef.current,
     true,
   )
@@ -85,18 +85,18 @@ function SessionDetailPage() {
 
   function rotateToken() {
     void run(async () => {
-      const result = await api.post<SessionTokenDto>(`/sessions/${sessionId}/token`)
+      const result = await api.post<SessionTokenDto>(`/v1/sessions/${sessionId}/token`)
       setTokenResult(result)
     })
   }
 
   function logoutSession() {
-    void run(() => api.post(`/sessions/${sessionId}/logout`))
+    void run(() => api.post(`/v1/sessions/${sessionId}/logout`))
     setConfirm(null)
   }
 
   async function deleteSession() {
-    await run(() => api.delete(`/sessions/${sessionId}`))
+    await run(() => api.delete(`/v1/sessions/${sessionId}`))
     setConfirm(null)
     await navigate({ to: '/numbers' })
   }

@@ -38,9 +38,9 @@ export function SalesAccountCard({ session, onChanged }: SalesAccountCardProps) 
     setError(null)
     try {
       if (attach) {
-        await api.patch(`/sessions/${session.id}/sales`, { salesName: name.trim(), pin })
+        await api.patch(`/v1/sessions/${session.id}/sales`, { salesName: name.trim(), pin })
       } else {
-        await api.post(`/sessions/${session.id}/sales/pin`, { pin })
+        await api.post(`/v1/sessions/${session.id}/sales/pin`, { pin })
       }
       setNotice(
         attach

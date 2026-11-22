@@ -55,14 +55,14 @@ export function KoneksiTab({
   }
 
   async function login() {
-    await run(() => api.post(`/sessions/${session.id}/login`))
+    await run(() => api.post(`/v1/sessions/${session.id}/login`))
   }
 
   async function cancelPairing() {
     setBusy(true)
     setError(null)
     try {
-      await api.post(`/sessions/${session.id}/cancel`)
+      await api.post(`/v1/sessions/${session.id}/cancel`)
       onChanged()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Gagal membatalkan pairing')
@@ -426,7 +426,7 @@ function useRecentMessages(sessionId: string, connected: boolean) {
     if (!connected) return
     let active = true
     api
-      .get<MessageListDto>(`/sessions/${sessionId}/messages?limit=4&direction=out`)
+      .get<MessageListDto>(`/v1/sessions/${sessionId}/messages?limit=4&direction=out`)
       .then((page) => {
         if (active) setItems(page.items)
       })

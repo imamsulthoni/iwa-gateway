@@ -12,7 +12,7 @@ export const openApiDocumentConfig = {
     title: `${APP_NAME} API`,
     version: APP_VERSION,
     description: [
-      'API gateway WhatsApp. Endpoint Fase 1 (`/sessions`, `/messages`, `/stats`) dan semua endpoint `/v1` memakai header `x-api-key`; endpoint pesan per sesi juga menerima `Authorization: Bearer <token sesi>`.',
+      'API gateway WhatsApp. Semua endpoint berada di bawah `/v1` dan memakai header `x-api-key`; endpoint pesan per sesi juga menerima `Authorization: Bearer <token sesi>`.',
       '',
       '- Format error: `{ "error": { "code": "snake_case", "message": "..." } }`.',
       '- Pagination: `limit` (default 20, maksimum 100) + `cursor` opak → `{ "items": [...], "nextCursor": "..." }`.',
@@ -88,7 +88,7 @@ export function createOpenApiApp() {
   app.openAPIRegistry.registerComponent('securitySchemes', 'UserToken', {
     type: 'http',
     scheme: 'bearer',
-    description: 'Bearer token login sales dari POST /auth/login.',
+    description: 'Bearer token login sales dari POST /v1/auth/login.',
   })
 
   return app

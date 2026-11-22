@@ -242,7 +242,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
 
 function attemptLogin(app: ReturnType<typeof createApp>, phoneNumber: string, ip: string) {
   return app.request(
-    '/auth/login',
+    '/v1/auth/login',
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -253,9 +253,9 @@ function attemptLogin(app: ReturnType<typeof createApp>, phoneNumber: string, ip
 }
 
 describe('API Hono', () => {
-  it('GET / publik mengembalikan nama, versi, status, dan metrik', async () => {
+  it('GET /v1/health publik mengembalikan nama, versi, status, dan metrik', async () => {
     const { app } = createTestApp()
-    const response = await app.request('/')
+    const response = await app.request('/v1/health')
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({
       name: 'WA Bot Console',
@@ -272,7 +272,7 @@ describe('API Hono', () => {
     })
   })
 
-  it('GET / degraded saat outbox webhook tertinggal', async () => {
+  it('GET /v1/health degraded saat outbox webhook tertinggal', async () => {
     const db = {
       execute: vi.fn(async () => [
         [{ optOuts: 2, broadcastsPaused: 1, pendingDue: 3, outboxLagMs: 60_000 }],
@@ -280,7 +280,7 @@ describe('API Hono', () => {
       ]),
     } as unknown as AppDependencies['db']
     const { app } = createTestApp({ db })
-    const response = await app.request('/')
+    const response = await app.request('/v1/health')
 
     expect(response.status).toBe(200)
     const body = (await response.json()) as {
@@ -293,18 +293,18 @@ describe('API Hono', () => {
     expect(body.metrics.broadcastsPaused).toBe(1)
   })
 
-  it('GET /stats menolak tanpa API key dan menerima key valid', async () => {
+  it('GET /v1/stats menolak tanpa API key dan menerima key valid', async () => {
     const { app } = createTestApp()
-    const unauthorized = await app.request('/stats')
+    const unauthorized = await app.request('/v1/stats')
     expect(unauthorized.status).toBe(401)
     expect(await unauthorized.json()).toEqual({
       error: { code: 'UNAUTHORIZED', message: 'API key atau token login wajib dikirim' },
     })
 
-    const invalid = await app.request('/stats', { headers: { 'x-api-key': 'salah' } })
+    const invalid = await app.request('/v1/stats', { headers: { 'x-api-key': 'salah' } })
     expect(invalid.status).toBe(401)
 
-    const ok = await app.request('/stats', { headers: { 'x-api-key': 'valid-key' } })
+    const ok = await app.request('/v1/stats', { headers: { 'x-api-key': 'valid-key' } })
     expect(ok.status).toBe(200)
     expect(await ok.json()).toEqual({
       connectedSessions: 0,
@@ -331,7 +331,7 @@ describe('API Hono', () => {
         },
       } as unknown as AppDependencies['stats'],
     })
-    const response = await app.request('/stats', { headers: { 'x-api-key': 'valid-key' } })
+    const response = await app.request('/v1/stats', { headers: { 'x-api-key': 'valid-key' } })
     expect(response.status).toBe(500)
     const body = (await response.json()) as { error: { code: string; message: string } }
     expect(body.error.code).toBe('INTERNAL_ERROR')
@@ -340,7 +340,7 @@ describe('API Hono', () => {
 
   it('kirim pesan memakai Bearer token sesi dan meng-enqueue job', async () => {
     const { app, queue, messages } = createTestApp()
-    const response = await app.request(`/sessions/${SESSION_ID}/messages`, {
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/messages`, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${TOKEN}`,
@@ -360,7 +360,7 @@ describe('API Hono', () => {
         get: vi.fn(async () => ({ ...SESSION, status: 'qr_pending' as const })),
       } as unknown as SessionsService,
     })
-    const response = await app.request(`/sessions/${SESSION_ID}/messages`, {
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/messages`, {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
       body: JSON.stringify({ to: '628123456789', clientRef: 'ref-1', text: 'Halo' }),
@@ -397,7 +397,7 @@ describe('API Hono', () => {
         createOutgoing,
       } as unknown as MessagesService,
     })
-    const response = await app.request(`/sessions/${SESSION_ID}/messages`, {
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/messages`, {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
       body: JSON.stringify({ to: '628123456789', clientRef: 'ref-1', text: 'Halo' }),
@@ -414,7 +414,7 @@ describe('API Hono', () => {
 
   it('token sesi salah ditolak', async () => {
     const { app, queue } = createTestApp()
-    const response = await app.request(`/sessions/${SESSION_ID}/messages`, {
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/messages`, {
       method: 'POST',
       headers: {
         authorization: 'Bearer token-salah',
@@ -432,7 +432,7 @@ describe('API Hono', () => {
     const { app } = createTestApp({
       messages: { listAll } as unknown as MessagesService,
     })
-    const response = await app.request('/messages?direction=out', {
+    const response = await app.request('/v1/messages?direction=out', {
       headers: { 'x-api-key': 'valid-key' },
     })
 
@@ -464,7 +464,7 @@ describe('API Hono', () => {
     const { app } = createTestApp({
       messages: { listAll } as unknown as MessagesService,
     })
-    const response = await app.request('/messages', { headers: { 'x-api-key': 'valid-key' } })
+    const response = await app.request('/v1/messages', { headers: { 'x-api-key': 'valid-key' } })
 
     expect(response.status).toBe(200)
     const body = (await response.json()) as { items: { salesName: string | null }[] }
@@ -472,12 +472,24 @@ describe('API Hono', () => {
     expect(body.items[1]?.salesName).toBeNull()
   })
 
+  it('GET /v1/messages tetap khusus admin', async () => {
+    const { app } = createTestApp()
+
+    const admin = await app.request('/v1/messages', { headers: { 'x-api-key': 'valid-key' } })
+    expect(admin.status).toBe(200)
+
+    const sales = await app.request('/v1/messages', {
+      headers: { authorization: `Bearer ${USER_TOKEN}` },
+    })
+    expect(sales.status).toBe(403)
+  })
+
   it('riwayat sesi meneruskan filter arah pesan', async () => {
     const listBySession = vi.fn(async () => ({ items: [], nextCursor: null }))
     const { app } = createTestApp({
       messages: { listBySession } as unknown as MessagesService,
     })
-    const response = await app.request(`/sessions/${SESSION_ID}/messages?direction=out`, {
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/messages?direction=out`, {
       headers: { 'x-api-key': 'valid-key' },
     })
 
@@ -490,7 +502,7 @@ describe('API Hono', () => {
     const { app } = createTestApp({
       messages: { listAll } as unknown as MessagesService,
     })
-    const response = await app.request('/messages?direction=sideways', {
+    const response = await app.request('/v1/messages?direction=sideways', {
       headers: { 'x-api-key': 'valid-key' },
     })
 
@@ -500,7 +512,7 @@ describe('API Hono', () => {
 
   it('kirim ulang pesan gagal meng-enqueue job dengan id unik', async () => {
     const { app, queue, messages } = createTestApp()
-    const response = await app.request('/messages/message-1/retry', {
+    const response = await app.request('/v1/messages/message-1/retry', {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key' },
     })
@@ -518,7 +530,7 @@ describe('API Hono', () => {
 
   it('kirim ulang ditolak tanpa API key', async () => {
     const { app, queue } = createTestApp()
-    const response = await app.request('/messages/message-1/retry', { method: 'POST' })
+    const response = await app.request('/v1/messages/message-1/retry', { method: 'POST' })
 
     expect(response.status).toBe(401)
     expect(queue.add).not.toHaveBeenCalled()
@@ -532,7 +544,7 @@ describe('API Hono', () => {
         }),
       } as unknown as MessagesService,
     })
-    const response = await app.request('/messages/message-1/retry', {
+    const response = await app.request('/v1/messages/message-1/retry', {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key' },
     })
@@ -545,7 +557,7 @@ describe('API Hono', () => {
 
   it('live menggabungkan session, qr, pairing code, dan broadcast', async () => {
     const { app } = createTestApp()
-    const response = await app.request(`/sessions/${SESSION_ID}/live`, {
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/live`, {
       headers: { 'x-api-key': 'valid-key' },
     })
 
@@ -561,7 +573,7 @@ describe('API Hono', () => {
 
   it('login memulai sesi lewat kanal kontrol worker', async () => {
     const { app, redis } = createTestApp()
-    const response = await app.request(`/sessions/${SESSION_ID}/login`, {
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/login`, {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key' },
     })
@@ -587,7 +599,7 @@ describe('API Hono', () => {
       } as unknown as SessionsService,
     })
 
-    const response = await app.request(`/sessions/${SESSION_ID}/cancel`, {
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/cancel`, {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key' },
     })
@@ -602,7 +614,7 @@ describe('API Hono', () => {
 
   it('cancel ditolak saat sesi sudah terhubung', async () => {
     const { app } = createTestApp()
-    const response = await app.request(`/sessions/${SESSION_ID}/cancel`, {
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/cancel`, {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key' },
     })
@@ -630,15 +642,15 @@ describe('API Hono', () => {
     })
 
     for (let i = 0; i < 60; i += 1) {
-      const response = await app.request('/stats', { headers: { 'x-api-key': 'key-a' } })
+      const response = await app.request('/v1/stats', { headers: { 'x-api-key': 'key-a' } })
       expect(response.status).toBe(200)
     }
 
-    const limited = await app.request('/stats', { headers: { 'x-api-key': 'key-a' } })
+    const limited = await app.request('/v1/stats', { headers: { 'x-api-key': 'key-a' } })
     expect(limited.status).toBe(429)
     expect(limited.headers.get('retry-after')).toBe('60')
 
-    const other = await app.request('/stats', { headers: { 'x-api-key': 'key-b' } })
+    const other = await app.request('/v1/stats', { headers: { 'x-api-key': 'key-b' } })
     expect(other.status).toBe(200)
   })
 
@@ -670,19 +682,19 @@ describe('API Hono', () => {
     })
 
     for (let i = 0; i < 2; i += 1) {
-      const response = await app.request('/sessions', {
+      const response = await app.request('/v1/sessions', {
         headers: { authorization: `Bearer ${USER_TOKEN}` },
       })
       expect(response.status).toBe(200)
     }
 
-    const limited = await app.request('/sessions', {
+    const limited = await app.request('/v1/sessions', {
       headers: { authorization: `Bearer ${USER_TOKEN}` },
     })
     expect(limited.status).toBe(429)
     expect(limited.headers.get('retry-after')).toBe('60')
 
-    const other = await app.request('/sessions', {
+    const other = await app.request('/v1/sessions', {
       headers: { authorization: 'Bearer token-sales-b' },
     })
     expect(other.status).toBe(200)
@@ -693,14 +705,14 @@ describe('API Hono', () => {
     const headers = { authorization: `Bearer ${USER_TOKEN}`, 'content-type': 'application/json' }
 
     const requests = [
-      app.request('/sessions', {
+      app.request('/v1/sessions', {
         method: 'POST',
         headers,
         body: JSON.stringify({ label: 'Sales Baru' }),
       }),
-      app.request(`/sessions/${SESSION_ID}`, { method: 'DELETE', headers }),
-      app.request(`/sessions/${SESSION_ID}/token`, { method: 'POST', headers }),
-      app.request(`/sessions/${SESSION_ID}/logout`, { method: 'POST', headers }),
+      app.request(`/v1/sessions/${SESSION_ID}`, { method: 'DELETE', headers }),
+      app.request(`/v1/sessions/${SESSION_ID}/token`, { method: 'POST', headers }),
+      app.request(`/v1/sessions/${SESSION_ID}/logout`, { method: 'POST', headers }),
     ]
 
     for (const response of await Promise.all(requests)) {
@@ -714,11 +726,11 @@ describe('API Hono', () => {
     const headers = { authorization: `Bearer ${USER_TOKEN}` }
 
     for (const path of [
-      `/sessions/${SESSION_ID}`,
-      `/sessions/${SESSION_ID}/status`,
-      `/sessions/${SESSION_ID}/qr`,
-      `/sessions/${SESSION_ID}/live`,
-      `/sessions/${SESSION_ID}/pairing`,
+      `/v1/sessions/${SESSION_ID}`,
+      `/v1/sessions/${SESSION_ID}/status`,
+      `/v1/sessions/${SESSION_ID}/qr`,
+      `/v1/sessions/${SESSION_ID}/live`,
+      `/v1/sessions/${SESSION_ID}/pairing`,
     ]) {
       const response = await app.request(path, { headers })
       expect(response.status).toBe(200)
@@ -740,10 +752,10 @@ describe('API Hono', () => {
     const headers = { authorization: `Bearer ${USER_TOKEN}` }
 
     expect(
-      (await app.request(`/sessions/${SESSION_ID}/login`, { method: 'POST', headers })).status,
+      (await app.request(`/v1/sessions/${SESSION_ID}/login`, { method: 'POST', headers })).status,
     ).toBe(200)
     expect(
-      (await app.request(`/sessions/${SESSION_ID}/cancel`, { method: 'POST', headers })).status,
+      (await app.request(`/v1/sessions/${SESSION_ID}/cancel`, { method: 'POST', headers })).status,
     ).toBe(200)
   })
 
@@ -752,7 +764,7 @@ describe('API Hono', () => {
     const authHeaders = [{ 'x-api-key': 'valid-key' }, { authorization: `Bearer ${USER_TOKEN}` }]
 
     for (const auth of authHeaders) {
-      const response = await app.request(`/sessions/${SESSION_ID}/pairing`, {
+      const response = await app.request(`/v1/sessions/${SESSION_ID}/pairing`, {
         method: 'POST',
         headers: { ...auth, 'content-type': 'application/json' },
         body: JSON.stringify({ phoneNumber: '628123456789' }),
@@ -773,11 +785,11 @@ describe('API Hono', () => {
     const headers = { authorization: `Bearer ${USER_TOKEN}` }
 
     for (const path of [
-      `/sessions/${SESSION_ID}`,
-      `/sessions/${SESSION_ID}/status`,
-      `/sessions/${SESSION_ID}/qr`,
-      `/sessions/${SESSION_ID}/live`,
-      `/sessions/${SESSION_ID}/pairing`,
+      `/v1/sessions/${SESSION_ID}`,
+      `/v1/sessions/${SESSION_ID}/status`,
+      `/v1/sessions/${SESSION_ID}/qr`,
+      `/v1/sessions/${SESSION_ID}/live`,
+      `/v1/sessions/${SESSION_ID}/pairing`,
     ]) {
       const response = await app.request(path, { headers })
       expect(response.status).toBe(403)
@@ -786,7 +798,7 @@ describe('API Hono', () => {
       expect(body.error.message).not.toContain('user-2')
     }
 
-    for (const path of [`/sessions/${SESSION_ID}/login`, `/sessions/${SESSION_ID}/cancel`]) {
+    for (const path of [`/v1/sessions/${SESSION_ID}/login`, `/v1/sessions/${SESSION_ID}/cancel`]) {
       const response = await app.request(path, { method: 'POST', headers })
       expect(response.status, path).toBe(403)
     }
@@ -803,11 +815,11 @@ describe('API Hono', () => {
     const headers = { 'x-api-key': 'valid-key' }
 
     for (const path of [
-      `/sessions/${SESSION_ID}`,
-      `/sessions/${SESSION_ID}/status`,
-      `/sessions/${SESSION_ID}/qr`,
-      `/sessions/${SESSION_ID}/live`,
-      `/sessions/${SESSION_ID}/pairing`,
+      `/v1/sessions/${SESSION_ID}`,
+      `/v1/sessions/${SESSION_ID}/status`,
+      `/v1/sessions/${SESSION_ID}/qr`,
+      `/v1/sessions/${SESSION_ID}/live`,
+      `/v1/sessions/${SESSION_ID}/pairing`,
     ]) {
       const response = await app.request(path, { headers })
       expect(response.status).toBe(200)
@@ -820,13 +832,13 @@ describe('API Hono', () => {
         get: vi.fn(async () => ({ ...SESSION, salesName: 'Sales A' })),
       } as unknown as SessionsService,
     })
-    const ownedResponse = await owned.app.request(`/sessions/${SESSION_ID}`, {
+    const ownedResponse = await owned.app.request(`/v1/sessions/${SESSION_ID}`, {
       headers: { 'x-api-key': 'valid-key' },
     })
     expect(await ownedResponse.json()).toMatchObject({ salesName: 'Sales A' })
 
     const legacy = createTestApp()
-    const legacyResponse = await legacy.app.request(`/sessions/${SESSION_ID}`, {
+    const legacyResponse = await legacy.app.request(`/v1/sessions/${SESSION_ID}`, {
       headers: { 'x-api-key': 'valid-key' },
     })
     expect(await legacyResponse.json()).toMatchObject({ salesName: null })
@@ -835,26 +847,26 @@ describe('API Hono', () => {
   it('matriks endpoint admin menolak sales dan tamu', async () => {
     const { app } = createTestApp()
     const endpoints: { method: string; path: string; body?: string }[] = [
-      { method: 'POST', path: '/sessions', body: JSON.stringify({ label: 'Baru' }) },
-      { method: 'DELETE', path: `/sessions/${SESSION_ID}` },
-      { method: 'POST', path: `/sessions/${SESSION_ID}/token` },
-      { method: 'POST', path: `/sessions/${SESSION_ID}/logout` },
+      { method: 'POST', path: '/v1/sessions', body: JSON.stringify({ label: 'Baru' }) },
+      { method: 'DELETE', path: `/v1/sessions/${SESSION_ID}` },
+      { method: 'POST', path: `/v1/sessions/${SESSION_ID}/token` },
+      { method: 'POST', path: `/v1/sessions/${SESSION_ID}/logout` },
       {
         method: 'PATCH',
-        path: `/sessions/${SESSION_ID}/sales`,
+        path: `/v1/sessions/${SESSION_ID}/sales`,
         body: JSON.stringify({ salesName: 'Budi', pin: '123456' }),
       },
       {
         method: 'POST',
-        path: `/sessions/${SESSION_ID}/sales/pin`,
+        path: `/v1/sessions/${SESSION_ID}/sales/pin`,
         body: JSON.stringify({ pin: '654321' }),
       },
-      { method: 'GET', path: '/messages' },
-      { method: 'DELETE', path: '/messages/m1' },
-      { method: 'POST', path: '/messages/m1/retry' },
-      { method: 'GET', path: '/stats' },
-      { method: 'GET', path: '/settings' },
-      { method: 'PATCH', path: '/settings', body: JSON.stringify({ maxSales: 5 }) },
+      { method: 'GET', path: '/v1/messages' },
+      { method: 'DELETE', path: '/v1/messages/m1' },
+      { method: 'POST', path: '/v1/messages/m1/retry' },
+      { method: 'GET', path: '/v1/stats' },
+      { method: 'GET', path: '/v1/settings' },
+      { method: 'PATCH', path: '/v1/settings', body: JSON.stringify({ maxSales: 5 }) },
       { method: 'GET', path: '/v1/webhooks' },
     ]
 
@@ -879,11 +891,11 @@ describe('API Hono', () => {
     const { app } = createTestApp()
 
     for (const path of [
-      `/sessions/${SESSION_ID}`,
-      `/sessions/${SESSION_ID}/status`,
-      `/sessions/${SESSION_ID}/qr`,
-      `/sessions/${SESSION_ID}/live`,
-      `/sessions/${SESSION_ID}/pairing`,
+      `/v1/sessions/${SESSION_ID}`,
+      `/v1/sessions/${SESSION_ID}/status`,
+      `/v1/sessions/${SESSION_ID}/qr`,
+      `/v1/sessions/${SESSION_ID}/live`,
+      `/v1/sessions/${SESSION_ID}/pairing`,
       `/v1/sessions/${SESSION.publicId}/conversations`,
       '/v1/conversations/c1/messages',
       `/v1/sessions/${SESSION.publicId}/events`,
@@ -897,7 +909,7 @@ describe('API Hono', () => {
     const { app } = createTestApp()
     const headers = { 'x-api-key': 'valid-key', 'content-type': 'application/json' }
 
-    const create = await app.request('/sessions', {
+    const create = await app.request('/v1/sessions', {
       method: 'POST',
       headers,
       body: JSON.stringify({ label: 'Baru' }),
@@ -905,14 +917,14 @@ describe('API Hono', () => {
     expect(create.status).toBe(201)
 
     expect(
-      (await app.request(`/sessions/${SESSION_ID}/token`, { method: 'POST', headers })).status,
+      (await app.request(`/v1/sessions/${SESSION_ID}/token`, { method: 'POST', headers })).status,
     ).toBe(200)
     expect(
-      (await app.request(`/sessions/${SESSION_ID}/logout`, { method: 'POST', headers })).status,
+      (await app.request(`/v1/sessions/${SESSION_ID}/logout`, { method: 'POST', headers })).status,
     ).toBe(200)
     expect(
       (
-        await app.request(`/sessions/${SESSION_ID}/pairing`, {
+        await app.request(`/v1/sessions/${SESSION_ID}/pairing`, {
           method: 'POST',
           headers,
           body: JSON.stringify({ phoneNumber: '628123456789' }),
@@ -920,16 +932,16 @@ describe('API Hono', () => {
       ).status,
     ).toBe(409)
     expect(
-      (await app.request(`/sessions/${SESSION_ID}`, { method: 'DELETE', headers })).status,
+      (await app.request(`/v1/sessions/${SESSION_ID}`, { method: 'DELETE', headers })).status,
     ).toBe(204)
-    expect((await app.request('/messages', { headers })).status).toBe(200)
-    expect((await app.request('/messages/m1', { method: 'DELETE', headers })).status).toBe(204)
+    expect((await app.request('/v1/messages', { headers })).status).toBe(200)
+    expect((await app.request('/v1/messages/m1', { method: 'DELETE', headers })).status).toBe(204)
   })
 
   it('response sesi tidak memuat token atau hash sensitif', async () => {
     const { app } = createTestApp()
 
-    for (const path of ['/sessions', `/sessions/${SESSION_ID}`]) {
+    for (const path of ['/v1/sessions', `/v1/sessions/${SESSION_ID}`]) {
       const response = await app.request(path, { headers: { 'x-api-key': 'valid-key' } })
       expect(response.status).toBe(200)
       const text = JSON.stringify(await response.json())
@@ -939,9 +951,9 @@ describe('API Hono', () => {
     }
   })
 
-  it('GET /settings mengembalikan maxSales, salesCount, dan default delay untuk admin', async () => {
+  it('GET /v1/settings mengembalikan maxSales, salesCount, dan default delay untuk admin', async () => {
     const { app } = createTestApp()
-    const response = await app.request('/settings', { headers: { 'x-api-key': 'valid-key' } })
+    const response = await app.request('/v1/settings', { headers: { 'x-api-key': 'valid-key' } })
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({
@@ -952,11 +964,11 @@ describe('API Hono', () => {
     })
   })
 
-  it('PATCH /settings menyimpan maxSales dan default delay, menolak nilai tidak valid', async () => {
+  it('PATCH /v1/settings menyimpan maxSales dan default delay, menolak nilai tidak valid', async () => {
     const { app, settings } = createTestApp()
     const headers = { 'x-api-key': 'valid-key', 'content-type': 'application/json' }
 
-    const ok = await app.request('/settings', {
+    const ok = await app.request('/v1/settings', {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ maxSales: 25 }),
@@ -970,7 +982,7 @@ describe('API Hono', () => {
     })
     expect(settings.updateSettings).toHaveBeenCalledWith({ maxSales: 25 })
 
-    const delay = await app.request('/settings', {
+    const delay = await app.request('/v1/settings', {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ defaultMinDelay: 15, defaultMaxDelay: 45 }),
@@ -983,7 +995,7 @@ describe('API Hono', () => {
     })
 
     for (const maxSales of [0, 101]) {
-      const invalid = await app.request('/settings', {
+      const invalid = await app.request('/v1/settings', {
         method: 'PATCH',
         headers,
         body: JSON.stringify({ maxSales }),
@@ -991,7 +1003,7 @@ describe('API Hono', () => {
       expect(invalid.status).toBe(422)
     }
 
-    const invalidRange = await app.request('/settings', {
+    const invalidRange = await app.request('/v1/settings', {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ defaultMinDelay: 60, defaultMaxDelay: 30 }),
@@ -999,9 +1011,9 @@ describe('API Hono', () => {
     expect(invalidRange.status).toBe(422)
   })
 
-  it('POST /sessions meneruskan salesName + PIN dan tidak membocorkan PIN', async () => {
+  it('POST /v1/sessions meneruskan salesName + PIN dan tidak membocorkan PIN', async () => {
     const { app, sessions } = createTestApp()
-    const response = await app.request('/sessions', {
+    const response = await app.request('/v1/sessions', {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -1023,9 +1035,9 @@ describe('API Hono', () => {
     expect(JSON.stringify(await response.json())).not.toContain('123456')
   })
 
-  it('POST /sessions menolak salesName tanpa PIN dengan 422', async () => {
+  it('POST /v1/sessions menolak salesName tanpa PIN dengan 422', async () => {
     const { app, sessions } = createTestApp()
-    const response = await app.request('/sessions', {
+    const response = await app.request('/v1/sessions', {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
       body: JSON.stringify({ label: 'Sales A', salesName: 'Budi', phoneNumber: '628123456789' }),
@@ -1039,7 +1051,7 @@ describe('API Hono', () => {
     const { app, sessions } = createTestApp()
     const headers = { 'x-api-key': 'valid-key', 'content-type': 'application/json' }
 
-    const attach = await app.request(`/sessions/${SESSION_ID}/sales`, {
+    const attach = await app.request(`/v1/sessions/${SESSION_ID}/sales`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ salesName: 'Budi', pin: '123456' }),
@@ -1051,7 +1063,7 @@ describe('API Hono', () => {
     })
     expect(JSON.stringify(await attach.json())).not.toContain('123456')
 
-    const reset = await app.request(`/sessions/${SESSION_ID}/sales/pin`, {
+    const reset = await app.request(`/v1/sessions/${SESSION_ID}/sales/pin`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ pin: '654321' }),
@@ -1065,7 +1077,7 @@ describe('API Hono', () => {
     const { app, sessions } = createTestApp()
     const headers = { 'x-api-key': 'valid-key', 'content-type': 'application/json' }
 
-    const attach = await app.request(`/sessions/${SESSION_ID}/sales`, {
+    const attach = await app.request(`/v1/sessions/${SESSION_ID}/sales`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ salesName: 'Budi', pin: '123' }),
@@ -1073,7 +1085,7 @@ describe('API Hono', () => {
     expect(attach.status).toBe(422)
     expect(sessions.attachSales).not.toHaveBeenCalled()
 
-    const reset = await app.request(`/sessions/${SESSION_ID}/sales/pin`, {
+    const reset = await app.request(`/v1/sessions/${SESSION_ID}/sales/pin`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ pin: '123456789' }),
@@ -1082,18 +1094,18 @@ describe('API Hono', () => {
     expect(sessions.resetSalesPin).not.toHaveBeenCalled()
   })
 
-  it('GET /docs menyajikan referensi Scalar sebagai HTML', async () => {
+  it('GET /v1/docs menyajikan referensi Scalar sebagai HTML', async () => {
     const { app } = createTestApp()
-    const response = await app.request('/docs')
+    const response = await app.request('/v1/docs')
 
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toContain('text/html')
     expect(await response.text()).toContain('Scalar')
   })
 
-  it('GET /openapi.json memuat path dan security scheme dari route', async () => {
+  it('GET /v1/openapi.json memuat path dan security scheme dari route', async () => {
     const { app } = createTestApp()
-    const response = await app.request('/openapi.json')
+    const response = await app.request('/v1/openapi.json')
 
     expect(response.status).toBe(200)
     const document = (await response.json()) as {
@@ -1104,16 +1116,16 @@ describe('API Hono', () => {
     }
 
     expect(document.openapi).toBe('3.1.0')
-    expect(document.paths).toHaveProperty('/sessions')
-    expect(document.paths).toHaveProperty('/auth/login')
-    expect(document.paths).toHaveProperty('/auth/me')
-    expect(document.paths).toHaveProperty('/auth/logout')
-    expect(document.paths).toHaveProperty('/sessions/{id}/live')
-    expect(document.paths).toHaveProperty('/sessions/{id}/sales')
-    expect(document.paths).toHaveProperty('/sessions/{id}/sales/pin')
-    expect(document.paths).toHaveProperty('/messages')
-    expect(document.paths).toHaveProperty('/stats')
-    expect(document.paths).toHaveProperty('/settings')
+    expect(document.paths).toHaveProperty('/v1/sessions')
+    expect(document.paths).toHaveProperty('/v1/auth/login')
+    expect(document.paths).toHaveProperty('/v1/auth/me')
+    expect(document.paths).toHaveProperty('/v1/auth/logout')
+    expect(document.paths).toHaveProperty('/v1/sessions/{id}/live')
+    expect(document.paths).toHaveProperty('/v1/sessions/{id}/sales')
+    expect(document.paths).toHaveProperty('/v1/sessions/{id}/sales/pin')
+    expect(document.paths).toHaveProperty('/v1/messages')
+    expect(document.paths).toHaveProperty('/v1/stats')
+    expect(document.paths).toHaveProperty('/v1/settings')
     expect(document.paths).toHaveProperty('/v1/conversations/{id}/messages')
     expect(document.paths).toHaveProperty('/v1/broadcasts')
     expect(document.paths).toHaveProperty('/v1/webhooks')
@@ -1142,13 +1154,13 @@ describe('API Hono', () => {
       const keys = CONSUMER_ENDPOINTS.map((endpoint) => `${endpoint.method} ${endpoint.path}`)
 
       expect(keys).not.toContain('POST /auth/login')
-      expect(keys.filter((key) => / (\/auth|\/settings|\/stats)(\/|$)/.test(key))).toEqual([])
+      expect(keys.filter((key) => / (\/v1\/auth|\/v1\/settings|\/v1\/stats)(\/|$)/.test(key))).toEqual([])
     })
   })
 
-  it('GET /sessions tanpa kredensial tetap 401 dengan format error yang sama', async () => {
+  it('GET /v1/sessions tanpa kredensial tetap 401 dengan format error yang sama', async () => {
     const { app } = createTestApp()
-    const response = await app.request('/sessions')
+    const response = await app.request('/v1/sessions')
 
     expect(response.status).toBe(401)
     expect(await response.json()).toEqual({
@@ -1156,25 +1168,25 @@ describe('API Hono', () => {
     })
   })
 
-  it('GET /sessions menerima API key admin dan token login sales', async () => {
+  it('GET /v1/sessions menerima API key admin dan token login sales', async () => {
     const { app } = createTestApp()
 
-    const admin = await app.request('/sessions', { headers: { 'x-api-key': 'valid-key' } })
+    const admin = await app.request('/v1/sessions', { headers: { 'x-api-key': 'valid-key' } })
     expect(admin.status).toBe(200)
 
-    const sales = await app.request('/sessions', {
+    const sales = await app.request('/v1/sessions', {
       headers: { authorization: `Bearer ${USER_TOKEN}` },
     })
     expect(sales.status).toBe(200)
   })
 
-  it('GET /sessions memakai filter owner untuk sales dan tanpa filter untuk admin', async () => {
+  it('GET /v1/sessions memakai filter owner untuk sales dan tanpa filter untuk admin', async () => {
     const { app, sessions } = createTestApp()
 
-    await app.request('/sessions', { headers: { 'x-api-key': 'valid-key' } })
+    await app.request('/v1/sessions', { headers: { 'x-api-key': 'valid-key' } })
     expect(sessions.list).toHaveBeenLastCalledWith(50, undefined)
 
-    await app.request('/sessions', {
+    await app.request('/v1/sessions', {
       headers: { authorization: `Bearer ${USER_TOKEN}` },
     })
     expect(sessions.list).toHaveBeenLastCalledWith(50, 'user-1')
@@ -1186,7 +1198,7 @@ describe('API Hono', () => {
         authenticate: async () => null,
       } as unknown as AuthService,
     })
-    const response = await app.request('/sessions', {
+    const response = await app.request('/v1/sessions', {
       headers: { authorization: `Bearer ${USER_TOKEN}` },
     })
 
@@ -1198,7 +1210,7 @@ describe('API Hono', () => {
     const { app } = createTestApp({
       auth: { findActive: async () => null },
     })
-    const response = await app.request('/sessions', { headers: { 'x-api-key': 'dicabut' } })
+    const response = await app.request('/v1/sessions', { headers: { 'x-api-key': 'dicabut' } })
 
     expect(response.status).toBe(401)
     expect(await response.json()).toMatchObject({ error: { code: 'UNAUTHORIZED' } })
@@ -1208,11 +1220,11 @@ describe('API Hono', () => {
     const { app, messages } = createTestApp()
     const headers = { authorization: `Bearer ${USER_TOKEN}`, 'content-type': 'application/json' }
 
-    const list = await app.request(`/sessions/${SESSION_ID}/messages?direction=out`, { headers })
+    const list = await app.request(`/v1/sessions/${SESSION_ID}/messages?direction=out`, { headers })
     expect(list.status).toBe(200)
     expect(messages.listBySession).toHaveBeenCalledWith(SESSION_ID, 20, undefined, 'out')
 
-    const sent = await app.request(`/sessions/${SESSION_ID}/messages`, {
+    const sent = await app.request(`/v1/sessions/${SESSION_ID}/messages`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ to: '628123456789', clientRef: 'ref-1', text: 'Halo' }),
@@ -1232,10 +1244,10 @@ describe('API Hono', () => {
     })
     const headers = { authorization: `Bearer ${USER_TOKEN}`, 'content-type': 'application/json' }
 
-    const list = await app.request(`/sessions/${SESSION_ID}/messages`, { headers })
+    const list = await app.request(`/v1/sessions/${SESSION_ID}/messages`, { headers })
     expect(list.status).toBe(403)
 
-    const sent = await app.request(`/sessions/${SESSION_ID}/messages`, {
+    const sent = await app.request(`/v1/sessions/${SESSION_ID}/messages`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ to: '628123456789', clientRef: 'ref-1', text: 'Halo' }),
@@ -1271,7 +1283,7 @@ describe('API Hono', () => {
       202,
     )
     expect(
-      (await app.request(`/sessions/${SESSION_ID}/broadcast/current`, { headers })).status,
+      (await app.request(`/v1/sessions/${SESSION_ID}/broadcast/current`, { headers })).status,
     ).toBe(200)
     expect((await app.request('/v1/broadcasts/b1', { headers })).status).toBe(200)
     expect((await app.request('/v1/broadcasts/b1/start', { method: 'POST', headers })).status).toBe(
@@ -1281,7 +1293,7 @@ describe('API Hono', () => {
       200,
     )
     expect(
-      (await app.request(`/sessions/${SESSION_ID}/broadcast/cancel`, { method: 'POST', headers }))
+      (await app.request(`/v1/sessions/${SESSION_ID}/broadcast/cancel`, { method: 'POST', headers }))
         .status,
     ).toBe(200)
   })
@@ -1325,10 +1337,10 @@ describe('API Hono', () => {
       403,
     )
     expect(
-      (await app.request(`/sessions/${SESSION_ID}/broadcast/current`, { headers })).status,
+      (await app.request(`/v1/sessions/${SESSION_ID}/broadcast/current`, { headers })).status,
     ).toBe(403)
     expect(
-      (await app.request(`/sessions/${SESSION_ID}/broadcast/cancel`, { method: 'POST', headers }))
+      (await app.request(`/v1/sessions/${SESSION_ID}/broadcast/cancel`, { method: 'POST', headers }))
         .status,
     ).toBe(403)
     expect(broadcasts.create).not.toHaveBeenCalled()
@@ -1337,9 +1349,9 @@ describe('API Hono', () => {
     expect(broadcasts.cancel).not.toHaveBeenCalled()
   })
 
-  it('POST /sessions dengan body tidak valid mengembalikan 422 VALIDATION_ERROR', async () => {
+  it('POST /v1/sessions dengan body tidak valid mengembalikan 422 VALIDATION_ERROR', async () => {
     const { app } = createTestApp()
-    const response = await app.request('/sessions', {
+    const response = await app.request('/v1/sessions', {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
       body: JSON.stringify({ label: '' }),
@@ -1491,9 +1503,9 @@ describe('API Hono', () => {
     expect(response.status).toBe(401)
   })
 
-  it('POST /auth/login publik mengembalikan token tanpa hash', async () => {
+  it('POST /v1/auth/login publik mengembalikan token tanpa hash', async () => {
     const { app } = createTestApp()
-    const response = await app.request('/auth/login', {
+    const response = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ phoneNumber: AUTH_USER.phoneNumber, pin: '123456' }),
@@ -1510,9 +1522,9 @@ describe('API Hono', () => {
     expect(JSON.stringify(body)).not.toContain('tokenHash')
   })
 
-  it('POST /auth/login memakai pesan generik dan NO_SESSION terpisah', async () => {
+  it('POST /v1/auth/login memakai pesan generik dan NO_SESSION terpisah', async () => {
     const { app } = createTestApp()
-    const wrong = await app.request('/auth/login', {
+    const wrong = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ phoneNumber: AUTH_USER.phoneNumber, pin: '654321' }),
@@ -1529,7 +1541,7 @@ describe('API Hono', () => {
         },
       } as unknown as AuthService,
     })
-    const response = await noSession.app.request('/auth/login', {
+    const response = await noSession.app.request('/v1/auth/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ phoneNumber: AUTH_USER.phoneNumber, pin: '123456' }),
@@ -1538,9 +1550,9 @@ describe('API Hono', () => {
     expect(await response.json()).toMatchObject({ error: { code: 'NO_SESSION' } })
   })
 
-  it('POST /auth/login menolak PIN atau nomor tidak valid dengan 422', async () => {
+  it('POST /v1/auth/login menolak PIN atau nomor tidak valid dengan 422', async () => {
     const { app } = createTestApp()
-    const response = await app.request('/auth/login', {
+    const response = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ phoneNumber: '6281 2345', pin: '123' }),
@@ -1548,14 +1560,14 @@ describe('API Hono', () => {
     expect(response.status).toBe(422)
   })
 
-  it('GET /auth/me membedakan admin dan sales serta menolak tanpa kredensial', async () => {
+  it('GET /v1/auth/me membedakan admin dan sales serta menolak tanpa kredensial', async () => {
     const { app } = createTestApp()
 
-    const admin = await app.request('/auth/me', { headers: { 'x-api-key': 'valid-key' } })
+    const admin = await app.request('/v1/auth/me', { headers: { 'x-api-key': 'valid-key' } })
     expect(admin.status).toBe(200)
     expect(await admin.json()).toEqual({ mode: 'admin', user: null })
 
-    const sales = await app.request('/auth/me', {
+    const sales = await app.request('/v1/auth/me', {
       headers: { authorization: `Bearer ${USER_TOKEN}` },
     })
     expect(sales.status).toBe(200)
@@ -1564,10 +1576,10 @@ describe('API Hono', () => {
     expect(body.user).toMatchObject({ id: 'user-1', name: 'Sales A' })
     expect(body.user).not.toHaveProperty('pinHash')
 
-    const anonymous = await app.request('/auth/me')
+    const anonymous = await app.request('/v1/auth/me')
     expect(anonymous.status).toBe(401)
 
-    const invalid = await app.request('/auth/me', {
+    const invalid = await app.request('/v1/auth/me', {
       headers: { authorization: 'Bearer token-salah' },
     })
     expect(invalid.status).toBe(401)
@@ -1629,17 +1641,17 @@ describe('API Hono', () => {
     expect(limited.status).toBe(429)
   })
 
-  it('POST /auth/logout mencabut token sales dan idempoten untuk admin', async () => {
+  it('POST /v1/auth/logout mencabut token sales dan idempoten untuk admin', async () => {
     const { app, userAuth } = createTestApp()
 
-    const sales = await app.request('/auth/logout', {
+    const sales = await app.request('/v1/auth/logout', {
       method: 'POST',
       headers: { authorization: `Bearer ${USER_TOKEN}` },
     })
     expect(sales.status).toBe(204)
     expect(userAuth.logout).toHaveBeenCalledWith(USER_TOKEN)
 
-    const admin = await app.request('/auth/logout', {
+    const admin = await app.request('/v1/auth/logout', {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key' },
     })

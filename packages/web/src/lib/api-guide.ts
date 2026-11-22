@@ -40,7 +40,7 @@ export const AUTH_GUIDE = {
     {
       id: 'curl',
       label: 'Header',
-      code: 'curl https://api.example.com/sessions \\\n  -H "x-api-key: $WA_API_KEY"',
+      code: 'curl https://api.example.com/v1/sessions \\\n  -H "x-api-key: $WA_API_KEY"',
     },
   ] satisfies CodeSample[],
 }
@@ -96,7 +96,7 @@ export const FLOW_STEPS: readonly GuideBlock[] = [
   {
     title: 'Cari nomor yang terhubung',
     detail:
-      'Panggil GET /sessions, lalu simpan publicId dari item berstatus connected. publicId dipakai sebagai sessionId di endpoint lain.',
+      'Panggil GET /v1/sessions, lalu simpan publicId dari item berstatus connected. publicId dipakai sebagai sessionId di endpoint lain.',
   },
   {
     title: 'Kirim pesan follow-up',
@@ -187,27 +187,27 @@ export const WEBHOOK_DELIVERY = {
 } as const
 
 export const NOT_FOR_CONSUMERS: readonly { label: string; items: readonly string[] }[] = [
-  { label: 'Dashboard internal', items: ['/auth/*', '/settings', '/stats'] },
+  { label: 'Dashboard internal', items: ['/v1/auth/*', '/v1/settings', '/v1/stats'] },
   {
     label: 'Manajemen sesi',
     items: [
-      'POST /sessions',
-      'DELETE /sessions/{id}',
-      '/sessions/{id}/login',
-      '/sessions/{id}/logout',
-      '/sessions/{id}/pairing',
-      '/sessions/{id}/token',
-      '/sessions/{id}/sales*',
+      'POST /v1/sessions',
+      'DELETE /v1/sessions/{id}',
+      '/v1/sessions/{id}/login',
+      '/v1/sessions/{id}/logout',
+      '/v1/sessions/{id}/pairing',
+      '/v1/sessions/{id}/token',
+      '/v1/sessions/{id}/sales*',
     ],
   },
   {
     label: 'Admin pesan & legacy',
     items: [
-      '/messages',
-      '/messages/{id}/retry',
-      '/sessions/{id}/broadcast*',
-      '/sessions/{id}/live',
-      '/sessions/{id}/qr',
+      '/v1/messages',
+      '/v1/messages/{id}/retry',
+      '/v1/sessions/{id}/broadcast*',
+      '/v1/sessions/{id}/live',
+      '/v1/sessions/{id}/qr',
     ],
   },
 ]
@@ -246,7 +246,7 @@ const MESSAGE_ITEM = `{
   }`
 
 const ENDPOINT_EXAMPLES: Record<string, EndpointExample> = {
-  'GET /sessions': {
+  'GET /v1/sessions': {
     response: {
       language: 'json',
       code: `{
@@ -268,7 +268,7 @@ const ENDPOINT_EXAMPLES: Record<string, EndpointExample> = {
 }`,
     },
   },
-  'GET /sessions/{id}': {
+  'GET /v1/sessions/{id}': {
     response: {
       language: 'json',
       code: `{
@@ -285,7 +285,7 @@ const ENDPOINT_EXAMPLES: Record<string, EndpointExample> = {
 }`,
     },
   },
-  'GET /sessions/{id}/status': {
+  'GET /v1/sessions/{id}/status': {
     response: {
       language: 'json',
       code: `{
@@ -367,7 +367,7 @@ const ENDPOINT_EXAMPLES: Record<string, EndpointExample> = {
 }`,
     },
   },
-  'GET /sessions/{id}/messages': {
+  'GET /v1/sessions/{id}/messages': {
     query: '?limit=20&direction=in',
     response: {
       language: 'json',

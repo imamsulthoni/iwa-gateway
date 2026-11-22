@@ -5,7 +5,6 @@ import {
   broadcastV1ResponseSchema,
   broadcastV1Schema,
   createBroadcastResponseSchema,
-  createBroadcastSchema,
 } from '@wbc/shared'
 
 import { newId } from '../../db/id.js'
@@ -19,32 +18,6 @@ import { ensureSessionAccess } from '../middleware/auth.js'
 import { idParamSchema, openApiError } from '../openapi.js'
 
 const adminOrSalesSecurity: Record<string, string[]>[] = [{ ApiKey: [] }, { UserToken: [] }]
-
-const startBroadcastRoute = createRoute({
-  method: 'post',
-  path: '/{id}/broadcast',
-  tags: ['Sessions'],
-  summary: 'Mulai broadcast untuk sesi',
-  security: adminOrSalesSecurity,
-  request: {
-    params: idParamSchema,
-    body: {
-      content: { 'application/json': { schema: createBroadcastSchema } },
-      required: true,
-    },
-  },
-  responses: {
-    202: {
-      description: 'Broadcast masuk antrean',
-      content: { 'application/json': { schema: createBroadcastResponseSchema } },
-    },
-    401: openApiError('API key tidak dikirim atau tidak valid'),
-    404: openApiError('Sesi tidak ditemukan'),
-    422: openApiError('Data broadcast tidak valid'),
-    429: openApiError('Rate limit terlampaui'),
-    500: openApiError('Kesalahan internal'),
-  },
-})
 
 const currentBroadcastRoute = createRoute({
   method: 'get',
@@ -83,28 +56,8 @@ const cancelBroadcastRoute = createRoute({
   },
 })
 
-export function createBroadcastsRoute(
-  broadcasts: BroadcastsService,
-  sessions: SessionsService,
-  queues: QueueRegistry,
-) {
+export function createBroadcastsRoute(broadcasts: BroadcastsService, sessions: SessionsService) {
   const router = new OpenAPIHono<AppBindings>()
-
-  router.openapi(startBroadcastRoute, async (c) => {
-    const sessionId = c.req.param('id')
-    ensureSessionAccess(c, await sessions.get(sessionId))
-    const input = c.req.valid('json')
-    const { broadcast, duplicate } = await broadcasts.create(sessionId, input)
-    if (!duplicate) {
-      await enqueue(
-        queues.broadcast,
-        'broadcast-run',
-        { sessionId, broadcastId: broadcast.id },
-        broadcast.id,
-      )
-    }
-    return c.json({ broadcastId: broadcast.id, jobId: broadcast.id, status: broadcast.status }, 202)
-  })
 
   router.openapi(currentBroadcastRoute, async (c) => {
     const sessionId = c.req.param('id')

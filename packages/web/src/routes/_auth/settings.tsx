@@ -56,7 +56,7 @@ const PRIVACY = [
 ]
 
 function SettingsPage() {
-  const health = usePolling<HealthDto>(() => api.get<HealthDto>('/'), 30_000, true)
+  const health = usePolling<HealthDto>(() => api.get<HealthDto>('/v1/health'), 30_000, true)
   const [delay, setDelay] = useState({
     min: DEFAULT_MIN_DELAY_SECONDS,
     max: DEFAULT_MAX_DELAY_SECONDS,
@@ -74,7 +74,7 @@ function SettingsPage() {
 
   useEffect(() => {
     void api
-      .get<SettingsDto>('/settings')
+      .get<SettingsDto>('/v1/settings')
       .then((value) => {
         setSettings(value)
         setMaxSales(String(value.maxSales))
@@ -97,7 +97,7 @@ function SettingsPage() {
     setSavingSales(true)
     setSalesNotice(null)
     try {
-      const result = await api.patch<SettingsDto>('/settings', { maxSales: maxSalesValue })
+      const result = await api.patch<SettingsDto>('/v1/settings', { maxSales: maxSalesValue })
       setSettings(result)
       setMaxSales(String(result.maxSales))
       setSalesNotice({ tone: 'success', text: 'Batas jumlah sales tersimpan.' })
@@ -124,7 +124,7 @@ function SettingsPage() {
     setSavingDelay(true)
     setNotice(null)
     try {
-      const result = await api.patch<SettingsDto>('/settings', {
+      const result = await api.patch<SettingsDto>('/v1/settings', {
         defaultMinDelay: next.min,
         defaultMaxDelay: next.max,
       })

@@ -47,7 +47,7 @@ function useBroadcasts(sessionIds: string[], enabled: boolean) {
       Promise.all(
         sessionIds.map((id) =>
           api
-            .get<BroadcastCurrentDto>(`/sessions/${id}/broadcast/current`)
+            .get<BroadcastCurrentDto>(`/v1/sessions/${id}/broadcast/current`)
             .catch(() => null),
         ),
       ).then((rows) => rows.filter((row): row is BroadcastCurrentDto => row !== null)),
@@ -58,13 +58,13 @@ function useBroadcasts(sessionIds: string[], enabled: boolean) {
 
 function OverviewPage() {
   const navigate = useNavigate()
-  const stats = usePolling<StatsDto>(() => api.get<StatsDto>('/stats'), 15_000, true)
+  const stats = usePolling<StatsDto>(() => api.get<StatsDto>('/v1/stats'), 15_000, true)
   const sessions = usePolling<SessionListDto>(
-    () => api.get<SessionListDto>('/sessions'),
+    () => api.get<SessionListDto>('/v1/sessions'),
     15_000,
     true,
   )
-  const health = usePolling<HealthDto>(() => api.get<HealthDto>('/'), 20_000, true)
+  const health = usePolling<HealthDto>(() => api.get<HealthDto>('/v1/health'), 20_000, true)
 
   const items = sessions.data?.items ?? []
   const total = items.length

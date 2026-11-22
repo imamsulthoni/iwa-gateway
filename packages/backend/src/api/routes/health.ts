@@ -27,7 +27,7 @@ const NO_GAUGES: Gauges = { optOuts: 0, broadcastsPaused: 0, pendingDue: 0, outb
 
 const healthRoute = createRoute({
   method: 'get',
-  path: '/',
+  path: '/health',
   tags: ['Health'],
   summary: 'Status layanan API',
   responses: {
