@@ -213,7 +213,7 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
     stats: {
       get: async () => ({
         connectedSessions: 0,
-        todayMessages: 0,
+        periodMessages: 0,
         totalMessages: 0,
         runningBroadcasts: 0,
       }),
@@ -304,7 +304,7 @@ describe('API Hono', () => {
     expect(ok.status).toBe(200)
     expect(await ok.json()).toEqual({
       connectedSessions: 0,
-      todayMessages: 0,
+      periodMessages: 0,
       totalMessages: 0,
       runningBroadcasts: 0,
     })
@@ -447,7 +447,31 @@ describe('API Hono', () => {
     })
 
     expect(response.status).toBe(200)
-    expect(listAll).toHaveBeenCalledWith(50, undefined, undefined, 'out')
+    expect(listAll).toHaveBeenCalledWith(50, undefined, undefined, 'out', {
+      from: undefined,
+      to: undefined,
+      sales: undefined,
+      customer: undefined,
+    })
+  })
+
+  it('riwayat lintas sesi meneruskan filter tanggal, sales, dan customer', async () => {
+    const listAll = vi.fn(async () => ({ items: [], nextCursor: null }))
+    const { app } = createTestApp({
+      messages: { listAll } as unknown as MessagesService,
+    })
+    const response = await app.request(
+      '/v1/messages?direction=out&from=2026-11-01T00:00:00.000Z&to=2026-11-23T23:59:59.999Z&sales=Sales%20A&customer=Budi',
+      { headers: { 'x-api-key': 'valid-key' } },
+    )
+
+    expect(response.status).toBe(200)
+    expect(listAll).toHaveBeenCalledWith(50, undefined, undefined, 'out', {
+      from: new Date('2026-11-01T00:00:00.000Z'),
+      to: new Date('2026-11-23T23:59:59.999Z'),
+      sales: 'Sales A',
+      customer: 'Budi',
+    })
   })
 
   it('riwayat lintas sesi mengisi salesName dan null untuk pesan lama', async () => {

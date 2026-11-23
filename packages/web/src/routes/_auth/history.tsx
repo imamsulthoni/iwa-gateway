@@ -1,32 +1,45 @@
 import { MESSAGE_STATUS_LABELS } from '@wbc/shared'
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { ListFilter, RefreshCw, RotateCcw, Trash2 } from 'lucide-react'
+import { RefreshCw, RotateCcw, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { ConfirmDialog } from '../../components/dialogs'
-import { Badge, Button, cn } from '../../design-system'
+import { Badge, Button, Select, cn } from '../../design-system'
 import type { BadgeTone } from '../../design-system'
 import { api } from '../../lib/api'
 import { isAdmin } from '../../lib/auth'
-import { formatPhone, truncate } from '../../lib/format'
-import type { MessageListDto, RetryMessageResponseDto } from '../../lib/types'
+import { formatPhone, usePolling } from '../../lib/format'
+import type { MessageListDto, RetryMessageResponseDto, SessionListDto } from '../../lib/types'
 
 export const Route = createFileRoute('/_auth/history')({
   beforeLoad: () => {
     if (!isAdmin()) throw redirect({ to: '/numbers' })
   },
-  validateSearch: (search: Record<string, unknown>): { sessionId?: string } => {
-    const sessionId = search.sessionId
-    if (typeof sessionId === 'string' && sessionId.trim()) {
-      return { sessionId: sessionId.trim() }
+  validateSearch: (search: Record<string, unknown>): HistorySearch => {
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/
+    const text = (value: unknown): string | undefined =>
+      typeof value === 'string' && value.trim() ? value.trim() : undefined
+    const from = text(search.from)
+    const to = text(search.to)
+    return {
+      from: from && datePattern.test(from) ? from : undefined,
+      to: to && datePattern.test(to) ? to : undefined,
+      sales: text(search.sales),
+      customer: text(search.customer),
     }
-    return {}
   },
   component: HistoryPage,
 })
 
 const GRID = 'grid grid-cols-[96px_150px_128px_120px_minmax(0,1fr)_104px_64px] items-center'
 const COL_HEAD = 'font-data text-[9px] tracking-[1.1px] text-ink-soft uppercase'
+
+type HistorySearch = {
+  from?: string
+  to?: string
+  sales?: string
+  customer?: string
+}
 
 function tone(status: string): BadgeTone {
   if (status === 'failed') return 'danger'
@@ -51,11 +64,23 @@ function key(value: string): string {
   return Number.isNaN(date.getTime()) ? value : date.toDateString()
 }
 
+function dayStart(value: string): string {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return ''
+  return new Date(year, month - 1, day).toISOString()
+}
+
+function dayEnd(value: string): string {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return ''
+  return new Date(year, month - 1, day, 23, 59, 59, 999).toISOString()
+}
+
 function HistoryPage() {
-  const { sessionId } = Route.useSearch()
+  const { from, to, sales, customer } = Route.useSearch()
   const navigate = Route.useNavigate()
   const [rows, setRows] = useState<MessageListDto['items']>([])
-  const [draft, setDraft] = useState(sessionId ?? '')
+  const [customerDraft, setCustomerDraft] = useState(customer ?? '')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -63,38 +88,57 @@ function HistoryPage() {
   const [deleting, setDeleting] = useState(false)
   const [retryingId, setRetryingId] = useState<string | null>(null)
 
-  const load = useCallback(
-    async (filterSessionId?: string) => {
-      setLoading(true)
-      setError(null)
-      try {
-        const query = new URLSearchParams({ limit: '50', direction: 'out' })
-        if (filterSessionId) query.set('sessionId', filterSessionId)
-        const page = await api.get<MessageListDto>(`/v1/messages?${query.toString()}`)
-        setRows(page.items)
-        setLoaded(true)
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : 'Gagal memuat riwayat')
-      } finally {
-        setLoading(false)
-      }
-    },
-    [],
+  const sessions = usePolling<SessionListDto>(
+    () => api.get<SessionListDto>('/v1/sessions'),
+    30_000,
+    true,
   )
 
+  const load = useCallback(async (filters: HistorySearch) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const query = new URLSearchParams({ limit: '50', direction: 'out' })
+      if (filters.from) query.set('from', dayStart(filters.from))
+      if (filters.to) query.set('to', dayEnd(filters.to))
+      if (filters.sales) query.set('sales', filters.sales)
+      if (filters.customer) query.set('customer', filters.customer)
+      const page = await api.get<MessageListDto>(`/v1/messages?${query.toString()}`)
+      setRows(page.items)
+      setLoaded(true)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Gagal memuat riwayat')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
-    void load(sessionId)
-  }, [load, sessionId])
+    setCustomerDraft(customer ?? '')
+  }, [customer])
+
+  useEffect(() => {
+    void load({ from, to, sales, customer })
+  }, [load, from, to, sales, customer])
 
   const days = useMemo(() => new Set(rows.map((row) => key(row.createdAt))).size, [rows])
 
+  const salesOptions = useMemo(() => {
+    const names = new Set<string>()
+    for (const item of sessions.data?.items ?? []) {
+      if (item.salesName) names.add(item.salesName)
+    }
+    return [...names].sort((a, b) => a.localeCompare(b))
+  }, [sessions.data])
+
+  const hasFilters = Boolean(from || to || sales || customer)
+
   function refresh() {
-    void load(sessionId)
+    void load({ from, to, sales, customer })
   }
 
-  function applyFilter() {
-    const next = draft.trim()
-    void navigate({ search: next ? { sessionId: next } : {} })
+  function setFilter(patch: Partial<HistorySearch>) {
+    void navigate({ search: (previous) => ({ ...previous, ...patch }) })
   }
 
   async function remove() {
@@ -123,7 +167,6 @@ function HistoryPage() {
       setRetryingId(null)
     }
   }
-
 
   return (
     <div className="flex h-full flex-col gap-6">
@@ -164,27 +207,72 @@ function HistoryPage() {
         <div className="h-4" />
 
         <div className="flex items-center justify-between gap-4 px-[22px]">
-          <div className="flex items-center gap-2">
-            <div className="flex h-[38px] w-[340px] items-center gap-2 rounded-[10px] bg-bg px-3 text-ink-faint">
-              <ListFilter className="size-[13px] shrink-0" aria-hidden />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex h-[38px] items-center gap-2 rounded-[10px] bg-bg px-3 text-ink-faint">
+              <span className="font-data text-[9px] tracking-[0.8px] text-ink-faint uppercase">
+                Dari
+              </span>
               <input
-                value={draft}
+                type="date"
+                value={from ?? ''}
+                onChange={(event) => setFilter({ from: event.target.value || undefined })}
+                aria-label="Filter tanggal mulai"
+                className="w-[130px] bg-transparent font-data text-[9.5px] tracking-[0.8px] text-ink uppercase outline-none"
+              />
+            </div>
+            <div className="flex h-[38px] items-center gap-2 rounded-[10px] bg-bg px-3 text-ink-faint">
+              <span className="font-data text-[9px] tracking-[0.8px] text-ink-faint uppercase">
+                Sampai
+              </span>
+              <input
+                type="date"
+                value={to ?? ''}
+                onChange={(event) => setFilter({ to: event.target.value || undefined })}
+                aria-label="Filter tanggal akhir"
+                className="w-[130px] bg-transparent font-data text-[9.5px] tracking-[0.8px] text-ink uppercase outline-none"
+              />
+            </div>
+            <Select
+              label="Sales"
+              className="w-[170px]"
+              size="sm"
+              value={sales ?? ''}
+              onChange={(next) => setFilter({ sales: next || undefined })}
+              options={[
+                { value: '', label: 'Semua sales' },
+                ...salesOptions.map((name) => ({ value: name, label: name })),
+              ]}
+            />
+            <div className="flex h-[38px] w-[190px] items-center gap-2 rounded-[10px] bg-bg px-3 text-ink-faint">
+              <input
+                value={customerDraft}
                 onChange={(event) => {
-                  setDraft(event.target.value)
-                  if (!event.target.value) void navigate({ search: {} })
+                  setCustomerDraft(event.target.value)
+                  if (!event.target.value) setFilter({ customer: undefined })
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter') applyFilter()
+                  if (event.key === 'Enter') {
+                    setFilter({ customer: customerDraft.trim() || undefined })
+                  }
                 }}
-                placeholder="FILTER SESSION ID"
-                aria-label="Filter Session ID"
+                placeholder="NAMA CUSTOMER"
+                aria-label="Filter nama customer"
                 className="w-full bg-transparent font-data text-[9.5px] tracking-[0.8px] text-ink uppercase outline-none placeholder:text-ink-faint"
               />
               <span className="font-data text-[9.5px] text-ink-faint">↵</span>
             </div>
-            <p className="font-data text-[9px] tracking-[0.8px] text-ink-faint">
-              {sessionId ? `filter: ${sessionId}` : 'semua sesi'}
-            </p>
+            {hasFilters ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setCustomerDraft('')
+                  void navigate({ search: {} })
+                }}
+              >
+                Reset
+              </Button>
+            ) : null}
           </div>
           <p className="font-data text-[9.5px] text-ink-faint">
             {loading ? 'memuat...' : `${rows.length} entri`}
@@ -193,21 +281,20 @@ function HistoryPage() {
 
         <div className="h-4" />
 
-        <div className={cn(GRID, 'h-8 px-[22px]')}>
-          <p className={COL_HEAD}>WAKTU</p>
-          <p className={COL_HEAD}>SALES</p>
-          <p className={COL_HEAD}>TUJUAN</p>
-          <p className={COL_HEAD}>CUSTOMER</p>
-          <p className={COL_HEAD}>ISI PESAN</p>
-          <p className={COL_HEAD}>STATUS</p>
-          <span />
-        </div>
-        <div className="h-px w-full bg-line" />
-
         <div className="min-h-0 flex-1 overflow-auto">
-          {error ? (
-            <p className="px-[22px] py-6 text-small text-red">{error}</p>
-          ) : null}
+          <div
+            className={cn(GRID, 'sticky top-0 z-10 h-8 border-b border-line bg-surface px-[22px]')}
+          >
+            <p className={COL_HEAD}>WAKTU</p>
+            <p className={COL_HEAD}>SALES</p>
+            <p className={COL_HEAD}>TUJUAN</p>
+            <p className={COL_HEAD}>CUSTOMER</p>
+            <p className={COL_HEAD}>ISI PESAN</p>
+            <p className={COL_HEAD}>STATUS</p>
+            <span />
+          </div>
+
+          {error ? <p className="px-[22px] py-6 text-small text-red">{error}</p> : null}
 
           {!error && loading && !loaded ? (
             <p className="px-[22px] py-16 text-center text-small text-ink-faint">
@@ -225,7 +312,7 @@ function HistoryPage() {
             rows.map((row) => (
               <div
                 key={row.id}
-                className={cn(GRID, 'h-[58px] border-b border-line px-[22px] last:border-0')}
+                className={cn(GRID, 'min-h-[58px] py-2.5 border-b border-line px-[22px] last:border-0')}
               >
                 <div className="flex flex-col gap-0.5">
                   <p className="font-data text-[11px] text-ink">{clock(row.createdAt)}</p>
@@ -238,8 +325,8 @@ function HistoryPage() {
                   {formatPhone(row.to)}
                 </p>
                 <p className="truncate text-[12px] text-ink">{row.customerName ?? '—'}</p>
-                <p className="min-w-0 truncate text-[11.5px] text-ink-soft">
-                  {truncate(row.body ?? '—', 90)}
+                <p className="min-w-0 wrap-break-word pr-6 text-[11.5px] text-ink-soft">
+                  {row.body ?? '—'}
                 </p>
                 <div>
                   <Badge tone={tone(row.status)}>{MESSAGE_STATUS_LABELS[row.status]}</Badge>

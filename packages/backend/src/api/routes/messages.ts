@@ -291,7 +291,12 @@ export function createMessagesRoute(messages: MessagesService, queues: QueueRegi
 
   router.openapi(listMessagesRoute, async (c) => {
     const query = c.req.valid('query')
-    const page = await messages.listAll(query.limit, query.sessionId, undefined, query.direction)
+    const page = await messages.listAll(query.limit, query.sessionId, undefined, query.direction, {
+      from: query.from ? new Date(query.from) : undefined,
+      to: query.to ? new Date(query.to) : undefined,
+      sales: query.sales,
+      customer: query.customer,
+    })
     return c.json(page, 200)
   })
 

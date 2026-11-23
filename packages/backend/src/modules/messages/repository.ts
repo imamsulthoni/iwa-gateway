@@ -1,4 +1,4 @@
-import { and, desc, eq, getTableColumns, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
+import { and, desc, eq, getTableColumns, gte, inArray, isNull, like, lte, lt, ne, or, sql } from 'drizzle-orm'
 
 import type { Database } from '../../db/client.js'
 import { newId } from '../../db/id.js'
@@ -212,6 +212,12 @@ export function createMessagesRepository(db: Database) {
       sessionId?: string,
       cursor?: MessageCursor,
       direction?: MessageRow['direction'],
+      filters?: {
+        from?: Date
+        to?: Date
+        sales?: string
+        customer?: string
+      },
     ): Promise<{
       items: (MessageRow & { salesName: string | null })[]
       nextCursor: MessageCursor | null
@@ -219,6 +225,13 @@ export function createMessagesRepository(db: Database) {
       const conditions = [isNull(messages.deletedAt)]
       if (sessionId) conditions.push(eq(messages.sessionId, sessionId))
       if (direction) conditions.push(eq(messages.direction, direction))
+      if (filters?.from) conditions.push(gte(messages.createdAt, filters.from))
+      if (filters?.to) conditions.push(lte(messages.createdAt, filters.to))
+      if (filters?.sales) conditions.push(eq(users.name, filters.sales))
+      if (filters?.customer) {
+        const pattern = `%${filters.customer.replace(/[\\%_]/g, '\\$&')}%`
+        conditions.push(like(messages.customerName, pattern))
+      }
       const where = and(...conditions)
       const condition = cursor ? and(where, cursorCondition(cursor)) : where
 
@@ -310,7 +323,7 @@ export function createMessagesRepository(db: Database) {
       return Number(row?.count ?? 0)
     },
 
-    async countTodayAll(since: Date): Promise<number> {
+    async countSince(since: Date): Promise<number> {
       const [row] = await db
         .select({ count: sql<number>`count(*)` })
         .from(messages)

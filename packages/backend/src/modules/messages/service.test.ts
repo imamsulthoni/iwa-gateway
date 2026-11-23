@@ -87,7 +87,7 @@ describe('filter arah riwayat', () => {
     } as unknown as MessagesRepository)
 
     await service.listAll(10, 's1', undefined, 'out')
-    expect(listAll).toHaveBeenCalledWith(10, 's1', undefined, 'out')
+    expect(listAll).toHaveBeenCalledWith(10, 's1', undefined, 'out', undefined)
 
     await service.listBySession('s1', 10, undefined, 'in')
     expect(listBySession).toHaveBeenCalledWith('s1', 10, undefined, 'in')

@@ -146,8 +146,16 @@ export function createMessagesService(repo: MessagesRepository) {
       sessionId?: string,
       cursor?: string,
       direction?: MessageDirection,
+      filters?: {
+        from?: Date
+        to?: Date
+        sales?: string
+        customer?: string
+      },
     ): Promise<{ items: MessageDto[]; nextCursor: string | null }> {
-      return toPage(await repo.listAll(limit, sessionId, decodeCursor(cursor), direction))
+      return toPage(
+        await repo.listAll(limit, sessionId, decodeCursor(cursor), direction, filters),
+      )
     },
 
     async markSent(id: string, waMessageId: string | null, raw?: unknown): Promise<void> {

@@ -66,4 +66,8 @@ export const crossSessionMessageQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   sessionId: sessionIdSchema.optional(),
   direction: z.enum(MESSAGE_DIRECTIONS).optional(),
+  from: z.iso.datetime().optional(),
+  to: z.iso.datetime().optional(),
+  sales: z.string().min(1).max(255).optional(),
+  customer: z.string().min(1).max(255).optional(),
 })
