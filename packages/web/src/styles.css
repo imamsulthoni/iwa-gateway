@@ -21,3 +21,13 @@ body {
     'Segoe UI',
     sans-serif;
 }
+
+::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+}
+
+* {
+  scrollbar-width: thin !important;
+  scrollbar-color: auto auto !important; /* atau atur sesuai kebutuhan */
+}

@@ -188,7 +188,7 @@ function WebhooksPage() {
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex h-full flex-col">
       <PageHeader
         eyebrow="SISTEM / WEBHOOK"
         title="Webhook"
@@ -359,7 +359,7 @@ function WebhooksPage() {
         </section>
       </div>
 
-      <section className="mt-4 rounded-card border border-line bg-surface p-[22px]">
+      <section className="mt-4 flex min-h-0 flex-1 flex-col rounded-card border border-line bg-surface p-[22px]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-[17px] font-semibold tracking-[-0.3px] text-ink">Log delivery</h2>
@@ -396,46 +396,52 @@ function WebhooksPage() {
         <div className="h-4" />
         {deliveryError ? <Banner tone="danger">{deliveryError}</Banner> : null}
 
-        {!selected ? (
-          <p className="py-8 text-center text-small text-ink-faint">
-            Pilih endpoint untuk melihat log.
-          </p>
-        ) : deliveries.length === 0 ? (
-          <p className="py-8 text-center text-small text-ink-faint">Belum ada delivery.</p>
-        ) : (
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableHeaderCell>Event</TableHeaderCell>
-                <TableHeaderCell>Status</TableHeaderCell>
-                <TableHeaderCell>Percobaan</TableHeaderCell>
-                <TableHeaderCell>HTTP</TableHeaderCell>
-                <TableHeaderCell>Error</TableHeaderCell>
-                <TableHeaderCell>Retry berikutnya</TableHeaderCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {deliveries.map((delivery) => (
-                <TableRow key={delivery.id}>
-                  <TableCell className="font-data text-small">{delivery.eventType}</TableCell>
-                  <TableCell>
-                    <Badge tone={DELIVERY_TONES[delivery.status]}>{delivery.status}</Badge>
-                  </TableCell>
-                  <TableCell className="font-data text-small">{delivery.attempts}</TableCell>
-                  <TableCell className="font-data text-small">
-                    {delivery.lastStatusCode ?? '—'}
-                  </TableCell>
-                  <TableCell className="max-w-[280px] truncate text-small text-ink-soft">
-                    {delivery.lastError ?? '—'}
-                  </TableCell>
-                  <TableCell className="font-data text-[10.5px] text-ink-soft">
-                    {delivery.status === 'pending' ? formatDateTime(delivery.nextAttemptAt) : '—'}
-                  </TableCell>
+        <div className="min-h-0 flex-1 overflow-auto">
+          {!selected ? (
+            <p className="py-8 text-center text-small text-ink-faint">
+              Pilih endpoint untuk melihat log.
+            </p>
+          ) : deliveries.length === 0 ? (
+            <p className="py-8 text-center text-small text-ink-faint">Belum ada delivery.</p>
+          ) : (
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableHeaderCell>Tanggal</TableHeaderCell>
+                  <TableHeaderCell>Event</TableHeaderCell>
+                  <TableHeaderCell>Status</TableHeaderCell>
+                  <TableHeaderCell>Percobaan</TableHeaderCell>
+                  <TableHeaderCell>HTTP</TableHeaderCell>
+                  <TableHeaderCell>Error</TableHeaderCell>
+                  <TableHeaderCell>Retry berikutnya</TableHeaderCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+              </TableHead>
+              <TableBody>
+                {deliveries.map((delivery) => (
+                  <TableRow key={delivery.id}>
+                    <TableCell className="whitespace-nowrap font-data text-[10.5px] text-ink-soft">
+                      {formatDateTime(delivery.createdAt)}
+                    </TableCell>
+                    <TableCell className="font-data text-small">{delivery.eventType}</TableCell>
+                    <TableCell>
+                      <Badge tone={DELIVERY_TONES[delivery.status]}>{delivery.status}</Badge>
+                    </TableCell>
+                    <TableCell className="font-data text-small">{delivery.attempts}</TableCell>
+                    <TableCell className="font-data text-small">
+                      {delivery.lastStatusCode ?? '—'}
+                    </TableCell>
+                    <TableCell className="max-w-[280px] truncate text-small text-ink-soft">
+                      {delivery.lastError ?? '—'}
+                    </TableCell>
+                    <TableCell className="font-data text-[10.5px] text-ink-soft">
+                      {delivery.status === 'pending' ? formatDateTime(delivery.nextAttemptAt) : '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
 
         {nextCursor ? (
           <div className="mt-4 flex justify-center">
