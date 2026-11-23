@@ -26,7 +26,7 @@ import type { SettingsService } from '../../modules/settings/service.js'
 import { publishSessionControl } from '../../infra/session-control.js'
 import type { AppBindings } from '../app.js'
 import { ensureSessionAccess, requireAdmin } from '../middleware/auth.js'
-import { idParamSchema, openApiError } from '../openapi.js'
+import { sessionIdParamSchema, openApiError } from '../openapi.js'
 
 const EMPTY_BROADCAST: BroadcastCurrentDto = {
   jobId: null,
@@ -93,7 +93,7 @@ const getSessionRoute = createRoute({
   tags: ['Sessions'],
   summary: 'Detail satu sesi',
   security: anyAuthSecurity,
-  request: { params: idParamSchema },
+  request: { params: sessionIdParamSchema },
   responses: {
     200: {
       description: 'Detail sesi',
@@ -112,7 +112,7 @@ const deleteSessionRoute = createRoute({
   tags: ['Sessions'],
   summary: 'Hapus sesi',
   security: apiKeySecurity,
-  request: { params: idParamSchema },
+  request: { params: sessionIdParamSchema },
   responses: {
     204: { description: 'Sesi dihapus' },
     401: openApiError('API key tidak dikirim atau tidak valid'),
@@ -128,7 +128,7 @@ const loginSessionRoute = createRoute({
   tags: ['Sessions'],
   summary: 'Mulai koneksi WhatsApp untuk sesi',
   security: anyAuthSecurity,
-  request: { params: idParamSchema },
+  request: { params: sessionIdParamSchema },
   responses: {
     200: {
       description: 'Sesi masuk status connecting',
@@ -148,7 +148,7 @@ const cancelSessionRoute = createRoute({
   tags: ['Sessions'],
   summary: 'Batalkan proses pairing',
   security: anyAuthSecurity,
-  request: { params: idParamSchema },
+  request: { params: sessionIdParamSchema },
   responses: {
     200: {
       description: 'Sesi diputus dan QR dikosongkan',
@@ -169,7 +169,7 @@ const logoutSessionRoute = createRoute({
   tags: ['Sessions'],
   summary: 'Logout sesi dan hapus auth tersimpan',
   security: apiKeySecurity,
-  request: { params: idParamSchema },
+  request: { params: sessionIdParamSchema },
   responses: {
     200: {
       description: 'Sesi berstatus logged_out',
@@ -188,7 +188,7 @@ const rotateSessionTokenRoute = createRoute({
   tags: ['Sessions'],
   summary: 'Rotasi token sesi',
   security: apiKeySecurity,
-  request: { params: idParamSchema },
+  request: { params: sessionIdParamSchema },
   responses: {
     200: {
       description: 'Token sesi baru',
@@ -207,7 +207,7 @@ const sessionStatusRoute = createRoute({
   tags: ['Sessions'],
   summary: 'Status ringkas sesi',
   security: anyAuthSecurity,
-  request: { params: idParamSchema },
+  request: { params: sessionIdParamSchema },
   responses: {
     200: {
       description: 'Status sesi',
@@ -226,7 +226,7 @@ const sessionQrRoute = createRoute({
   tags: ['Sessions'],
   summary: 'QR terakhir sesi',
   security: anyAuthSecurity,
-  request: { params: idParamSchema },
+  request: { params: sessionIdParamSchema },
   responses: {
     200: {
       description: 'QR (data URL) dan status sesi',
@@ -245,7 +245,7 @@ const sessionLiveRoute = createRoute({
   tags: ['Sessions'],
   summary: 'Gabungan state dashboard sesi',
   security: anyAuthSecurity,
-  request: { params: idParamSchema },
+  request: { params: sessionIdParamSchema },
   responses: {
     200: {
       description: 'Sesi, QR, pairing code, dan broadcast aktif',
@@ -264,7 +264,7 @@ const pairingCodeRoute = createRoute({
   tags: ['Sessions'],
   summary: 'Pairing code terakhir sesi',
   security: anyAuthSecurity,
-  request: { params: idParamSchema },
+  request: { params: sessionIdParamSchema },
   responses: {
     200: {
       description: 'Pairing code dan status sesi',
@@ -284,7 +284,7 @@ const requestPairingCodeRoute = createRoute({
   summary: 'Pairing dengan kode dinonaktifkan (pakai QR)',
   security: anyAuthSecurity,
   request: {
-    params: idParamSchema,
+    params: sessionIdParamSchema,
     body: {
       content: { 'application/json': { schema: pairingRequestSchema } },
       required: true,
@@ -305,7 +305,7 @@ const resetSalesPinRoute = createRoute({
   summary: 'Reset PIN akun sales sesi',
   security: apiKeySecurity,
   request: {
-    params: idParamSchema,
+    params: sessionIdParamSchema,
     body: {
       content: { 'application/json': { schema: resetSalesPinSchema } },
       required: true,
@@ -333,7 +333,7 @@ const attachSalesRoute = createRoute({
   summary: 'Tautkan akun sales ke sesi lama',
   security: apiKeySecurity,
   request: {
-    params: idParamSchema,
+    params: sessionIdParamSchema,
     body: {
       content: { 'application/json': { schema: attachSalesSchema } },
       required: true,

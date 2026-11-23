@@ -1021,7 +1021,7 @@ Auth: `x-api-key`
 | Nama        | Tipe                     | Wajib | Default | Keterangan |
 | ----------- | ------------------------ | ----- | ------- | ---------- |
 | `limit`     | integer (min 1, max 100) | tidak | 50      | —          |
-| `sessionId` | string                   | tidak | —       | —          |
+| `sessionId` | string (UUID)            | tidak | —       | `wa_sessions.id` |
 | `direction` | "in"                     | "out" | tidak   | —          | —   |
 
 **Respons `200`** — Halaman riwayat pesan
@@ -1129,7 +1129,7 @@ Auth: `x-api-key`
   text: string (min 1, max 4096)
   customerId?: string (max 64)
   customerName?: string (max 255)
-  sessionId: string (min 1, max 32)
+  sessionId: string (UUID wa_sessions.id)
 }
 ```
 
@@ -1272,9 +1272,9 @@ Auth: `x-api-key`
 
 **Path parameter**
 
-| Nama | Tipe           | Wajib | Default | Keterangan  |
-| ---- | -------------- | ----- | ------- | ----------- |
-| `id` | string (min 1) | ya    | —       | ID resource |
+| Nama | Tipe           | Wajib | Default | Keterangan           |
+| ---- | -------------- | ----- | ------- | -------------------- |
+| `id` | string (min 1) | ya    | —       | ID sesi (wa_sessions.id) |
 
 **Query parameter**
 
@@ -1319,9 +1319,9 @@ Membuka `text/event-stream`. Gunakan `fetch` streaming (bukan `EventSource`) kar
 
 **Path parameter**
 
-| Nama | Tipe                   | Wajib | Default | Keterangan     |
-| ---- | ---------------------- | ----- | ------- | -------------- |
-| `id` | string (min 1, max 32) | ya    | —       | public_id sesi |
+| Nama | Tipe           | Wajib | Default | Keterangan               |
+| ---- | -------------- | ----- | ------- | ------------------------ |
+| `id` | string (min 1) | ya    | —       | ID sesi (wa_sessions.id) |
 
 **Respons `200`** — Stream SSE berjalan sampai klien memutus koneksi
 
@@ -1347,7 +1347,7 @@ Auth: `x-api-key`
   minDelay: integer (min 10, max 600)
   maxDelay: integer (min 10, max 600)
   clientRef: string (min 1, max 191)
-  sessionId: string (pattern ^[A-Za-z0-9_-]{1,32}$)
+  sessionId: string (UUID wa_sessions.id)
   scheduledAt?: string (date-time)
 }
 ```
@@ -1769,7 +1769,7 @@ data: {...}
 
 ## Catatan implementasi
 
-- `:id` pada path adalah `public_id` sesi: slug 1–32 karakter `[A-Za-z0-9_-]`, bukan id internal.
+- `:id` pada path sesi adalah `wa_sessions.id` (UUID), bukan `public_id`. `publicId` hanya label tampilan di response. Path `:id` conversation, broadcast, dan webhook juga UUID.
 - Nomor WhatsApp pada body dikirim dalam format internasional tanpa `+` (contoh `6281234567890`); JID `...@s.whatsapp.net` muncul di payload inbound/webhook.
 - Semua endpoint berada di bawah prefiks `/v1`.
 - `GET /v1/health` publik dan mengembalikan status dependensi + metrik; jangan dipakai untuk health check yang butuh auth.

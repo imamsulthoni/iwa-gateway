@@ -27,7 +27,7 @@ const ROOM_POLL_MS = 15_000
 const MESSAGE_POLL_MS = 10_000
 
 type RoomFeed = {
-  sessionPublicId: string
+  sessionId: string
   items: ConversationDto[]
 }
 
@@ -49,13 +49,13 @@ function InboxPage() {
     async () => {
       const pages = await Promise.all(
         connectedSessions.map(async (session) => ({
-          sessionPublicId: session.publicId,
+          sessionId: session.id,
           page: await api.get<ConversationListDto>(
-            `/v1/sessions/${session.publicId}/conversations?limit=50`,
+            `/v1/sessions/${session.id}/conversations?limit=50`,
           ),
         })),
       )
-      return pages.map(({ sessionPublicId, page }) => ({ sessionPublicId, items: page.items }))
+      return pages.map(({ sessionId, page }) => ({ sessionId, items: page.items }))
     },
     ROOM_POLL_MS,
     connectedSessions.length > 0,
@@ -73,14 +73,17 @@ function InboxPage() {
   const [filter, setFilter] = useState('all')
 
   const rooms = useMemo<InboxRoom[]>(() => {
-    const statusById = new Map((sessions.data?.items ?? []).map((item) => [item.id, item.status]))
+    const items = sessions.data?.items ?? []
+    const statusById = new Map(items.map((item) => [item.id, item.status]))
+    const labelById = new Map(items.map((item) => [item.id, item.label]))
     return (feeds.data ?? [])
       .flatMap((feed) =>
         feed.items.map((item) => {
           const address = item.waJidAlt ?? item.waJid
           return {
             id: item.id,
-            sessionPublicId: feed.sessionPublicId,
+            sessionId: feed.sessionId,
+            sessionLabel: labelById.get(item.sessionId) ?? feed.sessionId,
             sessionStatus: statusById.get(item.sessionId) ?? 'disconnected',
             address: formatPhone(address),
             waJid: address,
@@ -96,20 +99,21 @@ function InboxPage() {
     const needle = query.trim().toLowerCase()
     return rooms.filter((room) => {
       if (filter === 'unread' && room.unreadCount === 0) return false
-      if (filter !== 'all' && filter !== 'unread' && room.sessionPublicId !== filter) return false
+      if (filter !== 'all' && filter !== 'unread' && room.sessionId !== filter) return false
       if (!needle) return true
-      return `${room.address} ${room.waJid} ${room.sessionPublicId}`.toLowerCase().includes(needle)
+      return `${room.address} ${room.waJid} ${room.sessionId}`.toLowerCase().includes(needle)
     })
   }, [filter, query, rooms])
 
   const filters = useMemo(() => {
-    const sessionIds = [...new Set(rooms.map((room) => room.sessionPublicId))]
+    const sessionIds = [...new Set(rooms.map((room) => room.sessionId))]
+    const labels = new Map((sessions.data?.items ?? []).map((item) => [item.id, item.label]))
     return [
       { value: 'all', label: 'SEMUA' },
       { value: 'unread', label: 'BELUM DIBACA' },
-      ...sessionIds.map((id) => ({ value: id, label: id })),
+      ...sessionIds.map((id) => ({ value: id, label: labels.get(id) ?? id })),
     ]
-  }, [rooms])
+  }, [rooms, sessions.data])
 
   const selectedRoom = rooms.find((room) => room.id === conversationId) ?? null
   const unreadTotal = rooms.reduce((total, room) => total + room.unreadCount, 0)
@@ -155,7 +159,7 @@ function InboxPage() {
       .catch(() => undefined)
   }, [conversationId, feeds.refresh])
 
-  useSessionEvents(selectedRoom?.sessionPublicId ?? null, (event) => {
+  useSessionEvents(selectedRoom?.sessionId ?? null, (event) => {
     if (event.event === 'message.received') {
       feeds.refresh()
       if (event.data.message.conversationId === conversationId) {
@@ -199,7 +203,7 @@ function InboxPage() {
     setError(null)
     try {
       await api.post('/v1/messages', {
-        sessionId: selectedRoom.sessionPublicId,
+        sessionId: selectedRoom.sessionId,
         to: selectedRoom.waJid,
         text,
         clientRef: newClientRef(),

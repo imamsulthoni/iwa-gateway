@@ -1,5 +1,5 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { ArrowRight, Eye, EyeOff, KeyRound, Lock, MessageCircle } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, GraphStar, KeyRound, Lock, MessageCircle } from 'lucide-react'
 import type { FormEvent } from 'react'
 import { useState } from 'react'
 
@@ -85,7 +85,7 @@ function LoginPage() {
       <aside className="hidden w-[55%] shrink-0 flex-col bg-inverse px-14 pt-13 pb-11 lg:flex">
         <div className="flex items-center gap-2.5">
           <span className="flex size-[30px] items-center justify-center rounded-lg bg-white">
-            <MessageCircle className="size-4 text-ink" aria-hidden />
+            <GraphStar className="size-4 text-ink" aria-hidden />
           </span>
           <span className="flex flex-col gap-px">
             <span className="font-data text-[11px] leading-none font-bold tracking-[1.4px] text-white">

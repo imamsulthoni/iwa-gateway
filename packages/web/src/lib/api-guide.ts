@@ -96,7 +96,7 @@ export const FLOW_STEPS: readonly GuideBlock[] = [
   {
     title: 'Cari nomor yang terhubung',
     detail:
-      'Panggil GET /v1/sessions, lalu simpan publicId dari item berstatus connected. publicId dipakai sebagai sessionId di endpoint lain.',
+      'Panggil GET /v1/sessions, lalu simpan id (UUID) dari item berstatus connected. id dipakai sebagai sessionId di endpoint lain; publicId hanya label tampilan.',
   },
   {
     title: 'Kirim pesan follow-up',
@@ -212,7 +212,7 @@ export const NOT_FOR_CONSUMERS: readonly { label: string; items: readonly string
   },
 ]
 
-const EXAMPLE_SESSION_ID = 'smoke'
+const EXAMPLE_SESSION_ID = '01a1ddfa-295a-7557-9bd3-00293fdc047b'
 const EXAMPLE_CONVERSATION_ID = '01a1ddfa-295a-7557-9bd3-00293fdc047c'
 const EXAMPLE_BROADCAST_ID = '01a1ddfa-295a-7557-9bd3-00293fdc0480'
 const EXAMPLE_WEBHOOK_ID = '01a1ddfa-295a-7557-9bd3-00293fdc0490'

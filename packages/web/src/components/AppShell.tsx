@@ -5,11 +5,11 @@ import {
   LayoutDashboard,
   Lock,
   LogOut,
-  MessageCircle,
-  MessageSquare,
+  Inbox,
   Settings,
   Smartphone,
   Webhook,
+  GraphStar,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -24,7 +24,7 @@ const GROUPS = [
     label: 'OPERATE',
     items: [
       { to: '/overview', label: 'Ringkasan', icon: LayoutDashboard },
-      { to: '/inbox', label: 'Inbox', icon: MessageSquare },
+      { to: '/inbox', label: 'Inbox', icon: Inbox },
       { to: '/numbers', label: 'Nomor', icon: Smartphone },
       { to: '/history', label: 'Riwayat', icon: History },
     ],
@@ -86,7 +86,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className="sticky top-0 flex h-screen w-[248px] shrink-0 flex-col px-5 pt-7 pb-6">
         <Link to={admin ? '/overview' : '/numbers'} className="flex items-center gap-2.5 pb-4">
           <span className="flex size-[30px] items-center justify-center rounded-lg bg-ink">
-            <MessageCircle className="size-4 text-white" aria-hidden />
+            <GraphStar className='size-4 text-white' aria-hidden />
           </span>
           <span className="flex flex-col gap-px">
             <span className="font-data text-[11px] leading-none font-bold tracking-[1.4px] text-ink">

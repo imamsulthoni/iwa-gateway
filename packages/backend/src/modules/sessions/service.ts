@@ -69,14 +69,6 @@ export function createSessionsService(
   return {
     get,
 
-    async getByPublicId(publicId: string): Promise<SessionWithOwner> {
-      const row = await repo.findByPublicId(publicId)
-      if (!row) {
-        throw new NotFoundError('Sesi tidak ditemukan')
-      }
-      return row
-    },
-
     async list(limit = 50, ownerUserId?: string): Promise<SessionWithOwner[]> {
       return repo.list(limit, ownerUserId)
     },

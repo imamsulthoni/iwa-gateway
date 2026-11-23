@@ -55,7 +55,7 @@ Hanya ada satu file env: `.env` di root. Jangan membuat env di dalam `packages/`
 | `AUTH_ENC_KEY`               | base64 32 byte                                    | worker (enkripsi auth state)   |
 | `LOG_LEVEL`                  | `info`                                            | api, worker                    |
 | `APP_TIMEZONE`               | `Asia/Jakarta`                                    | api, worker                    |
-| `CORS_ORIGIN`                | `http://localhost:8468`                           | api                            |
+| `CORS_ORIGIN`                | `http://localhost:8468` (boleh dipisah koma)      | api                            |
 | `BROWSER_NAME`               | `WA Bot Console`                                  | worker                         |
 | `SESSION_LOCK_TTL_MS`        | `30000`                                           | worker                         |
 | `RATE_LIMIT_PER_MIN`         | `240`                                             | api                            |
@@ -201,7 +201,7 @@ Auth: `x-api-key` (API key admin) untuk endpoint admin, atau `Authorization: Bea
 | `POST`   | `/v1/webhooks/:id/rotate-secret`     | Rotasi secret (tampil sekali)                                       |
 | `GET`    | `/v1/webhooks/:id/deliveries`        | Log delivery (`limit`, `cursor`, filter `status`)                   |
 
-`:id` sesi adalah `public_id` (slug 1–32 karakter `[A-Za-z0-9_-]`); `:id` conversation, broadcast, dan webhook adalah UUID.
+`:id` sesi adalah `id` internal sesi (`wa_sessions.id`, UUID); `:id` conversation, broadcast, dan webhook juga UUID. `publicId` kini hanya label tampilan.
 
 ### Alur admin vs sales
 
@@ -267,7 +267,7 @@ curl -X POST http://localhost:8467/v1/webhooks \
 Envelope mengikuti format SSE: `id`, `event`, `data` (JSON). Heartbeat komentar `: ping` dikirim setiap 15 detik; koneksi ditutup bila sesi dihapus.
 
 ```bash
-curl -N -H "x-api-key: $API_KEY" http://localhost:8467/v1/sessions/<public_id>/events
+curl -N -H "x-api-key: $API_KEY" http://localhost:8467/v1/sessions/<wa_sessions.id>/events
 ```
 
 ```text

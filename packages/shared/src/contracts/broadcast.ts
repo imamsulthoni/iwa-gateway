@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { BROADCAST_STATUSES, RECIPIENT_STATUSES } from '../constants/status.js'
 import { MAX_DELAY_SECONDS, MIN_DELAY_SECONDS, isValidDelayRange } from '../constants/limits.js'
+import { sessionIdSchema } from './ids.js'
 
 export const broadcastRecipientInputSchema = z.object({
   to: z.string().min(8).max(32),
@@ -31,12 +32,7 @@ export type CreateBroadcastInput = z.infer<typeof createBroadcastSchema>
 
 export const broadcastV1Schema = broadcastInputSchema
   .extend({
-    sessionId: z
-      .string()
-      .regex(
-        /^[A-Za-z0-9_-]{1,32}$/,
-        'sessionId hanya boleh huruf, angka, _ dan -, maksimal 32 karakter',
-      ),
+    sessionId: sessionIdSchema,
     scheduledAt: z.iso.datetime().optional(),
   })
   .refine((value) => isValidDelayRange(value.minDelay, value.maxDelay), delayRangeRefinement)

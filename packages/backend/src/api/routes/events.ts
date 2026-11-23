@@ -8,7 +8,7 @@ import { subscribeSessionEvents } from '../../infra/pubsub.js'
 import type { SessionsService } from '../../modules/sessions/service.js'
 import type { AppBindings } from '../app.js'
 import { ensureSessionAccess } from '../middleware/auth.js'
-import { idParamSchema, openApiError } from '../openapi.js'
+import { sessionIdParamSchema, openApiError } from '../openapi.js'
 
 const HEARTBEAT_MS = 15_000
 
@@ -25,7 +25,7 @@ export function createEventsRoute(sessions: SessionsService, redis: Redis, logge
     description:
       'Dibaca dengan fetch streaming + header x-api-key (bukan EventSource). Heartbeat dikirim setiap 15 detik.',
     security: [{ ApiKey: [] }, { UserToken: [] }],
-    request: { params: idParamSchema },
+    request: { params: sessionIdParamSchema },
     responses: {
       200: {
         description:
@@ -39,7 +39,7 @@ export function createEventsRoute(sessions: SessionsService, redis: Redis, logge
   })
 
   router.get('/sessions/:id/events', async (c) => {
-    const session = await sessions.getByPublicId(c.req.param('id'))
+    const session = await sessions.get(c.req.param('id'))
     ensureSessionAccess(c, session)
 
     return streamSSE(c, async (stream) => {

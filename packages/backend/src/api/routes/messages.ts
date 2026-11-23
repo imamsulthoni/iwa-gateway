@@ -21,7 +21,7 @@ import type { QueueRegistry } from '../../infra/queue.js'
 import { enqueue, SEND_JOB_OPTIONS } from '../../infra/queue.js'
 import type { AppBindings } from '../app.js'
 import { apiKeyOrSessionTokenMiddleware, ensureSessionAccess } from '../middleware/auth.js'
-import { idParamSchema, openApiError } from '../openapi.js'
+import { idParamSchema, sessionIdParamSchema, openApiError } from '../openapi.js'
 
 const sessionMessageSecurity: Record<string, string[]>[] = [
   { ApiKey: [] },
@@ -37,7 +37,7 @@ const sendMessageRoute = createRoute({
   summary: 'Kirim pesan dari sebuah sesi',
   security: sessionMessageSecurity,
   request: {
-    params: idParamSchema,
+    params: sessionIdParamSchema,
     body: {
       content: { 'application/json': { schema: sendMessageSchema } },
       required: true,
@@ -95,7 +95,7 @@ const listSessionMessagesRoute = createRoute({
   tags: ['Messages (sesi)'],
   summary: 'Riwayat pesan sebuah sesi',
   security: sessionMessageSecurity,
-  request: { params: idParamSchema, query: messageQuerySchema },
+  request: { params: sessionIdParamSchema, query: messageQuerySchema },
   responses: {
     200: {
       description: 'Halaman riwayat pesan sesi',
@@ -241,7 +241,7 @@ export function createV1MessagesRoute(
 
   router.openapi(sendMessageV1Route, async (c) => {
     const input = c.req.valid('json')
-    const session = await sessions.getByPublicId(input.sessionId)
+    const session = await sessions.get(input.sessionId)
     ensureSessionAccess(c, session)
 
     if (session.status !== 'connected') {
@@ -262,7 +262,7 @@ export function createV1MessagesRoute(
       session.id,
       toUserJid(input.to),
     )
-    const { sessionId: _publicId, ...body } = input
+    const { sessionId: _sessionId, ...body } = input
     const result = await messages.createOutgoing({
       ...body,
       sessionId: session.id,

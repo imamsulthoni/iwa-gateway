@@ -15,7 +15,7 @@ import { ValidationError } from '../../modules/errors.js'
 import type { SessionsService } from '../../modules/sessions/service.js'
 import type { AppBindings } from '../app.js'
 import { ensureSessionAccess } from '../middleware/auth.js'
-import { idParamSchema, openApiError } from '../openapi.js'
+import { idParamSchema, sessionIdParamSchema, openApiError } from '../openapi.js'
 
 const adminOrSalesSecurity: Record<string, string[]>[] = [{ ApiKey: [] }, { UserToken: [] }]
 
@@ -25,7 +25,7 @@ const currentBroadcastRoute = createRoute({
   tags: ['Sessions'],
   summary: 'Broadcast yang sedang berjalan pada sesi',
   security: adminOrSalesSecurity,
-  request: { params: idParamSchema },
+  request: { params: sessionIdParamSchema },
   responses: {
     200: {
       description: 'Broadcast aktif; field bernilai kosong bila tidak ada broadcast',
@@ -43,7 +43,7 @@ const cancelBroadcastRoute = createRoute({
   tags: ['Sessions'],
   summary: 'Batalkan broadcast aktif',
   security: adminOrSalesSecurity,
-  request: { params: idParamSchema },
+  request: { params: sessionIdParamSchema },
   responses: {
     200: {
       description: 'Broadcast dibatalkan',
@@ -191,7 +191,7 @@ export function createBroadcastsV1Route(
 
   router.openapi(createBroadcastV1Route, async (c) => {
     const input = c.req.valid('json')
-    const session = await sessions.getByPublicId(input.sessionId)
+    const session = await sessions.get(input.sessionId)
     ensureSessionAccess(c, session)
     const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : null
     if (scheduledAt && scheduledAt.getTime() <= Date.now()) {

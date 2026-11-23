@@ -1,7 +1,7 @@
 import type { ConsumerEndpoint, ConsumerEndpointMethod } from '@wbc/shared'
 import { CONSUMER_ENDPOINTS } from '@wbc/shared'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { ArrowUpRight, BookOpen, MessageCircle } from 'lucide-react'
+import { ArrowUpRight, BookOpen, GraphStar } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { CodeBlock } from '../components/code-block'
@@ -77,7 +77,7 @@ function DocsPage() {
         <div className="mx-auto flex max-w-[1180px] items-center gap-3 px-4 py-3 sm:px-6">
           <Link to="/docs" className="flex shrink-0 items-center gap-2.5">
             <span className="flex size-[30px] items-center justify-center rounded-lg bg-ink">
-              <MessageCircle className="size-4 text-white" aria-hidden />
+              <GraphStar className="size-4 text-white" aria-hidden />
             </span>
             <span className="flex flex-col gap-px">
               <span className="font-data text-[11px] leading-none font-bold tracking-[1.4px] whitespace-nowrap text-ink">
@@ -234,11 +234,7 @@ function DocsPage() {
                 )
                 if (endpoints.length === 0) return null
                 return (
-                  <div
-                    key={group.id}
-                    id={`group-${group.id}`}
-                    className="scroll-mt-24 space-y-3"
-                  >
+                  <div key={group.id} id={`group-${group.id}`} className="scroll-mt-24 space-y-3">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <h3 className="text-body font-semibold text-ink">{group.label}</h3>
                       <p className="text-small text-ink-faint">{group.note}</p>

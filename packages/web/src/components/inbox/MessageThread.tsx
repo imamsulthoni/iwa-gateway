@@ -104,7 +104,7 @@ export function MessageThread({
             {room.address}
           </p>
           <p className="truncate font-data text-[9.5px] text-ink-faint">
-            {room.waJid} · {room.sessionPublicId}
+            {room.waJid} · {room.sessionLabel}
           </p>
         </div>
         <Badge tone={statusTone(room.sessionStatus)}>

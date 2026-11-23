@@ -33,9 +33,9 @@ export const CONSUMER_ENDPOINTS = [
     method: 'GET',
     path: '/v1/sessions',
     group: 'numbers',
-    summary: 'Daftar nomor; ambil publicId yang berstatus connected.',
+    summary: 'Daftar nomor; ambil id (UUID) yang berstatus connected.',
     detail:
-      'publicId dipakai sebagai sessionId di endpoint lain. Jangan memakai id internal sesi.',
+      'id (UUID wa_sessions.id) dipakai sebagai sessionId di endpoint lain. publicId hanya label tampilan, bukan identifier.',
     auth: 'x-api-key',
   },
   {

@@ -58,6 +58,10 @@ export const idParamSchema = z.object({
   id: z.string().min(1).describe('ID resource'),
 })
 
+export const sessionIdParamSchema = z.object({
+  id: z.string().min(1).describe('ID sesi (wa_sessions.id)'),
+})
+
 export function openApiError(description: string) {
   return {
     description,

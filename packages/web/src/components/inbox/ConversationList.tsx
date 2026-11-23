@@ -103,7 +103,7 @@ export function ConversationList({
                 </span>
                 <span className="truncate text-[11px] text-ink-soft">{roomPreview(room)}</span>
                 <span className="truncate font-data text-[8px] tracking-[0.4px] text-ink-faint">
-                  {room.sessionPublicId}
+                  {room.sessionLabel}
                 </span>
               </span>
             </button>

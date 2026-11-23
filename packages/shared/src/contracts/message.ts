@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { MESSAGE_DIRECTIONS, MESSAGE_STATUSES } from '../constants/status.js'
+import { sessionIdSchema } from './ids.js'
 
 export const sendMessageSchema = z.object({
   to: z.string().min(8).max(32),
@@ -13,7 +14,7 @@ export const sendMessageSchema = z.object({
 export type SendMessageInput = z.infer<typeof sendMessageSchema>
 
 export const sendMessageV1Schema = sendMessageSchema.extend({
-  sessionId: z.string().min(1).max(32),
+  sessionId: sessionIdSchema,
 })
 
 export type SendMessageV1Input = z.infer<typeof sendMessageV1Schema>
@@ -63,6 +64,6 @@ export const messageQuerySchema = z.object({
 
 export const crossSessionMessageQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  sessionId: z.string().optional(),
+  sessionId: sessionIdSchema.optional(),
   direction: z.enum(MESSAGE_DIRECTIONS).optional(),
 })

@@ -11,7 +11,7 @@ import type { ConversationsService } from '../../modules/conversations/service.j
 import type { SessionsService } from '../../modules/sessions/service.js'
 import type { AppBindings } from '../app.js'
 import { ensureSessionAccess } from '../middleware/auth.js'
-import { idParamSchema, openApiError } from '../openapi.js'
+import { idParamSchema, sessionIdParamSchema, openApiError } from '../openapi.js'
 
 const anyAuthSecurity: Record<string, string[]>[] = [{ ApiKey: [] }, { UserToken: [] }]
 
@@ -21,7 +21,7 @@ const listConversationsRoute = createRoute({
   tags: ['Conversations'],
   summary: 'Daftar room chat sebuah sesi',
   security: anyAuthSecurity,
-  request: { params: idParamSchema, query: conversationQuerySchema },
+  request: { params: sessionIdParamSchema, query: conversationQuerySchema },
   responses: {
     200: {
       description: 'Room chat urut dari pesan terbaru',
@@ -81,7 +81,7 @@ export function createConversationsRoute(
   const router = new OpenAPIHono<AppBindings>()
 
   router.openapi(listConversationsRoute, async (c) => {
-    const session = await sessions.getByPublicId(c.req.param('id'))
+    const session = await sessions.get(c.req.param('id'))
     ensureSessionAccess(c, session)
     const query = c.req.valid('query')
     const page = await conversations.listRooms(session.id, query.limit, query.cursor)

@@ -4,7 +4,8 @@ import type { RoomMessageDto } from '../../lib/types'
 
 export type InboxRoom = {
   id: string
-  sessionPublicId: string
+  sessionId: string
+  sessionLabel: string
   sessionStatus: string
   address: string
   waJid: string

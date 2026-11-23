@@ -83,10 +83,6 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
       if (id !== SESSION_ID) throw new Error('tidak dipakai')
       return SESSION
     }),
-    getByPublicId: vi.fn(async (publicId: string) => {
-      if (publicId !== SESSION.publicId) throw new Error('tidak dipakai')
-      return SESSION
-    }),
     list: vi.fn(async () => [SESSION]),
     create: vi.fn(async () => ({ session: SESSION, token: TOKEN })),
     remove: vi.fn(async () => undefined),
@@ -312,6 +308,20 @@ describe('API Hono', () => {
       totalMessages: 0,
       runningBroadcasts: 0,
     })
+  })
+
+  it('CORS mengizinkan semua origin yang dipisah koma di CORS_ORIGIN', async () => {
+    const { app } = createTestApp({
+      env: { ...TEST_ENV, CORS_ORIGIN: 'http://localhost:8468, http://192.168.1.10:8468' },
+    })
+
+    const allowed = await app.request('/v1/health', {
+      headers: { origin: 'http://192.168.1.10:8468' },
+    })
+    expect(allowed.headers.get('access-control-allow-origin')).toBe('http://192.168.1.10:8468')
+
+    const blocked = await app.request('/v1/health', { headers: { origin: 'http://evil.test' } })
+    expect(blocked.headers.get('access-control-allow-origin')).toBeNull()
   })
 
   it('endpoint tidak dikenal memakai format error yang sama', async () => {
@@ -779,7 +789,6 @@ describe('API Hono', () => {
     const { app } = createTestApp({
       sessions: {
         get: vi.fn(async () => otherSession),
-        getByPublicId: vi.fn(async () => otherSession),
       } as unknown as SessionsService,
     })
     const headers = { authorization: `Bearer ${USER_TOKEN}` }
@@ -809,7 +818,6 @@ describe('API Hono', () => {
     const { app } = createTestApp({
       sessions: {
         get: vi.fn(async () => otherSession),
-        getByPublicId: vi.fn(async () => otherSession),
       } as unknown as SessionsService,
     })
     const headers = { 'x-api-key': 'valid-key' }
@@ -896,9 +904,9 @@ describe('API Hono', () => {
       `/v1/sessions/${SESSION_ID}/qr`,
       `/v1/sessions/${SESSION_ID}/live`,
       `/v1/sessions/${SESSION_ID}/pairing`,
-      `/v1/sessions/${SESSION.publicId}/conversations`,
+      `/v1/sessions/${SESSION_ID}/conversations`,
       '/v1/conversations/c1/messages',
-      `/v1/sessions/${SESSION.publicId}/events`,
+      `/v1/sessions/${SESSION_ID}/events`,
     ]) {
       const response = await app.request(path)
       expect(response.status, path).toBe(401)
@@ -1271,7 +1279,7 @@ describe('API Hono', () => {
     const { app } = createTestApp({ broadcasts })
     const headers = { authorization: `Bearer ${USER_TOKEN}`, 'content-type': 'application/json' }
     const body = JSON.stringify({
-      sessionId: SESSION.publicId,
+      sessionId: SESSION_ID,
       recipients: [{ to: '628123456789' }],
       text: 'Halo',
       minDelay: 10,
@@ -1313,12 +1321,11 @@ describe('API Hono', () => {
       broadcasts,
       sessions: {
         get: vi.fn(async () => otherSession),
-        getByPublicId: vi.fn(async () => otherSession),
       } as unknown as SessionsService,
     })
     const headers = { authorization: `Bearer ${USER_TOKEN}`, 'content-type': 'application/json' }
     const body = JSON.stringify({
-      sessionId: SESSION.publicId,
+      sessionId: SESSION_ID,
       recipients: [{ to: '628123456789' }],
       text: 'Halo',
       minDelay: 10,
@@ -1362,12 +1369,53 @@ describe('API Hono', () => {
     expect(body.error.code).toBe('VALIDATION_ERROR')
   })
 
-  it('daftar room chat memakai public_id sesi dan API key', async () => {
+  it('menolak sessionId berupa slug pada POST /v1/messages dan /v1/broadcasts', async () => {
+    const broadcasts = { create: vi.fn() } as unknown as AppDependencies['broadcasts']
+    const { app, messages } = createTestApp({ broadcasts })
+    const headers = { 'x-api-key': 'valid-key', 'content-type': 'application/json' }
+
+    const message = await app.request('/v1/messages', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        sessionId: SESSION.publicId,
+        to: '628123456789',
+        text: 'Halo',
+        clientRef: 'slug-1',
+      }),
+    })
+    expect(message.status).toBe(422)
+    expect(((await message.json()) as { error: { code: string } }).error.code).toBe(
+      'VALIDATION_ERROR',
+    )
+
+    const broadcast = await app.request('/v1/broadcasts', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        sessionId: SESSION.publicId,
+        recipients: [{ to: '628123456789' }],
+        text: 'Halo',
+        minDelay: 10,
+        maxDelay: 20,
+        clientRef: 'slug-2',
+      }),
+    })
+    expect(broadcast.status).toBe(422)
+    expect(((await broadcast.json()) as { error: { code: string } }).error.code).toBe(
+      'VALIDATION_ERROR',
+    )
+
+    expect(messages.createOutgoing).not.toHaveBeenCalled()
+    expect(broadcasts.create).not.toHaveBeenCalled()
+  })
+
+  it('daftar room chat memakai id sesi dan API key', async () => {
     const { app, conversations } = createTestApp()
-    const unauthorized = await app.request(`/v1/sessions/${SESSION.publicId}/conversations`)
+    const unauthorized = await app.request(`/v1/sessions/${SESSION_ID}/conversations`)
     expect(unauthorized.status).toBe(401)
 
-    const response = await app.request(`/v1/sessions/${SESSION.publicId}/conversations`, {
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/conversations`, {
       headers: { 'x-api-key': 'valid-key' },
     })
     expect(response.status).toBe(200)
@@ -1389,7 +1437,7 @@ describe('API Hono', () => {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key', 'content-type': 'application/json' },
       body: JSON.stringify({
-        sessionId: SESSION.publicId,
+        sessionId: SESSION_ID,
         to: '628123456789',
         text: 'Halo',
         clientRef: 'inbox-1',
@@ -1405,7 +1453,7 @@ describe('API Hono', () => {
   it('sales hanya bisa membuka inbox sesi miliknya', async () => {
     const headers = { authorization: `Bearer ${USER_TOKEN}` }
     const own = await createTestApp().app.request(
-      `/v1/sessions/${SESSION.publicId}/conversations`,
+      `/v1/sessions/${SESSION_ID}/conversations`,
       {
         headers,
       },
@@ -1416,10 +1464,9 @@ describe('API Hono', () => {
     const other = createTestApp({
       sessions: {
         get: vi.fn(async () => otherSession),
-        getByPublicId: vi.fn(async () => otherSession),
       } as unknown as SessionsService,
     }).app
-    const denied = await other.request(`/v1/sessions/${SESSION.publicId}/conversations`, {
+    const denied = await other.request(`/v1/sessions/${SESSION_ID}/conversations`, {
       headers,
     })
     expect(denied.status).toBe(403)
@@ -1441,7 +1488,6 @@ describe('API Hono', () => {
       } as unknown as AppDependencies['conversations'],
       sessions: {
         get: vi.fn(async () => otherSession),
-        getByPublicId: vi.fn(async () => otherSession),
       } as unknown as SessionsService,
     })
     const headers = { authorization: `Bearer ${USER_TOKEN}` }
@@ -1459,7 +1505,7 @@ describe('API Hono', () => {
       'content-type': 'application/json',
     }
     const body = JSON.stringify({
-      sessionId: SESSION.publicId,
+      sessionId: SESSION_ID,
       to: '628123456789',
       text: 'Halo',
       clientRef: 's1',
@@ -1474,7 +1520,6 @@ describe('API Hono', () => {
     const other = createTestApp({
       sessions: {
         get: vi.fn(async () => otherSession),
-        getByPublicId: vi.fn(async () => otherSession),
       } as unknown as SessionsService,
     })
     const denied = await other.app.request('/v1/messages', { method: 'POST', headers, body })
@@ -1487,10 +1532,9 @@ describe('API Hono', () => {
     const { app } = createTestApp({
       sessions: {
         get: vi.fn(async () => otherSession),
-        getByPublicId: vi.fn(async () => otherSession),
       } as unknown as SessionsService,
     })
-    const response = await app.request(`/v1/sessions/${SESSION.publicId}/events`, {
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/events`, {
       headers: { authorization: `Bearer ${USER_TOKEN}` },
     })
 
@@ -1499,7 +1543,7 @@ describe('API Hono', () => {
 
   it('SSE menolak request tanpa API key', async () => {
     const { app } = createTestApp()
-    const response = await app.request(`/v1/sessions/${SESSION.publicId}/events`)
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/events`)
     expect(response.status).toBe(401)
   })
 

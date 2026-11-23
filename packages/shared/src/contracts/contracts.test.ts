@@ -9,6 +9,7 @@ import {
   messageQuerySchema,
   retryMessageResponseSchema,
   sendMessageSchema,
+  sendMessageV1Schema,
 } from './message.js'
 import { createOptOutSchema, optOutSchema } from './opt-out.js'
 import { paginationQuerySchema } from './pagination.js'
@@ -117,6 +118,21 @@ describe('kontrak pesan', () => {
     expect(messageQuerySchema.safeParse({ direction: 'both' }).success).toBe(false)
     expect(crossSessionMessageQuerySchema.safeParse({ direction: 'up' }).success).toBe(false)
   })
+
+  it('mewajibkan sessionId berupa UUID pada pesan v1', () => {
+    const body = {
+      to: '628123456789',
+      text: 'Halo',
+      clientRef: 'ref-1',
+      sessionId: '01a1ddfa-295a-7557-9bd3-00293fdc047b',
+    }
+    expect(sendMessageV1Schema.safeParse(body).success).toBe(true)
+    expect(sendMessageV1Schema.safeParse({ ...body, sessionId: 'sales-a' }).success).toBe(false)
+    expect(crossSessionMessageQuerySchema.safeParse({ sessionId: body.sessionId }).success).toBe(
+      true,
+    )
+    expect(crossSessionMessageQuerySchema.safeParse({ sessionId: 'sales-a' }).success).toBe(false)
+  })
 })
 
 describe('kontrak auth', () => {
@@ -189,7 +205,7 @@ describe('kontrak broadcast', () => {
 
   it('menerima jadwal UTC opsional pada broadcast v1', () => {
     const body = {
-      sessionId: 'sales-a',
+      sessionId: '01a1ddfa-295a-7557-9bd3-00293fdc047b',
       recipients: [{ to: '62812345678' }],
       text: 'Halo',
       minDelay: 10,
@@ -197,6 +213,7 @@ describe('kontrak broadcast', () => {
       clientRef: 'b1',
     }
     expect(broadcastV1Schema.safeParse(body).success).toBe(true)
+    expect(broadcastV1Schema.safeParse({ ...body, sessionId: 'sales-a' }).success).toBe(false)
     expect(
       broadcastV1Schema.safeParse({ ...body, scheduledAt: '2026-11-20T10:00:00.000Z' }).success,
     ).toBe(true)

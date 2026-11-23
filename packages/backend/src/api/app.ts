@@ -66,6 +66,14 @@ export type AppDependencies = {
   queues: QueueRegistry
 }
 
+// CORS_ORIGIN menerima beberapa origin dipisah koma, mis. localhost + IP LAN.
+function parseCorsOrigins(value: string): string[] {
+  return value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0)
+}
+
 function requestLogger(logger: AppLogger) {
   return createMiddleware<AppBindings>(async (c, next) => {
     const start = Date.now()
@@ -88,7 +96,7 @@ export function createApp(deps: AppDependencies) {
   const requireAdmin = requireAdminMiddleware()
   const rateLimit = rateLimitMiddleware(deps.redis, deps.env.RATE_LIMIT_PER_MIN)
 
-  app.use('*', cors({ origin: deps.env.CORS_ORIGIN }))
+  app.use('*', cors({ origin: parseCorsOrigins(deps.env.CORS_ORIGIN) }))
   app.use('*', requestLogger(deps.logger))
 
   // Dokumentasi API sengaja publik dan didaftarkan sebelum middleware API key.

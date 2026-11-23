@@ -62,7 +62,7 @@ export function BroadcastTab({ session, broadcast, defaultDelay, onRefresh }: Br
     setError(null)
     try {
       const response = await api.post<CreateBroadcastResponseDto>('/v1/broadcasts', {
-        sessionId: session.publicId,
+        sessionId: session.id,
         recipients: parsed,
         text,
         minDelay: Number(minDelay),
