@@ -1,0 +1,27 @@
+# Konteks build harus bebas dari artefak lokal dan secret.
+# Tanpa file ini, .env ikut ter-COPY ke layer image produksi.
+
+node_modules
+**/node_modules
+
+dist
+**/dist
+
+.git
+.gitignore
+.github
+
+.env
+.env.*
+!.env.example
+!.env.prod.example
+
+docs
+logs
+coverage
+*.log
+*.bak
+
+.vscode
+.idea
+.DS_Store

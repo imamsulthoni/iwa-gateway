@@ -1,0 +1,115 @@
+# Stack produksi: MySQL + Redis internal, api + worker dari satu image.
+# Jalankan dengan: docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+#
+# Dua peran file env:
+# - `--env-file .env.prod`  -> interpolasi ${...} di file ini (termasuk build args).
+# - `env_file:` di x-backend -> environment runtime container.
+# Pakai file yang sama agar tidak ada nilai yang berbeda antara build dan runtime.
+#
+# Berbeda dari docker-compose.yml (dev):
+# - MySQL dan Redis TIDAK mem-publish port ke host. Docker menembus ufw, jadi
+#   port yang di-`ports:` benar-benar terbuka ke internet.
+# - Tidak ada bind mount source; kode masuk lewat image.
+# - Dashboard belum dilayani container; Caddy menyusul. Sementara jalankan
+#   web di host (`pnpm start:web`) yang menunjuk ke api:8467.
+
+name: wa-bot-console-prod
+
+x-backend: &backend
+  build:
+    context: .
+    target: runtime
+    # Satu-satunya nilai yang dibakar ke image: VITE_* dibaca Vite saat
+    # `pnpm build`, sedangkan .env tidak ikut build context (.dockerignore).
+    # Nilainya diambil dari project environment, yaitu file `--env-file`.
+    args:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+  # Path env runtime container. Default `.env.prod` (fail fast bila tidak ada);
+  # jalankan compose dengan `--env-file .env.prod` agar interpolasi ${...} cocok.
+  env_file: ${APP_ENV_FILE:-.env.prod}
+  restart: unless-stopped
+  # Backend melakukan graceful shutdown maksimal 10 detik.
+  stop_grace_period: 30s
+  depends_on:
+    mysql:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?isi MYSQL_ROOT_PASSWORD di .env.prod}
+      MYSQL_DATABASE: wa_console
+      MYSQL_USER: ${MYSQL_USER:?isi MYSQL_USER di .env.prod}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?isi MYSQL_PASSWORD di .env.prod}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -u "$$MYSQL_USER" -p"$$MYSQL_PASSWORD" --silent
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+  api:
+    <<: *backend
+    command: ['node', 'packages/backend/dist/api.js']
+    environment:
+      NODE_ENV: production
+      # Eksplisit: default PORT di env.ts adalah 3000, sedangkan mapping port
+      # dan healthcheck di bawah memakai 8467. Tanpa ini, container yang
+      # .env-nya tidak mengisi PORT akan listen di 3000 dan healthcheck gagal.
+      PORT: ${API_PORT:-8467}
+    # Dashboard belum dilayani container (Caddy menyusul). Untuk sementara web
+    # dijalankan di host: `pnpm build && pnpm start:web` lalu buka port 8469.
+    ports:
+      - '${API_PORT:-8467}:${API_PORT:-8467}'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://127.0.0.1:' + process.env.PORT + '/v1/health')
+          .then((r) => process.exit(r.ok ? 0 : 1))
+          .catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    <<: *backend
+    command: ['node', 'packages/backend/dist/worker.js']
+    environment:
+      NODE_ENV: production
+  # Satu worker memegang socket Baileys tiap sesi. Jangan skalakan lebih dari
+  # satu instance sebelum paham mekanisme lock + reconcile di README.
+
+  # Job sekali jalan. Tidak ikut `up -d` karena berada di profile terpisah.
+  #   docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm migrate
+  #   docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm migrate pnpm db:seed:key
+  migrate:
+    <<: *backend
+    profiles: ['tools']
+    restart: 'no'
+    command: ['pnpm', 'db:migrate']
+
+volumes:
+  mysql_data:
+  redis_data:

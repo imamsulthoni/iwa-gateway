@@ -8,6 +8,8 @@ Monorepo layanan WhatsApp berbasis Baileys: API Hono, worker BullMQ, MySQL 8, Re
 - pnpm 12 (ter-pin di `packageManager`, aktifkan via `corepack enable`)
 - Docker + Docker Compose
 
+Menjalankan sebagai stack Docker produksi? Ikuti **[DOCKER.md](./DOCKER.md)**.
+
 ## Mulai dari clone bersih
 
 ```bash
@@ -43,7 +45,16 @@ pnpm dev
 
 ## Environment
 
-Hanya ada satu file env: `.env` di root. Jangan membuat env di dalam `packages/`.
+Ada dua file env di root, keduanya jangan di-commit (sudah di-gitignore):
+
+| File        | Untuk                                                        |
+| ----------- | ------------------------------------------------------------ |
+| `.env`      | development lokal (`pnpm dev`). Disalin dari `.env.example`. |
+| `.env.prod` | stack Docker produksi. Disalin dari `.env.prod.example`.     |
+
+Jangan membuat env di dalam `packages/`.
+
+`.env.prod` dipakai dua kali oleh compose: sebagai `--env-file` (interpolasi `${...}`, termasuk `build.args`) dan sebagai `env_file:` container. Konsekuensinya, host di `DATABASE_URL`/`REDIS_URL` harus nama service (`mysql`, `redis`), bukan `localhost`.
 
 | Variabel                     | Contoh                                            | Dipakai                        |
 | ---------------------------- | ------------------------------------------------- | ------------------------------ |
@@ -63,6 +74,16 @@ Hanya ada satu file env: `.env` di root. Jangan membuat env di dalam `packages/`
 | `WEBHOOK_ALLOW_HTTP_PRIVATE` | `false`                                           | api (webhook ke IP privat)     |
 | `LOG_DIR`                    | `logs` (opsional)                                 | api, worker (log JSON ke file) |
 | `VITE_API_BASE_URL`          | `http://localhost:8467`                           | web                            |
+
+Khusus `.env.prod`, tambahan yang hanya dipakai compose:
+
+| Variabel              | Contoh      | Dipakai                                          |
+| --------------------- | ----------- | ------------------------------------------------ |
+| `MYSQL_ROOT_PASSWORD` | —           | mysql (hanya saat volume pertama dibuat)         |
+| `MYSQL_USER`          | `wbc`       | mysql                                            |
+| `MYSQL_PASSWORD`      | —           | mysql; harus sama dengan password `DATABASE_URL` |
+| `API_PORT`            | `8467`      | `PORT` container, `ports:`, target healthcheck   |
+| `APP_ENV_FILE`        | `.env.prod` | override `env_file:` bila ingin file lain        |
 
 Buat `AUTH_ENC_KEY` dengan `openssl rand -base64 32`. Hanya variabel `VITE_*` yang diekspos ke web.
 
@@ -90,6 +111,21 @@ node packages/backend/dist/worker.js
 ```
 
 Keduanya membaca environment container (bukan file `.env`). Worker memegang lock sesi dan socket; API menulis DB dan enqueue job. Jalankan sebagai dua service terpisah agar bisa diskalakan sendiri-sendiri.
+
+### Stack Docker
+
+`docker-compose.prod.yml` menjalankan MySQL, Redis, api, dan worker dari satu image:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml build
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm migrate
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm migrate pnpm db:seed:key
+```
+
+`--env-file` mengisi interpolasi `${...}` di compose; `env_file:` menyuntik environment ke container. Keduanya menunjuk `.env.prod`, jadi nilai build dan runtime tidak bisa berbeda.
+
+Panduan lengkap (persiapan env, build, migrasi, verifikasi, troubleshooting): **[DOCKER.md](./DOCKER.md)**.
 
 ### Rolling restart
 

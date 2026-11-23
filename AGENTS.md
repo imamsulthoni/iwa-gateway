@@ -48,9 +48,9 @@ Aturan wajib untuk agent coding (OpenCode, Claude Code, Cursor, dll.) yang beker
 
 ## Environment & secret
 
-- Hanya ada satu `.env` di root (salin dari `.env.example`). Dilarang membuat file `.env*` di dalam `packages/`.
+- Dua file env di root: `.env` untuk development (dari `.env.example`) dan `.env.prod` untuk stack Docker produksi (dari `.env.prod.example`). Dilarang membuat file `.env*` di dalam `packages/`.
 - Hanya variabel berprefiks `VITE_*` yang boleh dibaca kode web.
-- Jangan commit `.env`, kredensial, token, atau isi `docs/`.
+- Jangan commit `.env`, `.env.prod`, kredensial, token, atau isi `docs/`.
 
 ## Batas dependensi antar package
 
