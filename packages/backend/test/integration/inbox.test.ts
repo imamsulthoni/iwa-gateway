@@ -213,7 +213,7 @@ describeIntegration('integrasi inbox', () => {
       stats: {
         get: async () => ({
           connectedSessions: 0,
-          todayMessages: 0,
+          periodMessages: 0,
           totalMessages: 0,
           runningBroadcasts: 0,
         }),

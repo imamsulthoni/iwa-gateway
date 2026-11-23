@@ -24,6 +24,7 @@ export type {
   SessionTokenDto,
   SettingsDto,
   StatsDto,
+  StatsPeriod,
   WebhookDeliveryDto,
   WebhookDeliveryListDto,
   WebhookEndpointCreatedDto,

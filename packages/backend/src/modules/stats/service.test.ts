@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { BroadcastsRepository } from '../broadcasts/repository.js'
 import type { MessagesRepository } from '../messages/repository.js'
 import type { SessionsRepository } from '../sessions/repository.js'
-import { createStatsService, startOfDayUtc } from './service.js'
+import { createStatsService, startOfDayUtc, startOfPeriodUtc } from './service.js'
 
 describe('startOfDayUtc', () => {
   it('menghitung tengah malam zona layanan dalam UTC', () => {
@@ -24,6 +24,28 @@ describe('startOfDayUtc', () => {
   })
 })
 
+describe('startOfPeriodUtc', () => {
+  const now = new Date('2026-11-18T06:00:00.000Z') // Rabu, 13:00 WIB
+
+  it('mulai minggu di Senin zona layanan', () => {
+    expect(startOfPeriodUtc(now, 'Asia/Jakarta', 'week').toISOString()).toBe(
+      '2026-11-15T17:00:00.000Z',
+    )
+  })
+
+  it('mulai bulan di tanggal 1 zona layanan', () => {
+    expect(startOfPeriodUtc(now, 'Asia/Jakarta', 'month').toISOString()).toBe(
+      '2026-10-31T17:00:00.000Z',
+    )
+  })
+
+  it('mulai tahun di 1 Januari zona layanan', () => {
+    expect(startOfPeriodUtc(now, 'Asia/Jakarta', 'year').toISOString()).toBe(
+      '2025-12-31T17:00:00.000Z',
+    )
+  })
+})
+
 describe('stats service', () => {
   it('menggabungkan hitungan sesi, pesan, dan broadcast', async () => {
     const sessions = {
@@ -31,7 +53,7 @@ describe('stats service', () => {
     } as unknown as SessionsRepository
     const messages = {
       countTotal: async () => 120,
-      countTodayAll: async () => 7,
+      countSince: async () => 7,
     } as unknown as MessagesRepository
     const broadcasts = {
       countActive: async () => 3,
@@ -46,7 +68,7 @@ describe('stats service', () => {
 
     await expect(service.get()).resolves.toEqual({
       connectedSessions: 2,
-      todayMessages: 7,
+      periodMessages: 7,
       totalMessages: 120,
       runningBroadcasts: 3,
     })

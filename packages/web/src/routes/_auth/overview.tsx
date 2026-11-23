@@ -1,12 +1,13 @@
 import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@wbc/shared'
 import { Link, createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { ArrowUpRight, ChevronDown, Megaphone, RefreshCw } from 'lucide-react'
-import { useMemo } from 'react'
+import { ArrowUpRight, Megaphone, RefreshCw } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
 import {
   Badge,
   Button,
   PageHeader,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -23,7 +24,15 @@ import type {
   HealthDto,
   SessionListDto,
   StatsDto,
+  StatsPeriod,
 } from '../../lib/types'
+
+const PERIOD_LABELS: Record<StatsPeriod, string> = {
+  day: 'Hari ini',
+  week: 'Minggu ini',
+  month: 'Bulan ini',
+  year: 'Tahun ini',
+}
 
 export const Route = createFileRoute('/_auth/overview')({
   beforeLoad: () => {
@@ -58,7 +67,13 @@ function useBroadcasts(sessionIds: string[], enabled: boolean) {
 
 function OverviewPage() {
   const navigate = useNavigate()
-  const stats = usePolling<StatsDto>(() => api.get<StatsDto>('/v1/stats'), 15_000, true)
+  const [period, setPeriod] = useState<StatsPeriod>('day')
+  const stats = usePolling<StatsDto>(
+    () => api.get<StatsDto>(`/v1/stats?period=${period}`),
+    15_000,
+    true,
+    period,
+  )
   const sessions = usePolling<SessionListDto>(
     () => api.get<SessionListDto>('/v1/sessions'),
     15_000,
@@ -69,7 +84,7 @@ function OverviewPage() {
   const items = sessions.data?.items ?? []
   const total = items.length
   const connected = items.filter((item) => item.status === 'connected').length
-  const today = stats.data?.todayMessages ?? 0
+  const periodCount = stats.data?.periodMessages ?? 0
   const totalMessages = stats.data?.totalMessages ?? 0
   const running = stats.data?.runningBroadcasts ?? 0
   const healthy = health.data?.status === 'ok'
@@ -129,17 +144,26 @@ function OverviewPage() {
           <p className="font-data text-label tracking-[1.4px] text-ink-faint uppercase">
             Pengiriman
           </p>
-          <span className="inline-flex items-center gap-1.5 rounded-pill border border-line px-2.5 py-[5px] text-small font-medium text-ink">
-            Hari ini
-            <ChevronDown className="size-3 text-ink-soft" aria-hidden />
-          </span>
+          <Select
+            label="Periode pengiriman"
+            size="sm"
+            className="w-[148px]"
+            value={period}
+            options={(Object.keys(PERIOD_LABELS) as StatsPeriod[]).map((value) => ({
+              value,
+              label: PERIOD_LABELS[value],
+            }))}
+            onChange={(value) => setPeriod(value as StatsPeriod)}
+          />
         </div>
 
         <div className="mt-3.5 flex items-end gap-3.5">
           <p className="text-[56px] leading-[0.95] font-semibold tracking-[-2.4px] text-ink">
-            {formatNumber(today)}
+            {formatNumber(periodCount)}
           </p>
-          <p className="pb-1.5 text-body text-ink-soft">pesan terkirim hari ini</p>
+          <p className="pb-1.5 text-body text-ink-soft">
+            pesan terkirim {PERIOD_LABELS[period].toLowerCase()}
+          </p>
         </div>
 
         <div className="mt-5 flex items-center">
@@ -312,14 +336,14 @@ function OverviewPage() {
             Belum ada sesi. Tambahkan nomor dari menu Nomor.
           </p>
         ) : (
-          <div className="mt-3.5">
+          <div className="mt-3.5 px-[22px]">
             <Table>
               <TableHead>
                 <tr className="h-8">
-                  <TableHeaderCell className="pl-[22px]">SESSION</TableHeaderCell>
-                  <TableHeaderCell className="w-[150px]">PUBLIC ID</TableHeaderCell>
-                  <TableHeaderCell className="w-[150px]">STATUS</TableHeaderCell>
-                  <TableHeaderCell className="w-[160px] pr-[22px] text-right">
+                  <TableHeaderCell>SESSION</TableHeaderCell>
+                  <TableHeaderCell className="w-[180px]">PUBLIC ID</TableHeaderCell>
+                  <TableHeaderCell className="w-[140px]">STATUS</TableHeaderCell>
+                  <TableHeaderCell className="w-[180px] text-left">
                     TERAKHIR TERHUBUNG
                   </TableHeaderCell>
                 </tr>
@@ -327,7 +351,7 @@ function OverviewPage() {
               <TableBody>
                 {items.slice(0, 5).map((session) => (
                   <TableRow key={session.id} className="h-[46px]">
-                    <TableCell className="pl-[22px]">
+                    <TableCell>
                       <p className="font-data text-small font-medium text-ink">{session.label}</p>
                       <p className="font-data text-[9.5px] text-ink-faint">
                         {session.phoneNumber ?? '—'}
@@ -339,7 +363,7 @@ function OverviewPage() {
                     <TableCell>
                       <SessionStatusBadge status={session.status} />
                     </TableCell>
-                    <TableCell className="pr-[22px] text-right font-data text-[10.5px] text-ink-soft">
+                    <TableCell className="font-data text-[10.5px] text-ink-soft">
                       {formatDateTime(session.lastConnectedAt)}
                     </TableCell>
                   </TableRow>

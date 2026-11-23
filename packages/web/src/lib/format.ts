@@ -46,6 +46,7 @@ export function usePolling<T>(
   loader: () => Promise<T>,
   intervalMs: number,
   enabled = true,
+  refreshKey?: unknown,
 ): PollingState<T> {
   const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -68,7 +69,7 @@ export function usePolling<T>(
 
   useEffect(() => {
     if (enabled) refresh()
-  }, [enabled, refresh])
+  }, [enabled, refresh, refreshKey])
 
   useEffect(() => {
     if (!enabled) return

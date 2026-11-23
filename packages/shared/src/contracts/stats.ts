@@ -1,8 +1,16 @@
 import { z } from 'zod'
 
+export const statsPeriodSchema = z.enum(['day', 'week', 'month', 'year'])
+
+export type StatsPeriod = z.infer<typeof statsPeriodSchema>
+
+export const statsQuerySchema = z.object({
+  period: statsPeriodSchema.default('day'),
+})
+
 export const statsSchema = z.object({
   connectedSessions: z.number(),
-  todayMessages: z.number(),
+  periodMessages: z.number(),
   totalMessages: z.number(),
   runningBroadcasts: z.number(),
 })
