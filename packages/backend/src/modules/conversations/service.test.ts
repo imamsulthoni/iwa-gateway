@@ -15,7 +15,7 @@ const CONVERSATION: ConversationRow = {
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
 }
 
-function createService(row: ConversationRow | null) {
+function createService(row: (ConversationRow & { customerNames?: string | null }) | null) {
   const repo = {
     findById: vi.fn(async () => row),
     findBySessionAndJid: vi.fn(async () => row),
@@ -36,6 +36,12 @@ describe('conversations service', () => {
     await expect(createService(null).service.get('c1')).rejects.toBeInstanceOf(NotFoundError)
   })
 
+  it('meneruskan nama customer gabungan ke DTO room', async () => {
+    const { service } = createService({ ...CONVERSATION, customerNames: 'Andi, Anas' })
+    const page = await service.listRooms('s1', 20)
+    expect(page.items[0]?.customerNames).toBe('Andi, Anas')
+  })
+
   it('mengembalikan DTO room dan reset unread saat dibaca', async () => {
     const { service, repo } = createService(CONVERSATION)
 
@@ -48,6 +54,7 @@ describe('conversations service', () => {
           waJidAlt: null,
           lastMessageAt: null,
           unreadCount: 0,
+          customerNames: null,
         },
       ],
       nextCursor: null,

@@ -10,6 +10,7 @@ export const conversationSchema = z.object({
   waJidAlt: z.string().nullable(),
   lastMessageAt: z.string().nullable(),
   unreadCount: z.number().int().nonnegative(),
+  customerNames: z.string().nullable(),
 })
 
 export type ConversationDto = z.infer<typeof conversationSchema>

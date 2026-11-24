@@ -1,5 +1,5 @@
 import { cn, FilterChip, SearchInput } from '../../design-system'
-import { clock, initials, roomPreview, type InboxRoom } from './model'
+import { clock, initials, roomPreview, roomTitle, type InboxRoom } from './model'
 
 type ConversationListProps = {
   rooms: InboxRoom[]
@@ -40,7 +40,7 @@ export function ConversationList({
         <SearchInput
           value={query}
           onChange={(event) => onQuery(event.target.value)}
-          placeholder="Cari nomor atau sesi"
+          placeholder="Cari nama, nomor, atau sesi"
           aria-label="Cari percakapan"
         />
       </div>
@@ -95,7 +95,7 @@ export function ConversationList({
                       unread ? 'font-semibold' : 'font-medium',
                     )}
                   >
-                    {room.address}
+                    {roomTitle(room)}
                   </span>
                   <span className="shrink-0 font-data text-[8.5px] text-ink-faint">
                     {room.lastMessageAt ? clock(room.lastMessageAt) : '—'}
@@ -103,7 +103,7 @@ export function ConversationList({
                 </span>
                 <span className="truncate text-[11px] text-ink-soft">{roomPreview(room)}</span>
                 <span className="truncate font-data text-[8px] tracking-[0.4px] text-ink-faint">
-                  {room.sessionLabel}
+                  {room.customerNames ? `${room.address} · ${room.sessionLabel}` : room.sessionLabel}
                 </span>
               </span>
             </button>

@@ -137,6 +137,7 @@ const loginSessionRoute = createRoute({
     401: openApiError('API key atau token login tidak valid'),
     403: openApiError('Akses ke sesi ini ditolak'),
     404: openApiError('Sesi tidak ditemukan'),
+    409: openApiError('Sesi sudah terhubung; logout dulu untuk pairing ulang'),
     429: openApiError('Rate limit terlampaui'),
     500: openApiError('Kesalahan internal'),
   },
@@ -397,6 +398,14 @@ export function createSessionsRoute(
   router.openapi(loginSessionRoute, async (c) => {
     const current = await sessions.get(c.req.param('id'))
     ensureSessionAccess(c, current)
+    // Sesi terhubung punya socket hidup; perintah start akan diabaikan worker
+    // dan status bisa tertinggal `connecting`, memblokir pengiriman pesan.
+    if (current.status === 'connected') {
+      return c.json(
+        apiErrorBody('CONFLICT', 'Sesi sudah terhubung. Logout sesi dulu untuk pairing ulang.'),
+        409,
+      )
+    }
     const session = await sessions.updateStatus(current.id, 'connecting')
     await publishSessionControl(redis, { sessionId: session.id, action: 'start' })
     return c.json(toSessionDto(session), 200)

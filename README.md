@@ -173,7 +173,7 @@ Auth: `x-api-key` (API key admin) untuk endpoint admin, atau `Authorization: Bea
 | `GET`    | `/v1/sessions/:id/pairing`           | Kode pairing terakhir                                               |
 | `POST`   | `/v1/sessions/:id/pairing`           | Dinonaktifkan (pairing hanya lewat QR)                              |
 | `POST`   | `/v1/sessions/:id/cancel`            | Batalkan proses pairing (admin atau sales pemilik sesi)             |
-| `POST`   | `/v1/sessions/:id/login`             | Mulai/login ulang koneksi (admin atau sales pemilik sesi)           |
+| `POST`   | `/v1/sessions/:id/login`             | Mulai koneksi (admin/sales pemilik); 409 bila sudah terhubung       |
 | `POST`   | `/v1/sessions/:id/logout`            | Logout sesi dan hapus auth tersimpan                                |
 | `POST`   | `/v1/sessions/:id/token`             | Rotasi token sesi (tampil sekali)                                   |
 | `PATCH`  | `/v1/sessions/:id/sales`             | Tautkan akun sales ke sesi lama (admin)                             |

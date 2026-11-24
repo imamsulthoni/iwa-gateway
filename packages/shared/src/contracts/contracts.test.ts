@@ -232,6 +232,7 @@ describe('kontrak percakapan', () => {
       waJidAlt: null,
       lastMessageAt: '2026-11-16T10:00:00.000Z',
       unreadCount: 2,
+      customerNames: 'Andi, Anas',
     }
     expect(conversationSchema.safeParse(conversation).success).toBe(true)
     expect(

@@ -87,6 +87,7 @@ function InboxPage() {
             sessionStatus: statusById.get(item.sessionId) ?? 'disconnected',
             address: formatPhone(address),
             waJid: address,
+            customerNames: item.customerNames,
             lastMessageAt: item.lastMessageAt,
             unreadCount: item.unreadCount,
           }
@@ -101,7 +102,9 @@ function InboxPage() {
       if (filter === 'unread' && room.unreadCount === 0) return false
       if (filter !== 'all' && filter !== 'unread' && room.sessionId !== filter) return false
       if (!needle) return true
-      return `${room.address} ${room.waJid} ${room.sessionId}`.toLowerCase().includes(needle)
+      return `${room.address} ${room.waJid} ${room.customerNames ?? ''} ${room.sessionId}`
+        .toLowerCase()
+        .includes(needle)
     })
   }, [filter, query, rooms])
 

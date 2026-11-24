@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull, lt, ne, or } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm'
 
 import type { Database } from '../../db/client.js'
 import { conversations, messages, type ConversationRow, type MessageRow } from '../../db/schema.js'
@@ -44,7 +44,10 @@ export function createConversationsRepository(db: Database) {
       sessionId: string,
       limit: number,
       cursor?: ConversationCursor,
-    ): Promise<{ items: ConversationRow[]; nextCursor: ConversationCursor | null }> {
+    ): Promise<{
+      items: (ConversationRow & { customerNames: string | null })[]
+      nextCursor: ConversationCursor | null
+    }> {
       const condition = cursor
         ? and(
             eq(conversations.sessionId, sessionId),
@@ -71,7 +74,43 @@ export function createConversationsRepository(db: Database) {
         rows.length > limit && last?.lastMessageAt
           ? { lastMessageAt: last.lastMessageAt, id: last.id }
           : null
-      return { items, nextCursor }
+
+      const addresses = [
+        ...new Set(items.flatMap((row) => [row.waJid, row.waJidAlt]).filter(Boolean)),
+      ] as string[]
+      // ponytail: match nama lewat nomor (to_jid), bukan conversation_id, karena
+      // pesan broadcast tidak menyimpan conversation_id.
+      const nameRows = addresses.length
+        ? await db
+            .select({
+              toJid: messages.toJid,
+              names: sql<
+                string | null
+              >`group_concat(distinct ${messages.customerName} order by ${messages.customerName} separator ', ')`,
+            })
+            .from(messages)
+            .where(
+              and(
+                eq(messages.sessionId, sessionId),
+                inArray(messages.toJid, addresses),
+                isNotNull(messages.customerName),
+                isNull(messages.deletedAt),
+              ),
+            )
+            .groupBy(messages.toJid)
+        : []
+      const namesByAddress = new Map(nameRows.map((row) => [row.toJid, row.names]))
+
+      return {
+        items: items.map((row) => ({
+          ...row,
+          customerNames:
+            namesByAddress.get(row.waJid) ??
+            (row.waJidAlt ? namesByAddress.get(row.waJidAlt) : null) ??
+            null,
+        })),
+        nextCursor,
+      }
     },
 
     async listMessages(

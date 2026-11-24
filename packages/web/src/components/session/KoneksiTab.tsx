@@ -339,7 +339,8 @@ export function KoneksiTab({
           </Panel>
         ) : null}
 
-        {!loggedOut ? (
+        {/* Sesi connected sudah punya socket hidup; memanggil /login akan ditolak 409. */}
+        {!connected && !loggedOut ? (
           <div className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface px-5 py-[18px]">
             <div className="flex flex-col gap-[3px]">
               <p className="text-[12.5px] font-semibold text-ink">Login ulang</p>

@@ -28,7 +28,9 @@ function decodeCursor(value?: string): ConversationCursor | undefined {
   }
 }
 
-export function toConversationDto(row: ConversationRow): ConversationDto {
+export function toConversationDto(
+  row: ConversationRow & { customerNames?: string | null },
+): ConversationDto {
   return {
     id: row.id,
     sessionId: row.sessionId,
@@ -36,6 +38,7 @@ export function toConversationDto(row: ConversationRow): ConversationDto {
     waJidAlt: row.waJidAlt,
     lastMessageAt: row.lastMessageAt?.toISOString() ?? null,
     unreadCount: row.unreadCount,
+    customerNames: row.customerNames ?? null,
   }
 }
 

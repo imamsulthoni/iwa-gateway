@@ -13,6 +13,7 @@ import {
   CONVENTIONS,
   FLOW_STEPS,
   NOT_FOR_CONSUMERS,
+  PAIRING_FLOW,
   WEBHOOK_DELIVERY,
   WEBHOOK_EVENTS,
   buildCodeSamples,
@@ -27,6 +28,7 @@ export const Route = createFileRoute('/docs')({
 const NAV = [
   { id: 'auth', label: 'Autentikasi' },
   { id: 'conventions', label: 'Konvensi' },
+  { id: 'pairing', label: 'Pairing nomor' },
   { id: 'flow', label: 'Alur follow-up' },
   { id: 'catalog', label: 'Katalog endpoint' },
   { id: 'webhook', label: 'Webhook' },
@@ -199,8 +201,74 @@ function DocsPage() {
           </Section>
 
           <Section
+            id="pairing"
+            eyebrow="03 / Pairing"
+            title="Tautkan nomor WhatsApp lewat QR"
+            description={PAIRING_FLOW.detail}
+          >
+            <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[1.1fr_1fr]">
+              <ol className="space-y-3">
+                {PAIRING_FLOW.steps.map((step, index) => (
+                  <li key={step.title}>
+                    <Card className="flex gap-3">
+                      <span className="flex size-7 shrink-0 items-center justify-center rounded-pill border border-line bg-surface-soft font-data text-label font-semibold text-ink-soft">
+                        {index + 1}
+                      </span>
+                      <div className="space-y-1">
+                        <p className="text-body font-semibold text-ink">{step.title}</p>
+                        <p className="text-small leading-[1.6] text-ink-soft">{step.detail}</p>
+                      </div>
+                    </Card>
+                  </li>
+                ))}
+              </ol>
+
+              <div className="space-y-4">
+                <Card className="space-y-2">
+                  <p className="font-data text-label tracking-[1.2px] text-ink-faint uppercase">
+                    Status sesi
+                  </p>
+                  <CodeBlock
+                    samples={[
+                      { id: 'fetch', label: 'Status', code: PAIRING_FLOW.statusSample },
+                    ]}
+                  />
+                </Card>
+
+                <Card className="space-y-2">
+                  <p className="font-data text-label tracking-[1.2px] text-ink-faint uppercase">
+                    Polling sampai terhubung
+                  </p>
+                  <CodeBlock
+                    samples={[
+                      { id: 'fetch', label: 'TypeScript', code: PAIRING_FLOW.pollSample },
+                    ]}
+                  />
+                </Card>
+
+                <Card className="space-y-2.5">
+                  <p className="font-data text-label tracking-[1.2px] text-ink-faint uppercase">
+                    Yang perlu dijaga
+                  </p>
+                  <ul className="space-y-1.5">
+                    {PAIRING_FLOW.cautions.map((point) => (
+                      <li
+                        key={point}
+                        className="flex gap-2 text-small leading-[1.6] text-ink-soft"
+                      >
+                        <span className="mt-[7px] size-1 shrink-0 rounded-pill bg-ink-faint" />
+                        {point}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              </div>
+            </div>
+          </Section>
+
+          <Section
             id="flow"
-            eyebrow="03 / Alur"
+            eyebrow="04 / Alur"
             title="Follow-up remarketing dalam 4 langkah"
             description="Pola yang sama dipakai untuk campaign follow-up: pilih nomor, kirim pesan, tunggu balasan, lalu baca konteks percakapan."
           >
@@ -223,7 +291,7 @@ function DocsPage() {
 
           <Section
             id="catalog"
-            eyebrow="04 / Katalog"
+            eyebrow="05 / Katalog"
             title={`${CONSUMER_ENDPOINTS.length} endpoint untuk consumer`}
             description="Setiap entri di bawah cocok dengan dokumen OpenAPI dan dijaga test anti-drift di backend."
           >
@@ -257,7 +325,7 @@ function DocsPage() {
 
           <Section
             id="webhook"
-            eyebrow="05 / Webhook"
+            eyebrow="06 / Webhook"
             title="Terima event tanpa polling"
             description="Daftarkan URL lewat POST /v1/webhooks. Secret hanya tampil sekali saat pembuatan atau rotasi."
           >
@@ -298,7 +366,7 @@ function DocsPage() {
 
           <Section
             id="boundaries"
-            eyebrow="06 / Batas"
+            eyebrow="07 / Batas"
             title="Endpoint yang bukan untuk consumer"
             description="Daftar ini hanya penegasan: endpoint dashboard internal tidak dipakai aplikasi lain."
           >

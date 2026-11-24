@@ -19,6 +19,11 @@ export type ApiGroup = {
 }
 
 export const API_GROUPS: readonly ApiGroup[] = [
+  {
+    id: 'pairing',
+    label: 'Pairing nomor',
+    note: 'Tautkan WhatsApp baru lewat QR, lalu daftarkan sales.',
+  },
   { id: 'numbers', label: 'Nomor', note: 'Pilih nomor yang berstatus connected.' },
   { id: 'messages', label: 'Kirim pesan', note: 'Idempoten lewat clientRef unik.' },
   {
@@ -191,26 +196,86 @@ export const NOT_FOR_CONSUMERS: readonly { label: string; items: readonly string
   {
     label: 'Manajemen sesi',
     items: [
-      'POST /v1/sessions',
       'DELETE /v1/sessions/{id}',
-      '/v1/sessions/{id}/login',
       '/v1/sessions/{id}/logout',
       '/v1/sessions/{id}/pairing',
       '/v1/sessions/{id}/token',
-      '/v1/sessions/{id}/sales*',
+      '/v1/sessions/{id}/sales/pin',
     ],
   },
   {
     label: 'Admin pesan & legacy',
-    items: [
-      '/v1/messages',
-      '/v1/messages/{id}/retry',
-      '/v1/sessions/{id}/broadcast*',
-      '/v1/sessions/{id}/live',
-      '/v1/sessions/{id}/qr',
-    ],
+    items: ['/v1/messages', '/v1/messages/{id}/retry', '/v1/sessions/{id}/broadcast*'],
   },
 ]
+
+export const PAIRING_FLOW = {
+  detail:
+    'Alur menautkan nomor WhatsApp dari aplikasi consumer. Sesi dan akun sales tetap tercatat di console, jadi setelah pairing nomor langsung muncul di dashboard.',
+  steps: [
+    {
+      title: 'Buat sesi bermode QR',
+      detail:
+        'POST /v1/sessions dengan label dan mode qr. Jangan isi phoneNumber: nomor belum diketahui dan terisi otomatis dari perangkat setelah scan. Simpan session.id dari respons.',
+    },
+    {
+      title: 'Nyalakan socket',
+      detail:
+        'Worker menyalakan sesi baru otomatis dalam siklus rekonsiliasi 15 detik. Panggil POST /v1/sessions/{id}/login hanya bila tidak mau menunggu. Sesi berstatus connected dibalas 409, jadi cukup cek status dulu sebelum memanggil.',
+    },
+    {
+      title: 'Tampilkan QR',
+      detail:
+        'GET /v1/sessions/{id}/qr mengembalikan data-URL PNG siap dipasang di tag img, atau pakai GET /v1/sessions/{id}/live untuk sesi sekaligus QR. QR berganti tiap ~20 detik.',
+    },
+    {
+      title: 'Tunggu status connected',
+      detail:
+        'Setelah discan, status berubah connecting lalu connected dan phoneNumber terisi. connecting sesaat itu normal karena Baileys meminta restart socket setelah pairing.',
+    },
+    {
+      title: 'Daftarkan akun sales',
+      detail:
+        'PATCH /v1/sessions/{id}/sales dengan salesName dan pin. Wajib setelah connected karena butuh nomor hasil scan. Tanpa langkah ini sesi hanya bisa dikelola admin.',
+    },
+  ],
+  cautions: [
+    'Polling 3 detik saat pairing lalu 15 detik setelah connected. Rate limit dihitung per API key, jadi banyak sesi yang pairing bersamaan memakai kuota yang sama.',
+    'QR selalu berubah, jangan di-cache. Nilai qr menjadi null setelah sesi terhubung.',
+    'POST /v1/sessions/{id}/pairing selalu 409: pairing dengan kode dinonaktifkan, pairing hanya lewat QR.',
+    'Batalkan lewat POST /v1/sessions/{id}/cancel. QR lama langsung tidak berlaku karena auth sesi dihapus.',
+    'Satu nomor hanya boleh dipakai satu sesi dan satu akun sales; duplikat ditolak 409.',
+  ],
+  statusSample: [
+    'created        -> sesi dibuat, belum ada socket',
+    'qr_pending     -> QR terbit, menunggu scan',
+    'connecting     -> perangkat tertaut, socket menyambung ulang',
+    'connected      -> siap mengirim dan menerima pesan',
+    'disconnected   -> socket tertutup, scan ulang lewat /login',
+    'logged_out     -> perangkat dilepas, auth dihapus',
+  ].join('\n'),
+  pollSample: [
+    'const API_KEY = process.env.WA_API_KEY!',
+    "const base = 'https://api.example.com/v1'",
+    'const sessionId = process.env.WA_SESSION_ID!',
+    '',
+    'for (;;) {',
+    '  const res = await fetch(`${base}/sessions/${sessionId}/live`, {',
+    "    headers: { 'x-api-key': API_KEY },",
+    '  })',
+    '  if (!res.ok) throw new Error(`Gagal memuat sesi: ${res.status}`)',
+    '',
+    '  const live = await res.json()',
+    "  if (live.session.status === 'connected') {",
+    "    console.log('Nomor tertaut:', live.session.phoneNumber)",
+    '    break',
+    '  }',
+    '  if (live.qr) renderQrImage(live.qr)',
+    '',
+    '  await new Promise((resolve) => setTimeout(resolve, 3000))',
+    '}',
+  ].join('\n'),
+} as const
 
 const EXAMPLE_SESSION_ID = '01a1ddfa-295a-7557-9bd3-00293fdc047b'
 const EXAMPLE_CONVERSATION_ID = '01a1ddfa-295a-7557-9bd3-00293fdc047c'
@@ -246,6 +311,129 @@ const MESSAGE_ITEM = `{
   }`
 
 const ENDPOINT_EXAMPLES: Record<string, EndpointExample> = {
+  'POST /v1/sessions': {
+    body: {
+      label: 'Sales Budi',
+      mode: 'qr',
+    },
+    response: {
+      language: 'json',
+      code: `{
+  "token": "sess_9f2a4c6e8b1d3f5a",
+  "session": {
+    "id": "01a1ddfa-295a-7557-9bd3-00293fdc047b",
+    "publicId": "a1b2c3d4e5f6",
+    "label": "Sales Budi",
+    "phoneNumber": null,
+    "status": "created",
+    "lastConnectedAt": null,
+    "salesId": null,
+    "agentId": null,
+    "salesName": null,
+    "createdAt": "2026-11-18T02:59:00.000Z"
+  }
+}`,
+    },
+  },
+  'POST /v1/sessions/{id}/login': {
+    response: {
+      language: 'json',
+      code: `{
+  "id": "01a1ddfa-295a-7557-9bd3-00293fdc047b",
+  "publicId": "a1b2c3d4e5f6",
+  "label": "Sales Budi",
+  "phoneNumber": null,
+  "status": "connecting",
+  "lastConnectedAt": null,
+  "salesId": null,
+  "agentId": null,
+  "salesName": null,
+  "createdAt": "2026-11-18T02:59:00.000Z"
+}`,
+    },
+  },
+  'GET /v1/sessions/{id}/qr': {
+    response: {
+      language: 'json',
+      code: `{
+  "qr": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+  "status": "qr_pending"
+}`,
+    },
+  },
+  'GET /v1/sessions/{id}/live': {
+    response: {
+      language: 'json',
+      code: `{
+  "session": {
+    "id": "01a1ddfa-295a-7557-9bd3-00293fdc047b",
+    "publicId": "a1b2c3d4e5f6",
+    "label": "Sales Budi",
+    "phoneNumber": null,
+    "status": "qr_pending",
+    "lastConnectedAt": null,
+    "salesId": null,
+    "agentId": null,
+    "salesName": null,
+    "createdAt": "2026-11-18T02:59:00.000Z"
+  },
+  "qr": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+  "pairingCode": null,
+  "broadcast": {
+    "jobId": null,
+    "status": null,
+    "total": 0,
+    "done": 0,
+    "sent": 0,
+    "failed": 0,
+    "skipped": 0,
+    "optedOut": 0,
+    "scheduledAt": null,
+    "pauseReason": null,
+    "recipients": []
+  },
+  "defaultDelay": { "min": 10, "max": 30 }
+}`,
+    },
+  },
+  'POST /v1/sessions/{id}/cancel': {
+    response: {
+      language: 'json',
+      code: `{
+  "id": "01a1ddfa-295a-7557-9bd3-00293fdc047b",
+  "publicId": "a1b2c3d4e5f6",
+  "label": "Sales Budi",
+  "phoneNumber": null,
+  "status": "disconnected",
+  "lastConnectedAt": null,
+  "salesId": null,
+  "agentId": null,
+  "salesName": null,
+  "createdAt": "2026-11-18T02:59:00.000Z"
+}`,
+    },
+  },
+  'PATCH /v1/sessions/{id}/sales': {
+    body: {
+      salesName: 'Budi',
+      pin: '4821',
+    },
+    response: {
+      language: 'json',
+      code: `{
+  "id": "01a1ddfa-295a-7557-9bd3-00293fdc047b",
+  "publicId": "a1b2c3d4e5f6",
+  "label": "Sales Budi",
+  "phoneNumber": "628123456789",
+  "status": "connected",
+  "lastConnectedAt": "2026-11-18T03:00:10.000Z",
+  "salesId": null,
+  "agentId": null,
+  "salesName": "Budi",
+  "createdAt": "2026-11-18T02:59:00.000Z"
+}`,
+    },
+  },
   'GET /v1/sessions': {
     response: {
       language: 'json',
@@ -324,7 +512,8 @@ const ENDPOINT_EXAMPLES: Record<string, EndpointExample> = {
       "waJid": "6281234567890@s.whatsapp.net",
       "waJidAlt": null,
       "lastMessageAt": "2026-11-18T03:00:00.000Z",
-      "unreadCount": 2
+      "unreadCount": 2,
+      "customerNames": "Budi, Sari"
     }
   ],
   "nextCursor": null
@@ -363,7 +552,8 @@ const ENDPOINT_EXAMPLES: Record<string, EndpointExample> = {
   "waJid": "6281234567890@s.whatsapp.net",
   "waJidAlt": null,
   "lastMessageAt": "2026-11-18T03:00:00.000Z",
-  "unreadCount": 0
+  "unreadCount": 0,
+  "customerNames": "Budi, Sari"
 }`,
     },
   },

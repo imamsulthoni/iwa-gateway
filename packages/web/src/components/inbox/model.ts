@@ -9,8 +9,13 @@ export type InboxRoom = {
   sessionStatus: string
   address: string
   waJid: string
+  customerNames: string | null
   lastMessageAt: string | null
   unreadCount: number
+}
+
+export function roomTitle(room: InboxRoom): string {
+  return room.customerNames ?? room.address
 }
 
 const TYPE_LABELS: Record<string, string> = {

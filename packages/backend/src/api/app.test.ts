@@ -606,7 +606,17 @@ describe('API Hono', () => {
   })
 
   it('login memulai sesi lewat kanal kontrol worker', async () => {
-    const { app, redis } = createTestApp()
+    const pending = { ...SESSION, status: 'disconnected' as const }
+    const { app, redis } = createTestApp({
+      sessions: {
+        get: vi.fn(async () => pending),
+        updateStatus: vi.fn(async (_id: string, status: WaSessionRow['status'], patch = {}) => ({
+          ...pending,
+          status,
+          ...patch,
+        })),
+      } as unknown as SessionsService,
+    })
     const response = await app.request(`/v1/sessions/${SESSION_ID}/login`, {
       method: 'POST',
       headers: { 'x-api-key': 'valid-key' },
@@ -617,6 +627,30 @@ describe('API Hono', () => {
       'wa:session:control',
       JSON.stringify({ sessionId: SESSION_ID, action: 'start' }),
     )
+  })
+
+  it('login menolak sesi yang sudah connected dengan 409', async () => {
+    const updateStatus = vi.fn()
+    const { app, redis } = createTestApp({
+      sessions: {
+        get: vi.fn(async () => SESSION),
+        updateStatus,
+      } as unknown as SessionsService,
+    })
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/login`, {
+      method: 'POST',
+      headers: { 'x-api-key': 'valid-key' },
+    })
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'CONFLICT',
+        message: 'Sesi sudah terhubung. Logout sesi dulu untuk pairing ulang.',
+      },
+    })
+    expect(redis.publish).not.toHaveBeenCalled()
+    expect(updateStatus).not.toHaveBeenCalled()
   })
 
   it('cancel pairing menghentikan sesi dan mengosongkan QR', async () => {

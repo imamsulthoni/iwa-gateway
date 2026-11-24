@@ -671,6 +671,8 @@ Auth: `x-api-key` / `Bearer` (scoped untuk sales)
 
 **Respons `404`** — Sesi tidak ditemukan · `{ error: { code, message } }` (lihat [Format error](#format-error))
 
+**Respons `409`** — Sesi sudah terhubung; logout dulu untuk pairing ulang · `{ error: { code: 'CONFLICT', message } }`
+
 **Respons `429`** — Rate limit terlampaui · `{ error: { code, message } }` (lihat [Format error](#format-error))
 
 **Respons `500`** — Kesalahan internal · `{ error: { code, message } }` (lihat [Format error](#format-error))
@@ -1255,6 +1257,7 @@ Auth: `x-api-key`
   waJidAlt: string | null
   lastMessageAt: string | null
   unreadCount: integer (min 0)
+  customerNames: string | null
 }
 ```
 
@@ -1294,6 +1297,7 @@ Auth: `x-api-key`
     waJidAlt: string | null
     lastMessageAt: string | null
     unreadCount: integer (min 0)
+    customerNames: string | null
   }[]
   nextCursor: string | null
 }

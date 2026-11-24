@@ -5,6 +5,7 @@
  */
 
 export const CONSUMER_ENDPOINT_GROUPS = [
+  'pairing',
   'numbers',
   'messages',
   'conversations',
@@ -29,6 +30,60 @@ export type ConsumerEndpoint = {
 }
 
 export const CONSUMER_ENDPOINTS = [
+  {
+    method: 'POST',
+    path: '/v1/sessions',
+    group: 'pairing',
+    summary: 'Buat sesi baru lalu tampilkan QR untuk ditautkan ke WhatsApp.',
+    detail:
+      'Mode qr tidak perlu phoneNumber karena nomor terbaca otomatis setelah scan. Simpan id dari respons: id itu dipakai di seluruh endpoint lain, sedangkan token hanya untuk kirim pesan.',
+    auth: 'x-api-key',
+  },
+  {
+    method: 'POST',
+    path: '/v1/sessions/{id}/login',
+    group: 'pairing',
+    summary: 'Nyalakan socket sesi agar QR mulai diterbitkan.',
+    detail:
+      'Opsional: worker menyalakan sesi baru otomatis dalam siklus rekonsiliasi 15 detik. Sesi yang sudah connected ditolak 409 karena socket-nya sudah hidup; logout dulu untuk pairing ulang.',
+    auth: 'x-api-key',
+  },
+  {
+    method: 'GET',
+    path: '/v1/sessions/{id}/qr',
+    group: 'pairing',
+    summary: 'QR terbaru sebagai data-URL PNG, siap dipasang di tag img.',
+    detail:
+      'QR berganti tiap ~20 detik dan kosong setelah terhubung. Polling 3 detik saat pairing; berhenti setelah status connected.',
+    auth: 'x-api-key',
+  },
+  {
+    method: 'GET',
+    path: '/v1/sessions/{id}/live',
+    group: 'pairing',
+    summary: 'Satu panggilan berisi sesi, QR, dan status broadcast.',
+    detail:
+      'Menggantikan polling terpisah ke detail sesi dan QR. Cocok untuk polling 3 detik selama pairing lalu 15 detik setelah terhubung.',
+    auth: 'x-api-key',
+  },
+  {
+    method: 'POST',
+    path: '/v1/sessions/{id}/cancel',
+    group: 'pairing',
+    summary: 'Batalkan pairing dan kosongkan QR yang beredar.',
+    detail:
+      'Sesi kembali disconnected dan auth dihapus, sehingga QR lama tidak bisa dipakai lagi.',
+    auth: 'x-api-key',
+  },
+  {
+    method: 'PATCH',
+    path: '/v1/sessions/{id}/sales',
+    group: 'pairing',
+    summary: 'Daftarkan akun sales setelah nomor tertaut.',
+    detail:
+      'Wajib dipanggil setelah status connected karena butuh phoneNumber hasil scan. Tanpa langkah ini sesi hanya bisa dikelola admin.',
+    auth: 'x-api-key',
+  },
   {
     method: 'GET',
     path: '/v1/sessions',
