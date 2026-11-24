@@ -1,0 +1,84 @@
+name: wa-bot-console
+
+x-backend: &backend
+  image: ghcr.io/imamsulthoni/wa-bot-console-backend:${TAG:?}
+  restart: unless-stopped
+  init: true
+  depends_on:
+    mysql: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  environment:
+    NODE_ENV: production
+    PORT: "8467"
+    DATABASE_URL: mysql://wbc:${DB_PASS:?}@mysql:3306/wa_console
+    REDIS_URL: redis://:${REDIS_PASS:?}@redis:6379
+    AUTH_ENC_KEY: ${AUTH_ENC_KEY:?}
+    APP_TIMEZONE: Asia/Jakarta
+    CORS_ORIGIN: https://${DOMAIN:?}
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:?}
+      MYSQL_DATABASE: wa_console
+      MYSQL_USER: wbc
+      MYSQL_PASSWORD: ${DB_PASS:?}
+    volumes: [mysql_data:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction", "--requirepass", "${REDIS_PASS:?}"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASS}
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    <<: *backend
+    user: node
+    command: ["node", "packages/backend/dist/api.js"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8467/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    <<: *backend
+    user: node
+    command: ["node", "packages/backend/dist/worker.js"]
+    stop_grace_period: 20s
+
+  tools:
+    <<: *backend
+    profiles: ["tools"]
+    restart: "no"
+    command: ["pnpm", "db:migrate"]
+
+  web:
+    image: ghcr.io/imamsulthoni/wa-bot-console-web:${TAG:?}
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      DOMAIN: ${DOMAIN:?}
+    ports: ["80:80", "443:443"]
+    volumes: [caddy_data:/data, caddy_config:/config]
+
+volumes:
+  mysql_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
