@@ -23,6 +23,8 @@ export type {
   SessionStatusDto,
   SessionTokenDto,
   SettingsDto,
+  StatsBucketDto,
+  StatsBucketKind,
   StatsDto,
   StatsPeriod,
   WebhookDeliveryDto,

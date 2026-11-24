@@ -162,7 +162,7 @@ Auth: `x-api-key` (API key admin) untuk endpoint admin, atau `Authorization: Bea
 | `POST`   | `/v1/auth/logout`                    | Cabut token login sales                                             |
 | `GET`    | `/v1/settings`                       | `maxSales`, jumlah sales aktif, default delay (admin)               |
 | `PATCH`  | `/v1/settings`                       | Ubah batas sales dan default delay broadcast (admin)                |
-| `GET`    | `/v1/stats`                          | Sesi terhubung, pesan hari ini, total pesan, broadcast              |
+| `GET`    | `/v1/stats`                          | Statistik sesi, pesan, broadcast, dan deret bucket per periode      |
 | `GET`    | `/v1/sessions`                       | Daftar sesi (sales: hanya miliknya)                                 |
 | `POST`   | `/v1/sessions`                       | Buat sesi + akun sales + token sekali tampil                        |
 | `GET`    | `/v1/sessions/:id`                   | Detail sesi                                                         |

@@ -214,8 +214,13 @@ function createTestApp(overrides: Partial<AppDependencies> = {}) {
       get: async () => ({
         connectedSessions: 0,
         periodMessages: 0,
+        previousPeriodMessages: 0,
+        periodFailed: 0,
         totalMessages: 0,
         runningBroadcasts: 0,
+        todayDate: '2026-01-01',
+        bucketKind: 'day' as const,
+        buckets: [],
       }),
     } as unknown as AppDependencies['stats'],
     settings,
@@ -305,8 +310,13 @@ describe('API Hono', () => {
     expect(await ok.json()).toEqual({
       connectedSessions: 0,
       periodMessages: 0,
+      previousPeriodMessages: 0,
+      periodFailed: 0,
       totalMessages: 0,
       runningBroadcasts: 0,
+      todayDate: '2026-01-01',
+      bucketKind: 'day',
+      buckets: [],
     })
   })
 

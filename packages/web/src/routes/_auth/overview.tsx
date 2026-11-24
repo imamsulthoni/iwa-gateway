@@ -1,6 +1,10 @@
-import { DEFAULT_MAX_DELAY_SECONDS, DEFAULT_MIN_DELAY_SECONDS } from '@wbc/shared'
+import {
+  DEFAULT_MAX_DELAY_SECONDS,
+  DEFAULT_MIN_DELAY_SECONDS,
+  STATS_BUCKET_KIND,
+} from '@wbc/shared'
 import { Link, createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { ArrowUpRight, Megaphone, RefreshCw } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, Megaphone, RefreshCw } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import {
@@ -16,6 +20,7 @@ import {
   TableRow,
 } from '../../design-system'
 import { SessionStatusBadge } from '../../components/session-status'
+import { DeliveryChart } from '../../components/delivery-chart'
 import { api } from '../../lib/api'
 import { isAdmin } from '../../lib/auth'
 import { formatDateTime, formatNumber, usePolling } from '../../lib/format'
@@ -32,6 +37,40 @@ const PERIOD_LABELS: Record<StatsPeriod, string> = {
   week: 'Minggu ini',
   month: 'Bulan ini',
   year: 'Tahun ini',
+}
+
+const DELTA_LABELS: Record<StatsPeriod, string> = {
+  day: 'vs kemarin',
+  week: 'vs minggu lalu',
+  month: 'vs bulan lalu',
+  year: 'vs tahun lalu',
+}
+
+const FAILED_LABELS: Record<StatsPeriod, string> = {
+  day: 'Gagal hari ini',
+  week: 'Gagal minggu ini',
+  month: 'Gagal bulan ini',
+  year: 'Gagal tahun ini',
+}
+
+const isoDay = (instant: Date): string => instant.toISOString().slice(0, 10)
+
+/** Jumlah bucket default per periode (bulan bisa 4–5; pakai 5 untuk ruang maksimum). */
+const expectedBuckets = (period: StatsPeriod): number =>
+  period === 'year' ? 12 : period === 'month' ? 5 : 7
+
+
+function Delta({ period, value }: { period: StatsPeriod; value: number | null }) {
+  if (value === null) return null
+  const pct = `${value > 0 ? '+' : ''}${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 }).format(value)}%`
+  const Icon = value > 0 ? ArrowUpRight : value < 0 ? ArrowDownRight : null
+  const tone = value > 0 ? 'text-green' : value < 0 ? 'text-red' : 'text-ink-faint'
+  return (
+    <p className={`flex items-center gap-1 font-data text-note ${tone}`}>
+      {Icon ? <Icon className="size-[11px]" aria-hidden /> : null}
+      {pct} {DELTA_LABELS[period]}
+    </p>
+  )
 }
 
 export const Route = createFileRoute('/_auth/overview')({
@@ -85,10 +124,18 @@ function OverviewPage() {
   const total = items.length
   const connected = items.filter((item) => item.status === 'connected').length
   const periodCount = stats.data?.periodMessages ?? 0
+  const previousCount = stats.data?.previousPeriodMessages ?? 0
+  const periodFailed = stats.data?.periodFailed ?? 0
   const totalMessages = stats.data?.totalMessages ?? 0
   const running = stats.data?.runningBroadcasts ?? 0
   const healthy = health.data?.status === 'ok'
   const segments = Math.max(total, 5)
+
+  const bucketKind = stats.data?.bucketKind ?? STATS_BUCKET_KIND[period]
+  const buckets = stats.data?.buckets ?? []
+  const todayDate = stats.data?.todayDate ?? isoDay(new Date())
+  const delta =
+    previousCount > 0 ? ((periodCount - previousCount) / previousCount) * 100 : null
 
   const connectedIds = useMemo(
     () =>
@@ -157,13 +204,27 @@ function OverviewPage() {
           />
         </div>
 
-        <div className="mt-3.5 flex items-end gap-3.5">
-          <p className="text-[56px] leading-[0.95] font-semibold tracking-[-2.4px] text-ink">
+        <div className="mt-3.5 flex h-[72px] items-end gap-[14px]">
+          <p className="shrink-0 text-[56px] leading-[0.95] font-semibold tracking-[-2.4px] text-ink">
             {formatNumber(periodCount)}
           </p>
-          <p className="pb-1.5 text-body text-ink-soft">
-            pesan terkirim {PERIOD_LABELS[period].toLowerCase()}
-          </p>
+          <div className="flex flex-col gap-[5px] pb-1.5">
+            <p className="whitespace-nowrap text-body text-ink-soft">
+              pesan terkirim {PERIOD_LABELS[period].toLowerCase()}
+            </p>
+            <Delta period={period} value={delta} />
+          </div>
+          <div className="min-w-0 flex-1" />
+          {buckets.length > 0 ? (
+            <DeliveryChart bucketKind={bucketKind} buckets={buckets} todayDate={todayDate} />
+          ) : (
+            // Tinggi & lebar slot dikunci agar kartu tidak melompat saat data masuk.
+            // 18px × n + 7px × (n − 1) sesuai grid chart.
+            <div
+              className="h-[72px] shrink-0"
+              style={{ width: 18 * expectedBuckets(period) + 7 * (expectedBuckets(period) - 1) }}
+            />
+          )}
         </div>
 
         <div className="mt-5 flex items-center">
@@ -181,7 +242,11 @@ function OverviewPage() {
             className="flex-1 px-[18px]"
           />
           <span className="h-[34px] w-px shrink-0 bg-line" />
-          <Metric label="Total sesi" value={formatNumber(total)} className="flex-1 pl-[18px]" />
+          <Metric
+            label={FAILED_LABELS[period]}
+            value={formatNumber(periodFailed)}
+            className="flex-1 pl-[18px]"
+          />
         </div>
       </div>
 

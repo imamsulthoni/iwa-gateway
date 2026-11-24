@@ -302,16 +302,40 @@ Auth: publik
 
 Auth: `x-api-key`
 
-**Respons `200`** — Statistik sesi, pesan, dan broadcast
+**Respons `200`** — Statistik sesi, pesan, broadcast, dan deret bucket per periode
 
 ```ts
 {
   connectedSessions: number
-  todayMessages: number
+  periodMessages: number          // periode berjalan, status sent|delivered|read
+  previousPeriodMessages: number  // periode penuh tepat sebelumnya (delta)
+  periodFailed: number            // status failed pada periode berjalan
   totalMessages: number
   runningBroadcasts: number
+  todayDate: string               // YYYY-MM-DD versi APP_TIMEZONE
+  bucketKind: 'day' | 'week' | 'month'
+  buckets: {
+    startDate: string             // YYYY-MM-DD, inklusif
+    endDate: string               // YYYY-MM-DD, inklusif
+    sent: number
+    failed: number
+  }[]
 }
 ```
+
+Bentuk bucket per `period`:
+
+| `period` | `bucketKind` | Jumlah bucket | Isi                                                        |
+| -------- | ------------ | ------------- | ---------------------------------------------------------- |
+| `day`    | `day`        | 7             | Minggu berjalan Sen–Min; hanya hari ini berisi data        |
+| `week`   | `day`        | 7             | Minggu berjalan Sen–Min; Senin s/d hari ini berisi data    |
+| `month`  | `week`       | 4–5           | Bulan berjalan, dibagi rata jadi bucket 5–7 hari           |
+| `year`   | `month`      | 12            | Bulan kalender tahun berjalan                              |
+
+- Bucket bulanan memakai pembagian seimbang: `n = ceil(hari / 7)`, panjang `floor(hari / n)` dengan `hari % n` bucket pertama dapat +1 hari. Hasil: 28 → `7 7 7 7`, 29 → `6 6 6 6 5`, 30 → `6 6 6 6 6`, 31 → `7 6 6 6 6`.
+- Semua tanggal `YYYY-MM-DD` ditafsirkan dalam `APP_TIMEZONE`; `startDate` dan `endDate` keduanya inklusif.
+- Invariant angka ↔ chart: untuk `day` hanya `buckets[indexHariIni].sent === periodMessages`; untuk `week`/`month`/`year` jumlah semua `sent` = `periodMessages`.
+- `bucketKind` dikirim backend agar klien tidak menebak format label dari state lokal.
 
 **Respons `401`** — API key tidak dikirim atau tidak valid · `{ error: { code, message } }` (lihat [Format error](#format-error))
 

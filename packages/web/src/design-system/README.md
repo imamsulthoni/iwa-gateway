@@ -45,6 +45,10 @@ Semua di-export dari `@/design-system` (`packages/web/src/design-system/index.ts
 
 TanStack `Link` memakai `navItemClass(active)` pada `className`/`activeProps`.
 
+Komponen chart aplikasi (bukan primitif): `DeliveryChart` di
+`src/components/delivery-chart.tsx` — bar chart flexbox untuk kartu Pengiriman,
+tanpa library chart.
+
 ## Contoh
 
 ```tsx

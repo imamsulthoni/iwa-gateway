@@ -1,3 +1,4 @@
+import type { MessageStatus } from '@wbc/shared'
 import { and, desc, eq, getTableColumns, gte, inArray, isNull, like, lte, lt, ne, or, sql } from 'drizzle-orm'
 
 import type { Database } from '../../db/client.js'
@@ -335,6 +336,39 @@ export function createMessagesRepository(db: Database) {
           ),
         )
       return Number(row?.count ?? 0)
+    },
+
+    async countBetween(start: Date, end: Date, statuses: MessageStatus[]): Promise<number> {
+      const [row] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(messages)
+        .where(
+          and(
+            gte(messages.createdAt, start),
+            lt(messages.createdAt, end),
+            inArray(messages.status, statuses),
+            isNull(messages.deletedAt),
+          ),
+        )
+      return Number(row?.count ?? 0)
+    },
+
+    async countInBuckets(
+      ranges: { start: Date; end: Date }[],
+      statuses: MessageStatus[],
+    ): Promise<number[]> {
+      if (ranges.length === 0) return []
+      const columns = Object.fromEntries(
+        ranges.map((range, index) => [
+          `b${index}`,
+          sql<number>`SUM(CASE WHEN ${messages.createdAt} >= ${range.start} AND ${messages.createdAt} < ${range.end} THEN 1 ELSE 0 END)`,
+        ]),
+      )
+      const [row] = await db
+        .select(columns)
+        .from(messages)
+        .where(and(inArray(messages.status, statuses), isNull(messages.deletedAt)))
+      return ranges.map((_, index) => Number(row?.[`b${index}` as keyof typeof row] ?? 0))
     },
 
     async countTotal(sessionId?: string): Promise<number> {
