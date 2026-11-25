@@ -93,6 +93,8 @@ export type SessionStatusDto = z.infer<typeof sessionStatusSchema>
 export const qrResponseSchema = z.object({
   qr: z.string().nullable(),
   status: z.enum(SESSION_STATUSES),
+  // Terisi saat pairing terakhir ditolak; null bila tidak ada penolakan.
+  reason: z.string().nullable(),
 })
 
 export type QrResponseDto = z.infer<typeof qrResponseSchema>

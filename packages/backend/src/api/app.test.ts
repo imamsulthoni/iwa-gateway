@@ -638,6 +638,31 @@ describe('API Hono', () => {
     expect(await response.json()).toMatchObject({ reason: 'Nomor beda, pairing ditolak' })
   })
 
+  it('qr menyertakan alasan penolakan pairing dari redis', async () => {
+    const redis = {
+      incr: vi.fn(async () => 1),
+      expire: vi.fn(async () => 1),
+      ping: vi.fn(async () => 'PONG'),
+      publish: vi.fn(async () => 1),
+      get: vi.fn(async (key: string) =>
+        key.startsWith('wa:session:reason:') ? 'Nomor beda, pairing ditolak' : null,
+      ),
+      set: vi.fn(async () => 'OK'),
+      hmget: vi.fn(async () => []),
+    } as unknown as RedisClient
+    const { app } = createTestApp({ redis })
+
+    const response = await app.request(`/v1/sessions/${SESSION_ID}/qr`, {
+      headers: { 'x-api-key': 'valid-key' },
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      reason: 'Nomor beda, pairing ditolak',
+      status: 'connected',
+    })
+  })
+
   it('login memulai sesi lewat kanal kontrol worker', async () => {
     const pending = { ...SESSION, status: 'disconnected' as const }
     const { app, redis } = createTestApp({

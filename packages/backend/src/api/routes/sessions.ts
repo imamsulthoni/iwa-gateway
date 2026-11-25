@@ -16,6 +16,7 @@ import {
   type BroadcastCurrentDto,
   type SessionLiveDto,
   type PairingResponseDto,
+  type QrResponseDto,
 } from '@wbc/shared'
 import type { Redis } from 'ioredis'
 
@@ -230,7 +231,7 @@ const sessionQrRoute = createRoute({
   request: { params: sessionIdParamSchema },
   responses: {
     200: {
-      description: 'QR (data URL) dan status sesi',
+      description: 'QR (data URL), status sesi, dan alasan penolakan pairing terakhir',
       content: { 'application/json': { schema: qrResponseSchema } },
     },
     401: openApiError('API key tidak dikirim atau tidak valid'),
@@ -457,7 +458,9 @@ export function createSessionsRoute(
   router.openapi(sessionQrRoute, async (c) => {
     const session = await sessions.get(c.req.param('id'))
     ensureSessionAccess(c, session)
-    return c.json({ qr: session.lastQr, status: session.status }, 200)
+    const reason = await redis.get(`wa:session:reason:${session.id}`)
+    const payload: QrResponseDto = { qr: session.lastQr, status: session.status, reason }
+    return c.json(payload, 200)
   })
 
   // Satu endpoint untuk semua state yang dipakai dashboard (menggantikan

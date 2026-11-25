@@ -294,9 +294,7 @@ export class SessionManager {
     await this.setRejectReason(
       sessionId,
       `Nomor yang discan (${actual}) tidak sama dengan nomor sesi (${expected}). Pairing ditolak.${
-        unlinked
-          ? ''
-          : ` Perangkat gagal dilepas otomatis; hapus manual di HP nomor ${actual}.`
+        unlinked ? '' : ` Perangkat gagal dilepas otomatis; hapus manual di HP nomor ${actual}.`
       }`,
     )
     await this.deps.sessions.update(sessionId, { status: 'disconnected', lastQr: null })
@@ -310,11 +308,12 @@ export class SessionManager {
    * `query()` dan kita menunggu ack sebelum socket ditutup.
    */
   private async unlinkDevice(sessionId: string, handle: SessionHandle): Promise<boolean> {
-    const jid = handle.auth.state.creds.me?.id
+    const creds = handle.auth.state.creds
+    const jid = creds.me?.id
     if (!jid) return true
     for (let attempt = 1; attempt <= UNLINK_ATTEMPTS; attempt += 1) {
       try {
-        await withTimeout(
+        const ack = await withTimeout(
           handle.socket.query({
             tag: 'iq',
             attrs: { to: S_WHATSAPP_NET, type: 'set', xmlns: 'md' },
@@ -326,6 +325,10 @@ export class SessionManager {
             ],
           }),
           UNLINK_TIMEOUT_MS,
+        )
+        this.deps.logger.info(
+          { sessionId, attempt, jid, lid: creds.me?.lid, ack },
+          'Ack remove-companion-device',
         )
         return true
       } catch (error) {

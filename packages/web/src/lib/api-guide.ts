@@ -357,7 +357,8 @@ const ENDPOINT_EXAMPLES: Record<string, EndpointExample> = {
       language: 'json',
       code: `{
   "qr": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
-  "status": "qr_pending"
+  "status": "qr_pending",
+  "reason": null
 }`,
     },
   },

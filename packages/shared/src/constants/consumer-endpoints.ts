@@ -54,7 +54,7 @@ export const CONSUMER_ENDPOINTS = [
     group: 'pairing',
     summary: 'QR terbaru sebagai data-URL PNG, siap dipasang di tag img.',
     detail:
-      'QR berganti tiap ~20 detik dan kosong setelah terhubung. Polling 3 detik saat pairing; berhenti setelah status connected.',
+      'QR berganti tiap ~20 detik dan kosong setelah terhubung. Polling 3 detik saat pairing; berhenti setelah status connected. Field reason terisi bila pairing terakhir ditolak (mis. nomor hasil scan berbeda dari nomor sesi) dan kembali null saat QR baru terbit.',
     auth: 'x-api-key',
   },
   {
