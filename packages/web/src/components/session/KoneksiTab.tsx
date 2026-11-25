@@ -17,6 +17,7 @@ type KoneksiTabProps = {
   broadcast: BroadcastCurrentDto
   defaultDelay: { min: number; max: number }
   qr: string | null
+  reason: string | null
   onRefresh: () => void
   onChanged: () => void
   onDelete: () => void
@@ -29,6 +30,7 @@ export function KoneksiTab({
   broadcast,
   defaultDelay,
   qr,
+  reason,
   onRefresh,
   onChanged,
   onDelete,
@@ -207,6 +209,16 @@ export function KoneksiTab({
               </div>
               <p className="font-data text-[9.5px] text-ink-faint">polling 3 detik</p>
             </div>
+
+            {reason ? (
+              <>
+                <div className="h-4" />
+                <div className="flex items-start gap-[9px] rounded-[10px] bg-red-soft px-3 py-3">
+                  <ShieldCheck className="mt-px size-3.5 shrink-0 text-red" aria-hidden />
+                  <p className="text-[11px] leading-[1.45] text-red">{reason}</p>
+                </div>
+              </>
+            ) : null}
 
             <div className="h-5" />
 

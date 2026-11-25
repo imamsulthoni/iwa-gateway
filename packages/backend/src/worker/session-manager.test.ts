@@ -14,7 +14,7 @@ const state = vi.hoisted(() => {
     },
     ws: { isOpen: false },
     end: vi.fn(),
-    logout: vi.fn(async () => undefined),
+    query: vi.fn(async () => ({ tag: 'iq', attrs: {} })),
     sendMessage: vi.fn(),
   }
   const auth = {
@@ -76,13 +76,15 @@ function createManager() {
   }
   const messages = { applyStatusUpdate: vi.fn(async () => null) }
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+  const redis = {
+    get: vi.fn(async () => null),
+    set: vi.fn(async () => 'OK'),
+    del: vi.fn(async () => 1),
+    publish: vi.fn(async () => 1),
+  }
   const manager = new SessionManager({
     db: {} as never,
-    redis: {
-      get: vi.fn(async () => null),
-      del: vi.fn(async () => 1),
-      publish: vi.fn(async () => 1),
-    } as never,
+    redis: redis as never,
     cipher: {} as never,
     logger: logger as never,
     browserName: 'test',
@@ -92,7 +94,7 @@ function createManager() {
     optOuts: { recordKeyword: vi.fn(async () => false) } as never,
     webhooks: { record: vi.fn(async () => 0) } as never,
   })
-  return { manager, sessions, messages, logger }
+  return { manager, sessions, messages, logger, redis }
 }
 
 describe('SessionManager', () => {
@@ -102,6 +104,8 @@ describe('SessionManager', () => {
     state.auth.state.creds.registered = false
     state.auth.state.creds.me = { id: '628123456789:12@s.whatsapp.net' }
     state.socket.ws.isOpen = false
+    // vi.clearAllMocks tidak mengembalikan implementasi mock; reset manual.
+    state.socket.query.mockResolvedValue({ tag: 'iq', attrs: {} } as never)
   })
 
   it('manager kedua ditolak lock dan tidak membuat socket', async () => {
@@ -350,9 +354,33 @@ describe('SessionManager', () => {
 
     await manager.stop('s1', true)
 
-    expect(state.socket.logout).toHaveBeenCalled()
+    expect(state.socket.query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: [
+          expect.objectContaining({
+            tag: 'remove-companion-device',
+            attrs: expect.objectContaining({ jid: '628123456789:12@s.whatsapp.net' }),
+          }),
+        ],
+      }),
+    )
     expect(state.auth.clear).toHaveBeenCalled()
     expect(sessions.update).not.toHaveBeenCalled()
+  })
+
+  it('logout yang gagal melepas perangkat mencatat error agar ditindaklanjuti manual', async () => {
+    const { manager, logger } = createManager()
+    state.socket.ws.isOpen = true
+    state.socket.query.mockRejectedValue(new Error('boom'))
+    await manager.start(SESSION)
+
+    await manager.stop('s1', true)
+
+    expect(state.auth.clear).toHaveBeenCalled()
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 's1', phone: '628123456789' }),
+      expect.stringContaining('hapus manual'),
+    )
   })
 
   it('515 restartRequired menyambung ulang tanpa menandai sesi terputus', async () => {
@@ -387,10 +415,46 @@ describe('SessionManager', () => {
     )
   })
 
-  it('event open tidak menimpa phone_number yang sudah ada', async () => {
-    const { manager, sessions } = createManager()
+  it('event open menolak pairing bila nomor hasil scan berbeda dari sesi', async () => {
+    const { manager, sessions, logger } = createManager()
     state.auth.state.creds.me = { id: '628999999999@s.whatsapp.net' }
-    sessions.findById.mockResolvedValueOnce({ ...SESSION, phoneNumber: '628111111111' })
+    state.socket.ws.isOpen = true
+    sessions.findById.mockResolvedValue({ ...SESSION, phoneNumber: '628111111111' })
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({ connection: 'open' })
+
+    await vi.waitFor(() =>
+      expect(sessions.update).toHaveBeenCalledWith('s1', {
+        status: 'disconnected',
+        lastQr: null,
+      }),
+    )
+    expect(state.socket.query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: [expect.objectContaining({ tag: 'remove-companion-device' })],
+      }),
+    )
+    expect(state.auth.clear).toHaveBeenCalled()
+    expect(sessions.update).not.toHaveBeenCalledWith(
+      's1',
+      expect.objectContaining({ status: 'connected' }),
+    )
+    expect(sessions.update).not.toHaveBeenCalledWith(
+      's1',
+      expect.objectContaining({ phoneNumber: expect.any(String) }),
+    )
+    expect(manager.has('s1')).toBe(false)
+    expect(
+      (manager as unknown as { reconnectAttempts: Map<string, number> }).reconnectAttempts.size,
+    ).toBe(0)
+    expect(logger.warn).toHaveBeenCalled()
+  })
+
+  it('event open dengan nomor sama tidak melepas perangkat', async () => {
+    const { manager, sessions } = createManager()
+    state.auth.state.creds.me = { id: '628123456789:12@s.whatsapp.net' }
+    sessions.findById.mockResolvedValue({ ...SESSION, phoneNumber: '628123456789' })
     await manager.start(SESSION)
 
     state.handlers['connection.update']?.({ connection: 'open' })
@@ -401,9 +465,110 @@ describe('SessionManager', () => {
         expect.objectContaining({ status: 'connected' }),
       ),
     )
-    expect(sessions.update).not.toHaveBeenCalledWith(
-      's1',
-      expect.objectContaining({ phoneNumber: expect.any(String) }),
+    expect(state.socket.query).not.toHaveBeenCalled()
+    expect(manager.has('s1')).toBe(true)
+  })
+
+  it('event open menerima nomor sesi 08.. yang sama dengan creds 62..', async () => {
+    const { manager, sessions } = createManager()
+    state.auth.state.creds.me = { id: '628123456789:12@s.whatsapp.net' }
+    sessions.findById.mockResolvedValue({ ...SESSION, phoneNumber: '08123456789' })
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({ connection: 'open' })
+
+    await vi.waitFor(() =>
+      expect(sessions.update).toHaveBeenCalledWith(
+        's1',
+        expect.objectContaining({ status: 'connected' }),
+      ),
+    )
+    expect(state.socket.query).not.toHaveBeenCalled()
+  })
+
+  it('event open tanpa me.id tidak menolak pairing', async () => {
+    const { manager, sessions } = createManager()
+    state.auth.state.creds.me = undefined
+    sessions.findById.mockResolvedValue({ ...SESSION, phoneNumber: '628111111111' })
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({ connection: 'open' })
+
+    await vi.waitFor(() =>
+      expect(sessions.update).toHaveBeenCalledWith(
+        's1',
+        expect.objectContaining({ status: 'connected' }),
+      ),
+    )
+    expect(state.socket.query).not.toHaveBeenCalled()
+  })
+
+  it('gagal melepas perangkat tetap menghapus auth dan mencatat error', async () => {
+    const { manager, sessions, logger, redis } = createManager()
+    state.auth.state.creds.me = { id: '628999999999@s.whatsapp.net' }
+    state.socket.query.mockRejectedValue(new Error('boom'))
+    sessions.findById.mockResolvedValue({ ...SESSION, phoneNumber: '628111111111' })
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({ connection: 'open' })
+
+    await vi.waitFor(() => expect(state.auth.clear).toHaveBeenCalled())
+    expect(state.socket.query).toHaveBeenCalledTimes(2)
+    expect(logger.error).toHaveBeenCalled()
+    expect(redis.set).toHaveBeenCalledWith(
+      'wa:session:reason:s1',
+      expect.stringContaining('hapus manual'),
+    )
+    expect(manager.has('s1')).toBe(false)
+  })
+
+  it('reason penolakan disimpan untuk ditampilkan UI', async () => {
+    const { manager, sessions, redis } = createManager()
+    state.auth.state.creds.me = { id: '628999999999@s.whatsapp.net' }
+    sessions.findById.mockResolvedValue({ ...SESSION, phoneNumber: '628111111111' })
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({ connection: 'open' })
+
+    await vi.waitFor(() =>
+      expect(redis.set).toHaveBeenCalledWith(
+        'wa:session:reason:s1',
+        expect.stringContaining('628111111111'),
+      ),
+    )
+  })
+
+  it('membuat QR baru menghapus reason penolakan', async () => {
+    const { manager, sessions, redis } = createManager()
+    sessions.findById.mockResolvedValue({ ...SESSION, phoneNumber: '628111111111' })
+    await manager.start(SESSION)
+
+    state.handlers['connection.update']?.({ qr: 'qr-string' })
+
+    await vi.waitFor(() =>
+      expect(redis.del).toHaveBeenCalledWith('wa:session:reason:s1'),
+    )
+  })
+
+  it('logout tetap dicoba saat socket tertutup dan error ditelan', async () => {
+    const { manager } = createManager()
+    await manager.start(SESSION)
+    state.socket.ws.isOpen = false
+    state.socket.query.mockRejectedValue(new Error('Connection Closed'))
+
+    await manager.stop('s1', true)
+
+    expect(state.socket.query).toHaveBeenCalled()
+    expect(state.auth.clear).toHaveBeenCalled()
+    expect(manager.has('s1')).toBe(false)
+  })
+
+  it('nama device memuat label sesi', async () => {
+    const { manager } = createManager()
+    await manager.start(SESSION)
+
+    expect(state.createSocket).toHaveBeenCalledWith(
+      expect.objectContaining({ browserName: 'test Sesi' }),
     )
   })
 

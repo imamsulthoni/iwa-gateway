@@ -465,15 +465,17 @@ export function createSessionsRoute(
   router.openapi(sessionLiveRoute, async (c) => {
     const session = await sessions.get(c.req.param('id'))
     ensureSessionAccess(c, session)
-    const [broadcast, pairingCode, config] = await Promise.all([
+    const [broadcast, pairingCode, reason, config] = await Promise.all([
       broadcasts.current(session.id),
       redis.get(`wa:pairing:code:${session.id}`),
+      redis.get(`wa:session:reason:${session.id}`),
       settings.getSettings(),
     ])
     const payload: SessionLiveDto = {
       session: toSessionDto(session),
       qr: session.lastQr,
       pairingCode,
+      reason,
       broadcast: broadcast ?? EMPTY_BROADCAST,
       defaultDelay: { min: config.defaultMinDelay, max: config.defaultMaxDelay },
     }

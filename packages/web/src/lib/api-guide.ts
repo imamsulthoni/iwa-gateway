@@ -379,6 +379,7 @@ const ENDPOINT_EXAMPLES: Record<string, EndpointExample> = {
   },
   "qr": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
   "pairingCode": null,
+  "reason": null,
   "broadcast": {
     "jobId": null,
     "status": null,

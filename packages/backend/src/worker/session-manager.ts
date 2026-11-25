@@ -1,5 +1,6 @@
 import {
   DisconnectReason,
+  S_WHATSAPP_NET,
   type AuthenticationCreds,
   type WASocket,
 } from '@whiskeysockets/baileys'
@@ -19,7 +20,7 @@ import type { AppLogger } from '../infra/logger.js'
 import { publishSessionEvent } from '../infra/pubsub.js'
 import { createKeyCache } from '../baileys/key-cache.js'
 import type { MessagesService } from '../modules/messages/service.js'
-import { phoneFromJid } from '../modules/messages/phone.js'
+import { normalizePhone, phoneFromJid } from '../modules/messages/phone.js'
 import type { OptOutsService } from '../modules/opt-outs/service.js'
 import type { SessionsRepository } from '../modules/sessions/repository.js'
 import type { WebhookOutbox } from '../modules/webhooks/outbox.js'
@@ -34,17 +35,27 @@ type SessionHandle = {
   auth: DbAuthState
   stopRenewal: () => void
   pendingCredsSave: Promise<void>
+  // Kita sedang melepas perangkat ini sendiri: abaikan event close dari
+  // server agar tidak diproses sebagai sesi logout biasa.
+  unlinking: boolean
 }
 
 const RETRY_COUNTER_TTL_MS = 15 * 60_000
+
+// IQ remove-companion-device butuh ack server; klien resmi memakai 32 detik.
+// 20 detik cukup lapang tanpa menahan stop() terlalu lama.
+const UNLINK_TIMEOUT_MS = 20_000
+
+// remove-companion-device kadang diabaikan server; satu percobaan ulang.
+const UNLINK_ATTEMPTS = 2
 
 // Kirim yang menggantung (socket half-open) tidak boleh menahan job antrean
 // selamanya; lewat batas ini pengiriman gagal dan user bisa kirim ulang.
 const SEND_TIMEOUT_MS = 20_000
 
-function withTimeout<T>(promise: Promise<T>): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs = SEND_TIMEOUT_MS): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new SendTimeoutError()), SEND_TIMEOUT_MS)
+    const timer = setTimeout(() => reject(new SendTimeoutError()), timeoutMs)
     promise.then(
       (value) => {
         clearTimeout(timer)
@@ -62,6 +73,15 @@ function withTimeout<T>(promise: Promise<T>): Promise<T> {
 function phoneFromCreds(meId: string | undefined): string | undefined {
   const user = meId?.split('@')[0]?.split(':')[0]
   return user || undefined
+}
+
+// Nomor sesi bisa tersimpan sebagai 08.., sedangkan creds selalu 62..
+function samePhone(left: string, right: string): boolean {
+  try {
+    return normalizePhone(left) === normalizePhone(right)
+  } catch {
+    return false
+  }
 }
 
 // Pairing QR tidak men-set creds.registered; kehadiran me.id menandakan
@@ -123,7 +143,7 @@ export class SessionManager {
     const socket = createSocket({
       auth: auth.state,
       logger: this.deps.logger,
-      browserName: this.deps.browserName,
+      browserName: `${this.deps.browserName} ${session.label}`.slice(0, 40),
       msgRetryCounterCache: this.retryCounterCache,
       getMessage: createGetMessage(this.deps.messages, session.id),
     })
@@ -135,6 +155,7 @@ export class SessionManager {
         void this.onLockLost(session.id)
       }),
       pendingCredsSave: Promise.resolve(),
+      unlinking: false,
     }
     this.handles.set(session.id, handle)
     this.wire(session.id, handle)
@@ -169,6 +190,7 @@ export class SessionManager {
     // Event dari socket yang sudah diganti (logout/cancel/restart) diabaikan
     // agar tidak menimpa status terbaru di database.
     if (this.handles.get(sessionId) !== handle) return
+    if (handle.unlinking) return
     const event = parseConnectionUpdate(update)
     if (!event) return
 
@@ -177,6 +199,7 @@ export class SessionManager {
     if (this.handles.get(sessionId) !== handle) return
 
     if (event.kind === 'qr') {
+      await this.clearRejectReason(sessionId)
       const dataUrl = await QRCode.toDataURL(event.qr)
       if (this.handles.get(sessionId) !== handle) return
       await this.deps.sessions.update(sessionId, { status: 'qr_pending', lastQr: dataUrl })
@@ -190,7 +213,13 @@ export class SessionManager {
     }
 
     if (event.kind === 'open') {
+      const actual = phoneFromCreds(handle.auth.state.creds.me?.id)
+      if (session.phoneNumber && actual && !samePhone(session.phoneNumber, actual)) {
+        await this.rejectPairing(sessionId, handle, session.phoneNumber, actual)
+        return
+      }
       this.reconnectAttempts.delete(sessionId)
+      await this.clearRejectReason(sessionId)
       await this.deps.sessions.update(sessionId, {
         status: 'connected',
         lastQr: null,
@@ -208,7 +237,8 @@ export class SessionManager {
         { sessionId, statusCode: event.statusCode },
         event.forbidden ? 'Nomor diblokir WhatsApp, auth dihapus' : 'Sesi logout, auth dihapus',
       )
-      await this.stop(sessionId, true)
+      // Server sudah memutus kita, IQ remove-companion-device tidak akan dijawab.
+      await this.stop(sessionId, true, { skipUnlink: true })
       await this.deps.sessions.update(sessionId, { status: 'logged_out', lastQr: null })
       await this.publishSessionStatus(sessionId)
       return
@@ -236,6 +266,93 @@ export class SessionManager {
     // kena rate limit WhatsApp (429) — tunggu user menekan Scan QR.
     if (paired) {
       this.scheduleReconnect(sessionId)
+    }
+  }
+
+  private async rejectPairing(
+    sessionId: string,
+    handle: SessionHandle,
+    expected: string,
+    actual: string,
+  ): Promise<void> {
+    handle.unlinking = true
+    this.deps.logger.warn(
+      { sessionId, expected, actual },
+      'Nomor pairing beda dengan nomor sesi, pairing ditolak',
+    )
+    const unlinked = await this.unlinkDevice(sessionId, handle)
+    // Selalu hapus creds nomor B: tanpa creds, perangkat tidak bisa dipakai
+    // lagi walau entri device masih tampil di HP.
+    await this.stop(sessionId, true, { skipUnlink: true })
+    if (!unlinked) {
+      this.deps.logger.error(
+        { sessionId, expected, actual },
+        'Gagal melepas perangkat pairing, hapus manual di HP nomor tersebut',
+      )
+    }
+
+    await this.setRejectReason(
+      sessionId,
+      `Nomor yang discan (${actual}) tidak sama dengan nomor sesi (${expected}). Pairing ditolak.${
+        unlinked
+          ? ''
+          : ` Perangkat gagal dilepas otomatis; hapus manual di HP nomor ${actual}.`
+      }`,
+    )
+    await this.deps.sessions.update(sessionId, { status: 'disconnected', lastQr: null })
+    await this.publishSessionStatus(sessionId)
+  }
+
+  /**
+   * Lepas perangkat di sisi WhatsApp. `socket.logout()` hanya menulis IQ ke
+   * socket lalu langsung menutup koneksi, sehingga server sering tidak sempat
+   * memprosesnya dan device tetap tertinggal. Di sini IQ dikirim lewat
+   * `query()` dan kita menunggu ack sebelum socket ditutup.
+   */
+  private async unlinkDevice(sessionId: string, handle: SessionHandle): Promise<boolean> {
+    const jid = handle.auth.state.creds.me?.id
+    if (!jid) return true
+    for (let attempt = 1; attempt <= UNLINK_ATTEMPTS; attempt += 1) {
+      try {
+        await withTimeout(
+          handle.socket.query({
+            tag: 'iq',
+            attrs: { to: S_WHATSAPP_NET, type: 'set', xmlns: 'md' },
+            content: [
+              {
+                tag: 'remove-companion-device',
+                attrs: { jid, reason: 'user_initiated' },
+              },
+            ],
+          }),
+          UNLINK_TIMEOUT_MS,
+        )
+        return true
+      } catch (error) {
+        this.deps.logger.warn(
+          { sessionId, attempt, err: error },
+          attempt < UNLINK_ATTEMPTS
+            ? 'Gagal melepas perangkat, mencoba ulang'
+            : 'Gagal melepas perangkat',
+        )
+      }
+    }
+    return false
+  }
+
+  private async setRejectReason(sessionId: string, reason: string): Promise<void> {
+    try {
+      await this.deps.redis.set(`wa:session:reason:${sessionId}`, reason)
+    } catch (error) {
+      this.deps.logger.warn({ sessionId, err: error }, 'Gagal menyimpan alasan penolakan')
+    }
+  }
+
+  private async clearRejectReason(sessionId: string): Promise<void> {
+    try {
+      await this.deps.redis.del(`wa:session:reason:${sessionId}`)
+    } catch (error) {
+      this.deps.logger.warn({ sessionId, err: error }, 'Gagal menghapus alasan penolakan')
     }
   }
 
@@ -425,7 +542,11 @@ export class SessionManager {
     }
   }
 
-  async stop(sessionId: string, clearAuth = false): Promise<void> {
+  async stop(
+    sessionId: string,
+    clearAuth = false,
+    options: { skipUnlink?: boolean } = {},
+  ): Promise<void> {
     const handle = this.handles.get(sessionId)
     if (!handle) return
     this.handles.delete(sessionId)
@@ -433,12 +554,16 @@ export class SessionManager {
     // Pastikan creds terakhir (mis. hasil pairing) sudah tersimpan sebelum
     // socket baru membaca ulang state dari database.
     await handle.pendingCredsSave
-    if (clearAuth && isPaired(handle.auth.state.creds) && handle.socket.ws?.isOpen) {
-      try {
-        // Lepas perangkat di sisi WhatsApp, bukan hanya menutup socket lokal.
-        await handle.socket.logout()
-      } catch (error) {
-        this.deps.logger.warn({ sessionId, err: error }, 'Gagal logout perangkat')
+    if (clearAuth && !options.skipUnlink && isPaired(handle.auth.state.creds)) {
+      // Tanpa syarat ws.isOpen: socket half-open masih bisa mengirim IQ.
+      const unlinked = await this.unlinkDevice(sessionId, handle)
+      // Creds tetap dihapus di bawah, tetapi entri device bisa tertinggal di
+      // HP; catat sebagai error agar bisa ditindaklanjuti manual.
+      if (!unlinked) {
+        this.deps.logger.error(
+          { sessionId, phone: phoneFromCreds(handle.auth.state.creds.me?.id) },
+          'Gagal melepas perangkat sesi, hapus manual di daftar perangkat tertaut',
+        )
       }
     }
     try {
@@ -449,6 +574,7 @@ export class SessionManager {
     if (clearAuth) {
       await handle.auth.clear()
       await this.clearPairingKeys(sessionId)
+      await this.clearRejectReason(sessionId)
     }
     // Tandai sesi tidak lagi hidup agar API menolak kirim pesan selama socket
     // tidak ada. Dilakukan sebelum lock dilepas supaya proses lain tidak

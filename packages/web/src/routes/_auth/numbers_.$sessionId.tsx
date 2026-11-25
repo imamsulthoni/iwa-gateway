@@ -235,6 +235,7 @@ function SessionDetailPage() {
           broadcast={broadcastCurrent}
           defaultDelay={defaultDelay}
           qr={live.data?.qr ?? null}
+          reason={live.data?.reason ?? null}
           onRefresh={refreshAll}
           onChanged={refreshAll}
           onDelete={() => setConfirm('delete')}
